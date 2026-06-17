@@ -54,8 +54,8 @@ gojira's contract and state rather than inventing its own parallel source of tru
   and per-app metadata.
 - **The OTel Collector Enablement Guide** (`otel-collector-enablement-guide.md`) - the collection
   patterns, processor opinions, and pipeline assembly Argus encodes as defaults.
-- **The platform-evolution deck** (`observability-platform-design.md`) - the Node-Agent/Cluster-Agent
-  topology and the "integrations that just work" north star (the de-branded `argus-integrations`).
+- **The platform-evolution notes** (`observability-platform-design.md`) - the Node-Agent/Cluster-Agent
+  topology and the "integrations that just work" north star (`argus-integrations`).
 - **OpenTelemetry + Mimir/Loki/Tempo (storage) + Perses (visualization)** - the open-source substrate
   (details below).
 - **cabal / limenal / techne** - the agent runtime, tools, and memory Argus can later plug into.
@@ -73,7 +73,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Traces backend | **Tempo** | Object-storage, cheap, OTLP-native, exemplar links to metrics |
 | Visualization | **Perses** | CNCF, Apache-2.0, dashboards-as-code (native CRD/GitOps); one pane over Mimir/Loki/Tempo (and Pyroscope later). Fits Argus's agent-first, declarative, "no hand-authored dashboards" model far better than Grafana's JSON blobs |
 | Alerting | **Alertmanager** (+ `PrometheusRule` CRDs) | Standard Prometheus alerting path; rules are declarative CRDs, not UI-authored |
-| Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry from the deck |
+| Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry |
 | Collection topology | **Agent (DaemonSet) + Gateway (Deployment) + TargetAllocator (StatefulSet)** | The recommended architecture from the enablement guide |
 | **Apply model** | **Direct apply via cloud CLI / SDK / Helm** through an idempotent step engine | **No third-party GitOps (no ArgoCD/Flux).** Argus provisions directly, like gojira shells to gcloud/gh/kubectl |
 | Cloud-side infra | **Terraform or cloud SDK** | Object-storage buckets, IAM/WIF - stateful, declarative |
@@ -253,7 +253,7 @@ the specific contrib components the profiles need (`otlp`, `prometheus`, `kubele
 `hostmetrics`, `filelog`, `k8sattributes`, `resourcedetection`, `transform`, `groupbyattrs`, `batch`,
 `memory_limiter`, `spanmetrics` connector, `loadbalancing` exporter, OTLP/`prometheusremotewrite`
 exporters). Rebuilding to add a component is a CI release event. This is the seam where the
-**`argus-integrations`** catalog (the de-branded "integrations that just work") eventually lives:
+**`argus-integrations`** catalog (the "integrations that just work") eventually lives:
 declarative `integration.yaml` + autodiscovery via `receiver_creator` + `k8s_observer` and annotation
 hints - so that as gojira deploys new kinds of workloads, their integrations light up automatically.
 
