@@ -42,8 +42,9 @@ later. Do not duplicate what a sibling owns; integrate with it.
 - README style mirrors the OpenTelemetry Collector README.
 
 **The stack we target:** OTel Collector (custom `ocb` distro) for collection - Agent (DaemonSet) +
-Gateway (Deployment) + TargetAllocator (StatefulSet) - into LGTM: Mimir (metrics), Loki (logs), Tempo
-(traces), Grafana, Alertmanager; cluster sources kube-state-metrics + node-exporter + kubelet/cAdvisor.
+Gateway (Deployment) + TargetAllocator (StatefulSet) - into Mimir (metrics), Loki (logs), Tempo
+(traces), with Perses for visualization and Alertmanager for alerting; cluster sources
+kube-state-metrics + node-exporter + kubelet/cAdvisor.
 The opinion is **observability profiles mapped from gojira workload class** (web->HTTP RED, worker->queue,
 cron->job health, heavy->USE, gpu->accelerator). Decisions: per-cluster self-hosted backends, SQLite
 ledger now (techne later), self-contained agent in this repo, GKE/GCP first.

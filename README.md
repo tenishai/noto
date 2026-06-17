@@ -8,7 +8,7 @@ Take a deployment from zero to a full, end-to-end open-source observability plat
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-design-orange.svg)](docs/design.md)
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
-[![Stack: LGTM](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Grafana-1f6feb.svg)](docs/design.md)
+[![Stack: Mimir · Loki · Tempo · Perses](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Perses-1f6feb.svg)](docs/design.md)
 
 [Design](docs/design.md) &nbsp;·&nbsp; [Enablement Guide](docs/otel-collector-enablement-guide.md) &nbsp;·&nbsp; [Platform Evolution](docs/observability-platform-design.md)
 
@@ -30,8 +30,8 @@ Argus is opinionated by design. Its goals:
 - **Automatic** - a gojira deployment goes from running to fully observed with zero extra config.
 - **Opinionated** - a workload's class selects how it is observed; battle-tested collector pipelines
   are the default, not a blank file.
-- **Open source, end to end** - OpenTelemetry plus the LGTM stack, no vendor lock-in, no per-host
-  licensing.
+- **Open source, end to end** - OpenTelemetry plus Mimir/Loki/Tempo and Perses, no vendor lock-in, no
+  per-host licensing.
 - **Agent-driven** - operated by a self-contained agent and a set of Agent Skills, not a web UI.
 - **gojira-native** - reads gojira's contract and state as the source of truth; it does not duplicate it.
 
@@ -41,7 +41,7 @@ Argus is opinionated by design. Its goals:
 gojira:  repo ──▶ identity ──▶ CI/CD ──▶ manifests ──▶ app running, /metrics exposed
                                                               │
                                                               ▼  (Argus continues)
-argus:   per-cluster platform (collectors + LGTM) ──▶ auto-wire every app by class ──▶ dashboards · SLOs · alerts
+argus:   per-cluster platform (collectors + backends + Perses) ──▶ auto-wire every app by class ──▶ dashboards · SLOs · alerts
 ```
 
 Argus stands the platform up once per cluster, then wires each gojira-managed app into it based on its
@@ -56,7 +56,7 @@ CRDs - no third-party GitOps controller in the path.
 | Metrics | Mimir |
 | Logs | Loki |
 | Traces | Tempo |
-| Visualization | Grafana |
+| Visualization | Perses (dashboards-as-code; metrics, logs, traces) |
 | Alerting | Alertmanager |
 | Cluster sources | kube-state-metrics, node-exporter, kubelet / cAdvisor |
 

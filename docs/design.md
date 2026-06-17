@@ -42,7 +42,7 @@ attributed back to the workload class gojira deployed."*
 gojira:  repo ──▶ identity ──▶ CI/CD ──▶ manifests ──▶ app running, /metrics exposed
                                                               │
                                                               ▼  (Argus continues)
-argus:   cluster platform (collectors + LGTM) ──▶ auto-wire every gojira app ──▶ dashboards/SLOs/alerts
+argus:   cluster platform (collectors + backends + Perses) ──▶ auto-wire every gojira app ──▶ dashboards/SLOs/alerts
 ```
 
 Argus runs as a **continuation of the gojira lifecycle** (a hand-off / extension phase), reading
@@ -56,7 +56,8 @@ gojira's contract and state rather than inventing its own parallel source of tru
   patterns, processor opinions, and pipeline assembly Argus encodes as defaults.
 - **The platform-evolution deck** (`observability-platform-design.md`) - the Node-Agent/Cluster-Agent
   topology and the "integrations that just work" north star (the de-branded `argus-integrations`).
-- **OpenTelemetry + the LGTM stack** - the open-source substrate (details below).
+- **OpenTelemetry + Mimir/Loki/Tempo (storage) + Perses (visualization)** - the open-source substrate
+  (details below).
 - **cabal / limenal / techne** - the agent runtime, tools, and memory Argus can later plug into.
 
 ---
@@ -68,10 +69,10 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Positioning | **Observability extension of gojira**, not a standalone platform | Input is a gojira deployment; output is that deployment, observed |
 | Telemetry substrate | **OpenTelemetry Collector** (custom distro via `ocb`) | Vendor-neutral, CNCF-graduated, the convergence point both enablement docs land on |
 | Metrics backend | **Mimir** (Prometheus-compatible, object-storage) | Horizontally scalable, OSS, PromQL; outgrows single Prometheus cleanly |
-| Logs backend | **Loki** | Label-based, object-storage, pairs with Grafana |
+| Logs backend | **Loki** | Label-based, object-storage, queried via Perses |
 | Traces backend | **Tempo** | Object-storage, cheap, OTLP-native, exemplar links to metrics |
-| Visualization | **Grafana** | The OSS default; one pane over Mimir/Loki/Tempo |
-| Alerting | **Alertmanager** (+ Grafana alerts) | Standard Prometheus alerting path |
+| Visualization | **Perses** | CNCF, Apache-2.0, dashboards-as-code (native CRD/GitOps); one pane over Mimir/Loki/Tempo (and Pyroscope later). Fits Argus's agent-first, declarative, "no hand-authored dashboards" model far better than Grafana's JSON blobs |
+| Alerting | **Alertmanager** (+ `PrometheusRule` CRDs) | Standard Prometheus alerting path; rules are declarative CRDs, not UI-authored |
 | Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry from the deck |
 | Collection topology | **Agent (DaemonSet) + Gateway (Deployment) + TargetAllocator (StatefulSet)** | The recommended architecture from the enablement guide |
 | **Apply model** | **Direct apply via cloud CLI / SDK / Helm** through an idempotent step engine | **No third-party GitOps (no ArgoCD/Flux).** Argus provisions directly, like gojira shells to gcloud/gh/kubectl |
@@ -79,7 +80,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | In-cluster components | **Helm** (charts + pinned values) | The OSS standard; versioned, idempotent |
 | Collector/scrape config | **Operator CRDs** (`OpenTelemetryCollector`, `ServiceMonitor`, `PodMonitor`) | Declarative, hot-reloaded, no manual config files |
 | The contract | **Derived from `gojira.yaml` + workload class**, with an optional `observability:` override block | Zero new config for the common case; class drives the defaults |
-| Backend hosting | **Per-cluster** self-hosted LGTM | Strong isolation, contained blast radius; no shared failure domain |
+| Backend hosting | **Per-cluster** self-hosted backends (Mimir/Loki/Tempo + Perses) | Strong isolation, contained blast radius; no shared failure domain |
 | Ledger / state | **SQLite now**, techne-backed later | Proven in gojira; migrate the agent's deploy history into techne when ready |
 | Agent home | **Self-contained in the `argus` repo** | Ships its own minimal runtime; portable, can register into cabal later |
 | First cloud target | **GKE / GCP** | Matches gojira and existing infra; cloud-agnostic is a later phase |
@@ -130,15 +131,15 @@ observability. Either way the entry point is "here is a gojira-managed thing; ma
 ## Phase 1 scope - "every gojira app, automatically observed"
 
 **Definition of done:** take a gojira-managed cluster with at least one deployed app and, in one
-guided agent run, (1) stand up the per-cluster platform (Mimir/Loki/Tempo/Grafana + the OTel collector
+guided agent run, (1) stand up the per-cluster platform (Mimir/Loki/Tempo + Perses + the OTel collector
 tier), (2) auto-wire every gojira app into it based on its workload class, and (3) prove a real metric
-and trace from a deployed app are queryable in Grafana with a default dashboard and golden-signal SLO
+and trace from a deployed app are queryable in Perses with a default dashboard and golden-signal SLO
 present - no hand-written collector YAML, applied directly via CLI/SDK/Helm.
 
 ### The opinionated open-source stack (what we target)
 
 ```
-                 ┌──────────────── Grafana (single pane) ────────────────┐
+                 ┌──────────────── Perses (single pane) ─────────────────┐
                  │   metrics → Mimir   logs → Loki   traces → Tempo       │
                  └───────────▲──────────────▲───────────────▲────────────┘
                              │              │               │ (remote_write / OTLP / push)
@@ -185,7 +186,7 @@ chosen per layer; everything is applied directly - no GitOps controller in the p
 | 1 | Object-storage buckets + lifecycle | Terraform / gcloud SDK | `storage@<cluster>` |
 | 2 | IAM / Workload Identity Federation for backends + collectors | Terraform / gcloud SDK | `iam@<project>` |
 | 3 | Namespaces, cert-manager, OTel Operator, Prometheus Operator CRDs | Helm + kubectl | `bootstrap@<cluster>` |
-| 4 | Backends: Mimir, Loki, Tempo, Grafana, Alertmanager | Helm (pinned values) | `backend_<name>@<cluster>` |
+| 4 | Backends: Mimir, Loki, Tempo, Perses, Alertmanager | Helm (pinned values) | `backend_<name>@<cluster>` |
 | 5 | Collection: Agent DaemonSet, Gateway, TargetAllocator StatefulSet | Operator CRDs | `collector_<role>@<cluster>` |
 | 6 | Scrape sources: kube-state-metrics, node-exporter | Helm | `scrape_<name>@<cluster>` |
 | 7 | Per-app wiring: read gojira apps → profile → ServiceMonitor/PodMonitor + pipeline | CRDs | `wire@<app>` |
@@ -231,7 +232,7 @@ apps                gojira apps Argus is observing (mirrors gojira's app list)
   id, cluster_id (fk), name, namespace, workload_class, profile, status
 
 backends            deployed backend instances per cluster
-  id, cluster_id (fk), kind (mimir|loki|tempo|grafana), version, bucket, status
+  id, cluster_id (fk), kind (mimir|loki|tempo|perses), version, bucket, status
 
 provision_steps     audit + idempotency ledger, one row per step per run
   id, target_ref, step_name, tooling (tf|helm|crd|cli),
@@ -345,11 +346,11 @@ Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hy
 
 | Skill | Does | Trigger phrasing | Phase |
 |---|---|---|---|
-| `argus-platform` | Stand up the per-cluster platform (collectors + LGTM) | "make this cluster observable", "stand up the LGTM stack" | 1 |
+| `argus-platform` | Stand up the per-cluster platform (collectors + Mimir/Loki/Tempo + Perses) | "make this cluster observable", "stand up the observability stack" | 1 |
 | `argus-observe-app` | Wire a gojira app into observability by its class | "observe the clips app", "add dashboards/SLOs for this service" | 1 |
 | `argus-pipeline` | Author/modify OTel collector pipelines & processors | "add a redaction step", "tail-sample traces" | 1 |
 | `argus-slo` | Define SLOs → recording rules + alerts | "add an SLO for checkout latency" | 2 |
-| `argus-dashboard` | Generate Grafana dashboards (RED/USE per profile) | "dashboard for the growth service" | 2 |
+| `argus-dashboard` | Generate Perses dashboards-as-code (RED/USE per profile) | "dashboard for the growth service" | 2 |
 | `argus-cardinality` | Find/curb high-cardinality metrics against budget | "what's blowing up our series count" | 2 |
 | `argus-triage` | Investigate an incident using live telemetry | "why is p99 spiking", "debug this" | 4 |
 
@@ -363,11 +364,11 @@ vendor `skill-creator` itself.
 
 | Phase | Ships | Definition of done |
 |---|---|---|
-| **1 - Observe** | `ocb` distro, profiles, Terraform/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full LGTM+OTel platform + every gojira app auto-observed; a real metric & trace queryable in Grafana, < 30 min, no hand-written YAML |
+| **1 - Observe** | `ocb` distro, profiles, Terraform/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full Mimir/Loki/Tempo + Perses + OTel platform + every gojira app auto-observed; a real metric & trace queryable in Perses, < 30 min, no hand-written YAML |
 | **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft) |
 | **3 - Guard** | Policy enforcement (cardinality/retention/PII), drift detection on the observability layer, `argus adopt` for clusters not deployed by gojira | Rogue high-cardinality metric rejected; a non-gojira cluster adopted |
 | **4 - Reason** | `argus-triage` over live telemetry; **runtime-context flight recorder** for dev (below); trace↔log↔metric correlation wired by default | Agent answers "why did this break" from runtime data, not guesses |
-| **Later** | Multi-cloud, Perses dashboards-as-code, predictive cardinality, eBPF auto-instrumentation | - |
+| **Later** | Multi-cloud, Pyroscope profiling as a fifth pillar (Perses-native), predictive cardinality, eBPF auto-instrumentation | - |
 
 Phases are ordered; Phase 1 is the MVP. Argus deploys directly throughout - no GitOps controller is
 ever required.
@@ -422,9 +423,18 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
    third-party GitOps** (no ArgoCD/Flux) in the path.
 3. **Contract** → derived from `gojira.yaml` + workload class, with an optional `observability:`
    override block. Zero new config for the common case.
-4. **Backend hosting** → per-cluster self-hosted LGTM.
+4. **Backend hosting** → per-cluster self-hosted backends (Mimir/Loki/Tempo + Perses).
 5. **Ledger** → SQLite now, migrate into techne later.
 6. **Agent home** → self-contained in the `argus` repo; register into cabal later.
+7. **Visualization** → **Perses, not Grafana.** Perses is CNCF, Apache-2.0, and dashboards-as-code
+   (native CRDs), which fits Argus's agent-first / declarative / "no hand-authored dashboards" model
+   far better than Grafana's JSON dashboards. It covers all four pillars over our backends today -
+   Prometheus/Mimir metrics, Tempo traces (scatter/Gantt/table), Loki logs (search/filter), and
+   Pyroscope profiling (flame graphs) - so it satisfies the Phase-1 trace DoD with no Grafana in the
+   stack. Tradeoff accepted: Perses is a CNCF *sandbox* project (v0.53.x as of 2026-06), younger and
+   less battle-tested than Grafana; we pin its chart/version like everything else and revisit if a
+   capability gap blocks a profile. This retires the "LGTM" label (the G was Grafana); we name the
+   substrate explicitly as Mimir/Loki/Tempo + Perses.
 
 ## Still open (not blocking Phase 1)
 

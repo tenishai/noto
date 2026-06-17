@@ -6,6 +6,14 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Visualization is now **Perses**, not Grafana. Perses is CNCF, Apache-2.0, and dashboards-as-code
+  (native CRDs), and covers metrics (Mimir), traces (Tempo), and logs (Loki) - satisfying the Phase-1
+  trace requirement with no Grafana in the stack. Retires the "LGTM" label in favor of naming the
+  substrate explicitly (Mimir/Loki/Tempo + Perses). See decision 7 in
+  [docs/design.md](docs/design.md).
+
 ### Added
 
 - Phase 0 foundations: contributor guide with branching strategy and commit conventions

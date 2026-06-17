@@ -1,7 +1,7 @@
 # Argus - Project Guide for Claude Code
 
 Argus is the **observability arm of [gojira](https://github.com/shaz/gojira)**: it takes a deployment
-from zero to a full, end-to-end open-source observability platform (OpenTelemetry + the LGTM stack),
+from zero to a full, end-to-end open-source observability platform (OpenTelemetry + Mimir/Loki/Tempo + Perses),
 automatically, driven by a self-contained agent and Agent Skills. Read [docs/design.md](docs/design.md)
 before making structural changes.
 
@@ -44,7 +44,7 @@ skill below, use it before hand-rolling the work.
 | **doc-coauthoring** | Writing or revising any doc, proposal, design spec, or decision record (the design doc, runbooks, ADRs). | Core - we are documentation-heavy. |
 | **claude-api** | Writing or reviewing any agent code that calls the Claude API / Anthropic SDK, defines tools, or migrates models. Read it before answering LLM/model/pricing questions from memory. | Core - the Argus agent is an LLM app. |
 | **mcp-builder** | Building any MCP server (e.g. exposing Argus operations as MCP tools, or the flight-recorder local server). Python (FastMCP) or Node/TS (MCP SDK). | Core when we add MCP surfaces. |
-| **webapp-testing** | Verifying any local web behavior with Playwright (e.g. Grafana provisioning, a future status page, dashboard round-trip checks). | When a web surface or Grafana check exists. |
+| **webapp-testing** | Verifying any local web behavior with Playwright (e.g. Perses provisioning, a future status page, dashboard round-trip checks). | When a web surface or Perses check exists. |
 | **frontend-design** | Designing any web UI surface so it is distinctive and intentional, not templated (e.g. a status page, docs site, dashboard theming). | When/if we build a web surface. |
 | **web-artifacts-builder** | Prototyping elaborate multi-component web artifacts (React/Tailwind/shadcn) - e.g. dashboard mockups or an internal console prototype. | Prototyping only; not a core surface. |
 | **web-design-guidelines** (Vercel) | Reviewing/auditing any UI code we build against 100+ rules across 11 categories (a11y, focus states, forms, animation, typography, images, i18n, performance). Triggers: "review my UI", "check accessibility", "audit design". | Apply to any web surface we ship. Installed project-local (see below). |

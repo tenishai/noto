@@ -65,7 +65,7 @@ not on every PR.
 - Bring up the platform on a throwaway cluster; assert backends become healthy and the collector
   scrapes itself.
 - **The Phase-1 DoD gate:** a synthetic metric and trace emitted by a sample app are queryable in
-  Grafana, with a default dashboard and a golden-signal SLO present.
+  Perses, with a default dashboard and a golden-signal SLO present.
 - **Why it matters:** this is the definition of done for Phase 1. Everything else exists to make this
   pass reliably.
 
