@@ -1,0 +1,45 @@
+# Argus CI - the per-PR gate.
+#
+# Mirrors the test layers in docs/testing.md, cheapest first. This skeleton runs the
+# static layer today; the unit and contract jobs below activate as the agent code and
+# rendered artifacts land. The integration/smoke layer (layer 4) is gated separately and
+# does not run here.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Layer 1: static / lint. No code execution, runs in seconds.
+  conventions:
+    name: conventions lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint prose and version pins
+        run: ./scripts/lint-conventions.sh
+
+  # Layer 2 + 3: unit and contract tests.
+  # Activates when agent code exists. Until then it is a no-op that documents intent.
+  # TODO(phase-1): replace the guard with `make test` once the step engine lands.
+  unit-and-contract:
+    name: unit + contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unit and contract layers
+        run: |
+          if [ -f Makefile ] && grep -qE '^test:' Makefile; then
+            make test
+          else
+            echo "No test target yet; unit/contract layers land with the agent code."
+          fi
