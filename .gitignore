@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Go (collector distro build output)
+/distro/_build/
+*.exe
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+
+# Agent ledger / local state
+*.db
+*.sqlite
+*.sqlite3
+
+# Rendered/generated artifacts
+/.argus/
+*.local.yaml
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
