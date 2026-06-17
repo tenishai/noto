@@ -16,6 +16,8 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- Top-level [ROADMAP.md](ROADMAP.md): the phased plan (Observe -> Curate -> Guard -> Reason -> Later)
+  at a glance, linked from the README, with design.md as the source of truth.
 - Implementation language locked to **Python** (CPython 3.14, `uv`, `ruff`) for consistency with the
   sibling repos and first-class Anthropic SDK support. See decision 8 in [docs/design.md](docs/design.md).
 - Canonical pinned-versions reference at [docs/versions.md](docs/versions.md) capturing the latest

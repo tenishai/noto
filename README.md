@@ -10,7 +10,7 @@ Take a deployment from zero to a full, end-to-end open-source observability plat
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
 [![Stack: Mimir · Loki · Tempo · Perses](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Perses-1f6feb.svg)](docs/design.md)
 
-[Design](docs/design.md) &nbsp;·&nbsp; [Enablement Guide](docs/otel-collector-enablement-guide.md) &nbsp;·&nbsp; [Platform Evolution](docs/observability-platform-design.md)
+[Design](docs/design.md) &nbsp;·&nbsp; [Roadmap](ROADMAP.md) &nbsp;·&nbsp; [Enablement Guide](docs/otel-collector-enablement-guide.md) &nbsp;·&nbsp; [Platform Evolution](docs/observability-platform-design.md)
 
 </div>
 
@@ -62,12 +62,14 @@ CRDs - no third-party GitOps controller in the path.
 
 ## Status
 
-Argus is in **design / pre-Phase-1**. The architecture, opinionated defaults, deployment order of
-operations, and phased roadmap are defined in the [design document](docs/design.md). Code scaffolding
-is in progress.
+Argus is in **design / pre-Phase-1**, with foundations in place and **Phase 1 (Observe)** as the
+current focus. See the [roadmap](ROADMAP.md) for the phase plan and the
+[design document](docs/design.md) for architecture, opinionated defaults, and the deployment order of
+operations. Code scaffolding is in progress.
 
 ## Documentation
 
+- [Roadmap](ROADMAP.md) - the phased plan (Observe -> Curate -> Guard -> Reason) at a glance
 - [Design document](docs/design.md) - architecture, decisions, deployment model, roadmap
 - [OpenTelemetry Collector Enablement Guide](docs/otel-collector-enablement-guide.md) - the collector
   patterns and pipeline opinions Argus ships as defaults
