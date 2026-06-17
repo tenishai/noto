@@ -33,6 +33,13 @@ duplicate what a sibling owns; integrate with it.
 - **README style** mirrors the [OpenTelemetry Collector README](https://github.com/open-telemetry/opentelemetry-collector/blob/main/README.md):
   title block, badges, nav links, Overview/objectives, How it works, Stack, Status, Docs. Keep it short.
 - Pin everything (ocb component versions, Helm charts, Terraform providers). No floating `latest`.
+- **Latest-stable on introduction.** Whenever you add a new dependency, tool, chart, provider, action,
+  base image, or language/runtime, first verify its current latest stable version from the authoritative
+  source (GitHub releases, official registry/docs) - do not trust memory, web-check it - then pin to that
+  exact version and record it in [docs/versions.md](docs/versions.md), the single source of truth for
+  pins. Prefer the highest stable release; if a project is pre-1.0 (much of our stack is), pin tightly
+  and note it. Bumping a pin is its own reviewed `chore`/`feat` PR with a CHANGELOG entry, never a
+  silent float. When in doubt about whether something is current, check before pinning.
 
 ## Skills to use when building this repo
 

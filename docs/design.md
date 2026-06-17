@@ -86,6 +86,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | First cloud target | **GKE / GCP** | Matches gojira and existing infra; cloud-agnostic is a later phase |
 | Object storage | **GCS** (S3/Azure later) | Backs Mimir/Loki/Tempo; one bucket-set per cluster |
 | Interface | **Agent + Skills**, no web UI | Agent-first; the repo is the substrate |
+| Language | **Python** (CPython 3.14, `uv`, `ruff`) | All sibling repos (gojira/techne/limenal/cabal) are Python; first-class Anthropic SDK; Jinja2 rendering + stdlib SQLite + shell-out fit Argus's "render YAML, apply via CLI" shape |
 
 Rejected / deferred: a third-party GitOps controller (ArgoCD/Flux) - Argus applies directly. Hosted
 SaaS backends (Datadog, Grafana Cloud, and similar) - Argus is the open-source answer. A standalone
@@ -435,6 +436,14 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
    less battle-tested than Grafana; we pin its chart/version like everything else and revisit if a
    capability gap blocks a profile. This retires the "LGTM" label (the G was Grafana); we name the
    substrate explicitly as Mimir/Loki/Tempo + Perses.
+8. **Language** → **Python.** All four sibling repos (gojira, techne, limenal, cabal) are Python, and
+   Argus is meant to merge into the same org and compose with them; a different language would put a
+   seam through the ecosystem. On the merits, gojira is the same shape of program (Python + Jinja +
+   shelling to gcloud/kubectl), the Anthropic SDK is first-class in Python, SQLite is stdlib, and
+   FastMCP fits the Phase-4 flight recorder. Go was considered (static binary, typed CRDs) but loses:
+   Argus renders YAML and shells out rather than embedding a controller, so typed client-go buys
+   little, and the one Go artifact (the ocb-built distro) is generated from a manifest, not code we
+   write. Toolchain: CPython 3.14, `uv`, `ruff`. Pinned versions live in [versions.md](versions.md).
 
 ## Still open (not blocking Phase 1)
 

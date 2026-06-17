@@ -24,7 +24,7 @@ jobs:
     name: conventions lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Lint prose and version pins
         run: ./scripts/lint-conventions.sh
 
@@ -35,7 +35,7 @@ jobs:
     name: unit + contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Run unit and contract layers
         run: |
           if [ -f Makefile ] && grep -qE '^test:' Makefile; then

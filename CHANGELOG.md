@@ -16,6 +16,12 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- Implementation language locked to **Python** (CPython 3.14, `uv`, `ruff`) for consistency with the
+  sibling repos and first-class Anthropic SDK support. See decision 8 in [docs/design.md](docs/design.md).
+- Canonical pinned-versions reference at [docs/versions.md](docs/versions.md) capturing the latest
+  stable version of every tool we pin, with verify-at-pin-time caveats.
+- CLAUDE.md convention: any newly introduced dependency must be verified to its current latest stable
+  version and recorded in docs/versions.md before pinning.
 - Phase 0 foundations: contributor guide with branching strategy and commit conventions
   ([CONTRIBUTING.md](CONTRIBUTING.md)), versioning and release policy
   ([docs/versioning.md](docs/versioning.md)), testing philosophy and layers
