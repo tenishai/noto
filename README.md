@@ -35,6 +35,23 @@ Argus is opinionated by design. Its goals:
 - **Agent-driven** - operated by a self-contained agent and a set of Agent Skills, not a web UI.
 - **gojira-native** - reads gojira's contract and state as the source of truth; it does not duplicate it.
 
+## Part of a larger platform
+
+Argus is one piece of a shared, opinionated SRE/agent platform - sibling projects that each own one
+concern and are built to compose. Argus owns observability:
+
+- **[gojira](https://github.com/shaz/gojira)** - the deploy platform (identity, CI/CD, manifests,
+  sizing). Argus's parent: it continues gojira's lifecycle and maps workload class to observability.
+- **[techne](https://github.com/dimartin/techne)** - agentic memory. Argus's ledger migrates here, so
+  its deploy history becomes durable memory.
+- **[limenal](https://github.com/dimartin/limenal)** - the MCP gateway. Argus reaches its tools
+  through it, and can expose its own operations as a handler.
+- **[cabal](https://github.com/dimartin/cabal)** - agent orchestration. Argus's agent registers here
+  as the observability persona.
+
+Argus runs self-contained today and composes with these as the platform comes together; it never
+duplicates what a sibling owns.
+
 ## How it works
 
 ```

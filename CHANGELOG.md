@@ -16,6 +16,8 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- README "Part of a larger platform" section naming the sibling projects (gojira, techne, limenal,
+  cabal) and Argus's relationship to each.
 - Top-level [ROADMAP.md](ROADMAP.md): the phased plan (Observe -> Curate -> Guard -> Reason -> Later)
   at a glance, linked from the README, with design.md as the source of truth.
 - Implementation language locked to **Python** (CPython 3.14, `uv`, `ruff`) for consistency with the
