@@ -28,18 +28,14 @@ jobs:
       - name: Lint prose and version pins
         run: ./scripts/lint-conventions.sh
 
-  # Layer 2 + 3: unit and contract tests.
-  # Activates when agent code exists. Until then it is a no-op that documents intent.
-  # TODO(phase-1): replace the guard with `make test` once the step engine lands.
+  # Layers 1-3: static (ruff), unit, contract - `make test` runs them all.
   unit-and-contract:
     name: unit + contract
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Run unit and contract layers
-        run: |
-          if [ -f Makefile ] && grep -qE '^test:' Makefile; then
-            make test
-          else
-            echo "No test target yet; unit/contract layers land with the agent code."
-          fi
+      - uses: astral-sh/setup-uv@v8
+        with:
+          version: "0.11.28"
+      - name: Run test layers 1-3
+        run: make test

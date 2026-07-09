@@ -59,17 +59,18 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 
 | Component | Version | Source | Notes |
 |---|---|---|---|
-| CPython | 3.14.6 | [python.org](https://www.python.org/downloads/) | pin `requires-python` to the 3.14 line |
-| uv (env / deps) | 0.11.21 | [astral-sh/uv](https://github.com/astral-sh/uv/releases/latest) | lockfile committed; 0.x |
-| `anthropic` (Python SDK) | 0.109.2 | [PyPI](https://pypi.org/project/anthropic/) | GA line (0.x by semver). Default model `claude-opus-4-8` |
-| `ruff` (lint / format) | latest stable | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | pin exact in `pyproject.toml`; wired into the CI static layer |
+| CPython | 3.14.6 | [python.org](https://www.python.org/downloads/) | pinned in `.python-version`; `requires-python = ">=3.14,<3.15"` |
+| uv (env / deps) | 0.11.28 | [astral-sh/uv](https://github.com/astral-sh/uv/releases/latest) | re-verified 2026-07-09 at scaffold time (was 0.11.21); lockfile committed; 0.x |
+| `anthropic` (Python SDK) | 0.109.2 | [PyPI](https://pypi.org/project/anthropic/) | GA line (0.x by semver). Default model `claude-opus-4-8`. Re-verify when the agent code lands |
+| `ruff` (lint / format) | 0.15.20 | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | verified 2026-07-09; pinned exact in `pyproject.toml`; wired into `make lint` / CI |
+| `pytest` | 9.1.1 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest/releases) | verified 2026-07-09; pinned exact in `pyproject.toml` |
 
 ## CI (GitHub Actions)
 
 | Action | Version | Notes |
 |---|---|---|
 | `actions/checkout` | v6 | bumped from v4 |
-| `actions/setup-python` | v6 | added when the agent code lands |
+| `astral-sh/setup-uv` | v8 (uv pinned to 0.11.28 via `with.version`) | verified 2026-07-09; replaces setup-python (uv manages the interpreter from `.python-version`) |
 | `actions/setup-go` | v6 | only if a Go build step is ever needed (e.g. ocb invocation) |
 
 Runner image is `ubuntu-latest` (the conventional GitHub-hosted label). If we need bit-for-bit

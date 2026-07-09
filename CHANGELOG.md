@@ -6,6 +6,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Python scaffold** (issue #16, the first code PR): `pyproject.toml` (package `argus` under
+  `agent/`, hatchling, CPython 3.14.6 via `.python-version`), uv-managed env with committed
+  lockfile, ruff lint+format, pytest with the unit and contract layers wired, `make test` running
+  layers 1-3 per docs/testing.md, and CI's unit+contract job activated via `astral-sh/setup-uv`.
+  Pins verified at introduction and recorded: uv 0.11.28 (bumped from 0.11.21), ruff 0.15.20,
+  pytest 9.1.1, setup-uv v8.
+
 ### Changed
 
 - **Warehouse sink default is now self-hosted ClickHouse** (per region, fed the curated subset via

@@ -1,0 +1,49 @@
+[project]
+name = "argus"
+version = "0.1.0.dev0"
+description = "Argus - the observability arm of gojira. Takes a deployment from zero to a full open-source observability platform, automatically."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.14,<3.15"
+authors = [{ name = "Kyle Greiner", email = "kyle@example.com" }]
+# Runtime dependencies land with the code that needs them (Jinja2 with the renderers,
+# PyYAML with the gojira-reader, anthropic with the agent) - each pinned in docs/versions.md
+# at introduction time.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.15.20",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent/argus"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+src = ["agent"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "RUF", # ruff-native
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "contract: golden-file / rendered-output assertions (layer 3)",
+]
