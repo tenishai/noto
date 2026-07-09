@@ -104,7 +104,18 @@ open source; OpenTofu is the drop-in replacement. **VictoriaMetrics/VictoriaLogs
 tier - credible on ops simplicity and resource footprint (and Apache-2.0), but Mimir's native
 multi-tenancy is load-bearing for the per-region storage design, MetricsQL deviates subtly from
 PromQL, and there is no Victoria equivalent for traces, so we would still run Tempo and split the
-operational model; revisit only if Mimir's operational weight proves unaffordable. **Hand-rolled SLO
+operational model; revisit only if Mimir's operational weight proves unaffordable.
+**ClickHouse replacing Loki/Tempo** (reaffirmed 2026-07-09) - for traces it is blocked outright:
+Perses has no ClickHouse TraceQuery plugin (verified in the capability spike), so traces stored
+there would be invisible in our pane, while Tempo passed every check and ships span-metrics/service
+graph for free. For logs it is possible but not better at our scale (~2.2K logs/sec): Loki is
+object-storage-native, OTLP-verified, and alerts through the ruler, while ClickHouse means schema
+engineering, MergeTree/TTL operations, and disks. Revisit triggers, any of: (1) log
+scale/cardinality outgrows Loki's label model (needle-in-haystack full-text or high-cardinality
+group-bys become the workload), (2) Perses ships a ClickHouse TraceQuery plugin, (3) the
+observer/forecaster agents need arbitrary SQL over wide events beyond the warehouse subset. Note
+ClickHouse does enter the stack earlier as the default warehouse-sink implementation - see
+[transport-and-routing.md](transport-and-routing.md). **Hand-rolled SLO
 rules** - see the SLO generation decision.
 
 ---

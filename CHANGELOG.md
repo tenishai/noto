@@ -6,6 +6,21 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Warehouse sink default is now self-hosted ClickHouse** (per region, fed the curated subset via
+  the OTel ClickHouse exporter), replacing "BigQuery with per-cloud equivalents later." One OSS,
+  cloud-portable implementation instead of three managed-warehouse builds; BigQuery/Athena/Synapse
+  remain optional per-cloud alternatives behind the same seam. Perses ClickHouse datasource
+  coverage was verified in the capability spike; agents get SQL for analytics.
+  Postgres/CloudSQL/AlloyDB/TimescaleDB recorded as rejected for this role (row-store vs
+  columnar-OLAP workload shape; CloudSQL/AlloyDB additionally vendor/GCP-only; Timescale License
+  not OSS) - Postgres stays the family's transactional-state engine.
+- **ClickHouse replacing Loki/Tempo reaffirmed as rejected**, now with recorded revisit triggers:
+  Loki label-model outgrown, a Perses ClickHouse TraceQuery plugin appearing (today traces in
+  ClickHouse would be invisible in Perses), or agents needing arbitrary SQL beyond the warehouse
+  subset.
+
 ### Added
 
 - **Perses capability spike: PASS** ([docs/spikes/perses/RESULTS.md](docs/spikes/perses/RESULTS.md),

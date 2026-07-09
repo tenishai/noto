@@ -16,7 +16,7 @@ per cluster                                per region                          d
 │   filter: profile drop rules │   │    topics: metrics/logs/traces    │      ├ Loki    (logs)
 │        │                     │──▶│        │                          │      ├ Tempo   (traces)
 │ OTel Gateway (Deployment)    │   │  Ingest tier: OTel Collector      │─────▶├ warehouse sink
-│   filter + enrich + batch    │   │  consumers - filter, route, fan   │      │  (BigQuery on GCP)
+│   filter + enrich + batch    │   │  consumers - filter, route, fan   │      │  (ClickHouse default)
 │   kafka exporter ────────────┘   │  out via routing connector        │      └ (optional streams
 └─────────────────────────────┘   └──────────────────────────────────┘         for agents)
         kubectl logs -f keeps working: kubelet reads node files, none of this touches it
@@ -109,11 +109,49 @@ The ingest tier uses the OTel `routing` connector plus per-destination exporters
 | Metrics | Mimir (regional) | `prometheusremotewrite`/OTLP; the central endpoint. Thanos rejected: Mimir already is the multi-tenant central write path, no sidecar fleet needed |
 | Logs | Loki (regional) | GCP Cloud Logging bypassed for app logs (below) |
 | Traces | Tempo (regional) | |
-| Analytics subset | Warehouse sink (seam) | Filtered, curated stream for the Phase 4 forecasting agent's historical training data |
+| Analytics subset | Warehouse sink - **default: self-hosted ClickHouse** (seam; managed cloud warehouses optional) | Filtered, curated stream for the Phase 4 forecasting agent's historical training data, cost attribution, long-range aggregates. See "The warehouse sink" below |
 | Live streams | Queue consumer groups | The Phase 4 observer agent taps the queue directly; no extra export |
 
-ClickHouse is **not** added as a fourth store; it is noted as a candidate *replacement* for
-Loki/Tempo to evaluate if a capability gap appears (one substrate per concern, not two).
+ClickHouse is **not** added as a fourth observability store, and it does not replace Loki/Tempo
+(reaffirmed with revisit triggers in [design.md](design.md), rejected alternatives). It enters the
+stack in exactly one role, below.
+
+## The warehouse sink: ClickHouse by default (decided 2026-07-09)
+
+The warehouse-sink seam was originally "BigQuery on GCP, Athena/Redshift on AWS, Synapse on Azure."
+That had two problems: a vendor dependency in an otherwise 100%-OSS stack, and three per-cloud
+implementations to build and maintain for the multi-cloud goal.
+
+**Default implementation: self-hosted ClickHouse**, one per region alongside the other backends:
+
+- **OSS and cloud-portable** - the same implementation on GCP/AWS/Azure, deleting two future
+  per-provider builds. The seam remains: a team that wants BigQuery (or Athena, or Synapse) can
+  select it; the managed warehouses become the optional per-cloud alternatives instead of the
+  defaults.
+- **Fed by the ingest tier** via the existing OTel contrib ClickHouse exporter on the routed,
+  curated subset - never the firehose. It is therefore a small single-shard deployment, not a
+  fleet-scale ingestion cluster; the operational weight is bounded by the routing rules.
+- **Queryable where it matters**: Perses ships a native ClickHouse datasource (LogQuery +
+  TimeSeriesQuery, verified in the capability spike), and agents get arbitrary SQL - which is what
+  the forecaster actually wants (LogQL/TraceQL are for humans debugging; analytics wants SQL).
+- **A hedge that costs nothing extra**: operating a small ClickHouse builds the in-house competence
+  that the Loki/Tempo revisit triggers (design.md) would require, so if that conversation ever
+  reopens it happens from experience, not speculation.
+
+**Rejected for this role** (2026-07-09): **Postgres / CloudSQL / AlloyDB / TimescaleDB.** The
+workload is append-only wide events with analytical scans (group-by/aggregate over billions of
+rows), which is columnar-OLAP shaped; Postgres is a row store (poor compression, index/vacuum
+pressure under append load, full-row scans for column queries). CloudSQL is managed Postgres - same
+engine plus a vendor-managed, GCP-only dependency. AlloyDB adds a columnar engine but is
+GCP-proprietary and single-cloud - fails both the OSS rule and the portability seam. TimescaleDB's
+compressed/advanced features are under the non-OSS Timescale License and still trail purpose-built
+columnar stores at scale. The ecosystem tiebreaker: the OTel contrib exporter writes optimized
+ClickHouse schemas out of the box; no maintained OTel-to-Postgres analytics path exists. Postgres
+remains the family's right answer for transactional state (ladon's datastore, gojira's DB) - engine
+per workload, not one engine everywhere.
+
+Pin the ClickHouse image/chart and the collector's `clickhouse` exporter component in
+[versions.md](versions.md) when introduced, per the latest-stable convention.
 
 ## The four cloud seams (multi-cloud goal, GCP first)
 
@@ -125,7 +163,7 @@ engine from day one, with **only the GCP implementation built now**:
 |---|---|---|---|
 | Object storage (backend blocks) | GCS | S3 | Azure Blob |
 | Workload identity (pods -> buckets) | Workload Identity Federation | IRSA | Azure Workload Identity |
-| Warehouse sink (analytics subset) | BigQuery (via queue subscription/loader) | Athena/Redshift | Synapse |
+| Warehouse sink (analytics subset) | **ClickHouse (default, cloud-portable, self-hosted)**; BigQuery optional | ClickHouse (same); Athena/Redshift optional | ClickHouse (same); Synapse optional |
 | Managed-logging bypass | Disable GKE Cloud Logging for app logs (keep system logs) | Disable CloudWatch agent | Disable AMA |
 
 Terraform modules are provider-namespaced (`terraform/modules/<seam>/gcp/...`), the pattern ladon
