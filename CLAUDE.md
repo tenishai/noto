@@ -36,7 +36,7 @@ duplicate what a sibling owns; integrate with it.
   CLI / SDK / Helm and Operator CRDs through an idempotent step engine.
 - **README style** mirrors the [OpenTelemetry Collector README](https://github.com/open-telemetry/opentelemetry-collector/blob/main/README.md):
   title block, badges, nav links, Overview/objectives, How it works, Stack, Status, Docs. Keep it short.
-- Pin everything (ocb component versions, Helm charts, Terraform providers). No floating `latest`.
+- Pin everything (ocb component versions, Helm charts, OpenTofu providers). No floating `latest`.
 - **Latest-stable on introduction.** Whenever you add a new dependency, tool, chart, provider, action,
   base image, or language/runtime, first verify its current latest stable version from the authoritative
   source (GitHub releases, official registry/docs) - do not trust memory, web-check it - then pin to that
@@ -94,7 +94,7 @@ in this repo, in Claude Code and other agents.
 
 ```
 distro/      OTel Collector distribution (ocb manifest + build)
-terraform/   cloud-side resources: buckets, IAM/WIF (Terraform/SDK)
+terraform/   cloud-side resources: buckets, IAM/WIF (OpenTofu/SDK; HCL dir name kept)
 helm/        pinned Helm values for in-cluster components
 crds/        OTel/Prometheus Operator CRDs (collectors, ServiceMonitors)
 profiles/    observability profiles mapped from gojira workload class

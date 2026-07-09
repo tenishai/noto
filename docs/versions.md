@@ -2,7 +2,7 @@
 
 Argus pins everything (a hard convention - see [CLAUDE.md](../CLAUDE.md) and
 [docs/versioning.md](versioning.md)). This file is the **single source of truth** for the versions we
-pin to. When we author the ocb manifest, Helm value pins, and Terraform provider constraints, the
+pin to. When we author the ocb manifest, Helm value pins, and OpenTofu provider constraints, the
 versions come from here, and this file is updated as a deliberate, reviewed change (never floated).
 
 > **Living document.** Versions below are the latest stable as of **2026-06-16**. Bumping any of them
@@ -47,9 +47,9 @@ exactly why we pin exact versions and back them with the contract-test layer
 
 | Component | Version | Source | Notes |
 |---|---|---|---|
-| Terraform CLI | 1.15.6 | [terraform releases](https://github.com/hashicorp/terraform/releases/latest) | stable |
-| `hashicorp/google` provider | 7.37.0 | [registry](https://registry.terraform.io/providers/hashicorp/google/latest) | pin with `~>` minor constraint + committed lockfile |
-| `hashicorp/google-beta` provider | 7.37.0 | [registry](https://registry.terraform.io/providers/hashicorp/google-beta/latest) | as above |
+| OpenTofu CLI | 1.12.3 | [opentofu releases](https://github.com/opentofu/opentofu/releases/latest) | verified 2026-07-08. Replaces Terraform: Terraform is BUSL (not open source) since 1.6, violating the 100% OSS rule |
+| `hashicorp/google` provider | 7.37.0 | [OpenTofu registry](https://search.opentofu.org/provider/hashicorp/google/latest) | MPL-2.0, works unchanged with OpenTofu; re-verify version via the OpenTofu registry at pin time; `~>` minor constraint + committed lockfile |
+| `hashicorp/google-beta` provider | 7.37.0 | [OpenTofu registry](https://search.opentofu.org/provider/hashicorp/google-beta/latest) | as above |
 
 ## Agent runtime (Python)
 

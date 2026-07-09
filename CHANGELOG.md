@@ -8,6 +8,25 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Changed
 
+- **OpenTofu replaces Terraform** (CLI pin 1.12.3, verified 2026-07-08): Terraform has been BUSL
+  (not open source) since 1.6, violating the 100% OSS hard convention. Providers are MPL-2.0 and
+  work unchanged; sources re-pointed at the OpenTofu registry. The `terraform/` directory name stays
+  (it is just HCL).
+- **SLOs are generated, never hand-rolled**: profiles render an SLO spec consumed by Sloth or Pyrra
+  (evaluation tracked as an open question, leaning Sloth), which emit the multiwindow-multiburn
+  `PrometheusRule` output. Burn-rate math is not something we own.
+- **StatsD demoted to legacy-only** in the transport ADR: OTLP is the push path, Prometheus scrape
+  the pull path; the statsd receiver remains in the distro as a "supported, never recommended"
+  affordance for un-instrumented third-party workloads.
+- **Queue entry criteria added** to the transport ADR: the solo topology ships queueless with a
+  file-backed persistent gateway sending queue; the regional Redpanda queue lands with the second
+  cluster in a region or the first queue consumer. NATS JetStream recorded as considered-and-set-aside.
+- **VictoriaMetrics/VictoriaLogs recorded as a rejected alternative** for the storage tier (Mimir
+  multi-tenancy is load-bearing; MetricsQL dialect drift; no traces story).
+- **Perses capability spike tracked as blocking the Phase 1 DoD** (metrics + logs + traces verified
+  hands-on against Mimir/Loki/Tempo), with Grafana OSS via the Grafana Operator as the named
+  fallback now that AGPL is license-clean for us.
+
 - **Relicensed Apache-2.0 -> AGPL-3.0-or-later**, moving with the tenishai family (gojira, techne,
   limenal, cabal, daedalus all relicensed 2026-07-08). Permits library-level embedding of the
   siblings without a license boundary. LICENSE, README, CLAUDE.md, design.md, and the skills-format

@@ -42,7 +42,7 @@ later. Do not duplicate what a sibling owns; integrate with it.
 - gojira-native: gojira's contract/state is the source of truth, don't duplicate it.
 - No third-party GitOps (no ArgoCD/Flux). Apply directly via cloud CLI / SDK / Helm + Operator CRDs
   through an idempotent step engine.
-- Pin everything (ocb components, Helm charts, Terraform providers).
+- Pin everything (ocb components, Helm charts, OpenTofu providers).
 - README style mirrors the OpenTelemetry Collector README.
 
 **The stack we target:** OTel Collector (custom `ocb` distro) for collection - Agent (DaemonSet) +

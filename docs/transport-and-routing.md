@@ -41,12 +41,33 @@ because cross-region/cross-cloud egress is the dominant telemetry cost on every 
 
 **Choice: Redpanda (Kafka-protocol) preferred, Kafka acceptable.** Redpanda is a single binary with
 no ZooKeeper/KRaft controller fleet, and dev/qa can run one node. ZeroMQ was rejected (no durability,
-no replay); RabbitMQ was rejected (wrong shape for high-throughput ordered streams). Pub/Sub and
-kin are rejected in the default path (vendor backend, per-volume pricing; violates the OSS rule) -
+no replay); RabbitMQ was rejected (wrong shape for high-throughput ordered streams). NATS JetStream
+was considered (CNCF, even lighter than Redpanda) and set aside: the OTel contrib Kafka
+exporter/receiver is far more battle-tested than any NATS path, and Kafka-protocol compatibility
+keeps the consumer ecosystem open; revisit only if Redpanda's footprint becomes a problem. Pub/Sub
+and kin are rejected in the default path (vendor backend, per-volume pricing; violates the OSS rule) -
 at most an optional exporter, like any other vendor egress.
+
+**When the queue enters (entry criteria).** The queue earns its keep at multi-cluster fan-in, replay,
+and the Phase 4 agent tap - not at a single dev cluster. So: the **solo topology ships queueless**,
+with the gateway exporting straight to in-cluster backends through a **file-backed persistent sending
+queue** (`file_storage` extension) sized to ride out a backend restart. The regional queue lands when
+the second cluster joins a region, or when the first queue consumer (warehouse export, observer
+agent) is built - whichever comes first. Before standing it up, measure real gateway egress volume in
+solo mode and size the topic retention from measurements, not guesses.
 
 Exact versions (Redpanda chart, collector kafka components in the ocb manifest) are pinned in
 [versions.md](versions.md) when the components are introduced, per the latest-stable convention.
+
+## Ingestion protocols: OTLP first, scrape second, statsd legacy-only
+
+The push path is **OTLP** (the OTel SDKs), full stop: typed metrics, traces, logs, exemplars, and
+resource attributes in one protocol. The pull path is the Prometheus `/metrics` scrape every gojira
+app already exposes on 8080. **StatsD is demoted to a legacy-ingest affordance**: the `statsd`
+receiver stays in the distro manifest so un-instrumented third-party workloads can be caught, but it
+is documented as "supported, never recommended" - it is a 2011-era untyped protocol that survives
+mostly as a Datadog-migration path, and nothing Argus or gojira generates emits it. New
+instrumentation questions have a one-word answer: OTLP.
 
 ## Filtering: drop the noise as early as possible
 

@@ -74,10 +74,11 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Traces backend | **Tempo** | Object-storage, cheap, OTLP-native, exemplar links to metrics |
 | Visualization | **Perses** | CNCF, Apache-2.0, dashboards-as-code (native CRD/GitOps); one pane over Mimir/Loki/Tempo (and Pyroscope later). Fits Argus's agent-first, declarative, "no hand-authored dashboards" model far better than Grafana's JSON blobs |
 | Alerting | **Alertmanager** (+ `PrometheusRule` CRDs) | Standard Prometheus alerting path; rules are declarative CRDs, not UI-authored |
+| SLO generation | **Sloth or Pyrra** (evaluation pending, see open questions) - profiles render an SLO *spec*, the generator emits the multiwindow-multiburn recording rules and alerts | Burn-rate math is easy to get subtly wrong by hand; both are OSS and emit standard `PrometheusRule` output. We do not hand-roll SLO rules |
 | Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry |
 | Collection topology | **Agent (DaemonSet) + Gateway (Deployment) + TargetAllocator (StatefulSet)** | The recommended architecture from the enablement guide |
 | **Apply model** | **Direct apply via cloud CLI / SDK / Helm** through an idempotent step engine | **No third-party GitOps (no ArgoCD/Flux).** Argus provisions directly, like gojira shells to gcloud/gh/kubectl |
-| Cloud-side infra | **Terraform or cloud SDK** | Object-storage buckets, IAM/WIF - stateful, declarative |
+| Cloud-side infra | **OpenTofu or cloud SDK** | Object-storage buckets, IAM/WIF - stateful, declarative. OpenTofu, not Terraform: Terraform is BUSL (not open source) since 1.6, which violates the 100% OSS rule |
 | In-cluster components | **Helm** (charts + pinned values) | The OSS standard; versioned, idempotent |
 | Collector/scrape config | **Operator CRDs** (`OpenTelemetryCollector`, `ServiceMonitor`, `PodMonitor`) | Declarative, hot-reloaded, no manual config files |
 | The contract | **Derived from `gojira.yaml` + workload class**, with an optional `observability:` override block | Zero new config for the common case; class drives the defaults |
@@ -96,7 +97,13 @@ gojira's contract and state rather than inventing its own parallel source of tru
 
 Rejected / deferred: a third-party GitOps controller (ArgoCD/Flux) - Argus applies directly. Hosted
 SaaS backends (Datadog, Grafana Cloud, and similar) - Argus is the open-source answer. A standalone
-identity separate from gojira. Multi-cloud on day one. A web UI.
+identity separate from gojira. Multi-cloud on day one. A web UI. **Terraform** - BUSL since 1.6, not
+open source; OpenTofu is the drop-in replacement. **VictoriaMetrics/VictoriaLogs** as the storage
+tier - credible on ops simplicity and resource footprint (and Apache-2.0), but Mimir's native
+multi-tenancy is load-bearing for the per-region storage design, MetricsQL deviates subtly from
+PromQL, and there is no Victoria equivalent for traces, so we would still run Tempo and split the
+operational model; revisit only if Mimir's operational weight proves unaffordable. **Hand-rolled SLO
+rules** - see the SLO generation decision.
 
 ---
 
@@ -219,8 +226,8 @@ chosen per layer; everything is applied directly - no GitOps controller in the p
 
 | # | Step (scope) | Tooling | Ledger key |
 |---|---|---|---|
-| 1 | Object-storage buckets + lifecycle | Terraform / gcloud SDK | `storage@<cluster>` |
-| 2 | IAM / Workload Identity Federation for backends + collectors | Terraform / gcloud SDK | `iam@<project>` |
+| 1 | Object-storage buckets + lifecycle | OpenTofu / gcloud SDK | `storage@<cluster>` |
+| 2 | IAM / Workload Identity Federation for backends + collectors | OpenTofu / gcloud SDK | `iam@<project>` |
 | 3 | Namespaces, cert-manager, OTel Operator, Prometheus Operator CRDs | Helm + kubectl | `bootstrap@<cluster>` |
 | 4 | Backends: Mimir, Loki, Tempo, Perses, Alertmanager | Helm (pinned values) | `backend_<name>@<cluster>` |
 | 5 | Collection: Agent DaemonSet, Gateway, TargetAllocator StatefulSet | Operator CRDs | `collector_<role>@<cluster>` |
@@ -230,7 +237,7 @@ chosen per layer; everything is applied directly - no GitOps controller in the p
 | 9 | Validation: health checks, self-observability scrape, synthetic round-trip | CLI probes | `validate@<cluster>` |
 
 Steps 1-6 are per-cluster (run once); steps 7-8 run per gojira app and re-run as gojira deploys new
-apps. **Division of responsibility:** Terraform/SDK owns cloud/stateful resources, Helm owns in-cluster
+apps. **Division of responsibility:** OpenTofu/SDK owns cloud/stateful resources, Helm owns in-cluster
 components, Operator CRDs own runtime config. The agent edits the profile/contract and regenerates
 CRDs; it never hand-edits collector YAML.
 
@@ -404,7 +411,7 @@ Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hy
 | `argus-platform` | Stand up the per-cluster platform (collectors + Mimir/Loki/Tempo + Perses) | "make this cluster observable", "stand up the observability stack" | 1 |
 | `argus-observe-app` | Wire a gojira app into observability by its class | "observe the clips app", "add dashboards/SLOs for this service" | 1 |
 | `argus-pipeline` | Author/modify OTel collector pipelines & processors | "add a redaction step", "tail-sample traces" | 1 |
-| `argus-slo` | Define SLOs → recording rules + alerts | "add an SLO for checkout latency" | 2 |
+| `argus-slo` | Define SLOs → SLO spec → generated rules + alerts (via Sloth/Pyrra, never hand-rolled) | "add an SLO for checkout latency" | 2 |
 | `argus-dashboard` | Generate Perses dashboards-as-code (RED/USE per profile) | "dashboard for the growth service" | 2 |
 | `argus-cardinality` | Find/curb high-cardinality metrics against budget | "what's blowing up our series count" | 2 |
 | `argus-triage` | Investigate an incident using live telemetry | "why is p99 spiking", "debug this" | 4 |
@@ -419,7 +426,7 @@ vendor `skill-creator` itself.
 
 | Phase | Ships | Definition of done |
 |---|---|---|
-| **1 - Observe** | `ocb` distro, profiles, Terraform/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full Mimir/Loki/Tempo + Perses + OTel platform + every gojira app auto-observed; a real metric & trace queryable in Perses, < 30 min, no hand-written YAML |
+| **1 - Observe** | `ocb` distro, profiles, OpenTofu/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full Mimir/Loki/Tempo + Perses + OTel platform + every gojira app auto-observed; a real metric & trace queryable in Perses, < 30 min, no hand-written YAML |
 | **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills; **gojira rightsizing feedback** (distill per-app p95/p99 from Mimir → `POST /api/v1/usage`) | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft); a gojira app gets a rightsizing PR from Argus-produced evidence |
 | **3 - Guard** | Policy enforcement (cardinality/retention/PII), drift detection on the observability layer, `argus adopt` for clusters not deployed by gojira | Rogue high-cardinality metric rejected; a non-gojira cluster adopted |
 | **4 - Reason** | `argus-triage` over live telemetry; **runtime-context flight recorder** for dev (below); trace↔log↔metric correlation wired by default | Agent answers "why did this break" from runtime data, not guesses |
@@ -454,7 +461,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 
 - **AGPL-3.0-or-later** (the family license), all components OSS, no phone-home, no vendor backend
   required to run.
-- Pin everything: `ocb` manifest pins each component gomod + version; Helm charts pinned; Terraform
+- Pin everything: `ocb` manifest pins each component gomod + version; Helm charts pinned; OpenTofu
   providers pinned. No floating `latest`.
 - Generated artifacts are human-readable and inspectable; the SQLite ledger is the audit trail.
 - Secrets via the org's existing path (External Secrets / OpenBao), never plaintext in any contract.
@@ -517,8 +524,17 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     storage, and four provider-interface seams (object storage, workload identity, warehouse sink,
     managed-logging bypass) with GCP as the first implementation.
 
-## Still open (not blocking Phase 1)
+## Still open (not blocking Phase 1, except the first)
 
+- **Perses capability spike (BLOCKS the Phase 1 DoD):** stand up Perses against real Mimir/Loki/Tempo
+  and prove a dashboard, a trace view, and a log search actually work. Perses is metrics-first and
+  young on Tempo/Loki datasources; the "one pane over all three signals" claim is unverified. Named
+  fallback: Grafana OSS (AGPL, license-clean for us now) via the Grafana Operator, accepting weaker
+  dashboards-as-code. Tracked as a repo issue.
+- **Sloth vs Pyrra** for SLO generation (half-day evaluation): Sloth is a pure generator (SLO spec
+  in, `PrometheusRule` out - fits the renderer pipeline cleanly); Pyrra ships an operator and UI.
+  Leaning Sloth for the generator shape; verify latest stable and record in versions.md when
+  introduced.
 - **Repo name:** `argus` - confirm before scaffolding (note: name collision with the historical
   argus network-monitoring project; acceptable within the org namespace).
 - **CI host + WIF/OIDC path** to GCP (reuse gojira's).

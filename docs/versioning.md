@@ -37,7 +37,7 @@ No floating `latest` anywhere. Every dependency is pinned to an exact version:
 
 - ocb components: pinned gomod + version in the distro manifest.
 - Helm charts: pinned chart version + pinned image tags in values.
-- Terraform: pinned provider versions and a committed lockfile.
+- OpenTofu: pinned provider versions and a committed lockfile.
 - Container images in deployed manifests: pinned by tag and, where possible, by digest.
 
 CI's conventions lint flags obvious floating pins (`:latest`, `version: latest`).
