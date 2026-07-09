@@ -70,7 +70,7 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 | Action | Version | Notes |
 |---|---|---|
 | `actions/checkout` | v6 | bumped from v4 |
-| `astral-sh/setup-uv` | v8 (uv pinned to 0.11.28 via `with.version`) | verified 2026-07-09; replaces setup-python (uv manages the interpreter from `.python-version`) |
+| `astral-sh/setup-uv` | v8.3.2 (uv pinned to 0.11.28 via `with.version`) | verified 2026-07-09; exact tag - no v8 major alias exists; replaces setup-python (uv manages the interpreter from `.python-version`) |
 | `actions/setup-go` | v6 | only if a Go build step is ever needed (e.g. ocb invocation) |
 
 Runner image is `ubuntu-latest` (the conventional GitHub-hosted label). If we need bit-for-bit
