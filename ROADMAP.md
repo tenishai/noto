@@ -10,7 +10,9 @@ detailed phase plan. Phases are ordered, and each builds on the last.
 
 Take a gojira-managed cluster from zero to a full open-source observability platform, automatically.
 
-- Pinned OpenTelemetry Collector distribution (`ocb`), the Agent + Gateway + TargetAllocator topology.
+- Pinned OpenTelemetry Collector distribution (`ocb`), the Agent + Gateway + TargetAllocator topology,
+  plus the regional queue and ingest tier (see
+  [docs/transport-and-routing.md](docs/transport-and-routing.md)).
 - Observability profiles mapped from gojira workload class (web -> HTTP RED, worker -> queue,
   cron -> job health, heavy -> USE, gpu -> accelerator).
 - Idempotent step engine (`check -> apply -> record`) with a SQLite ledger; a gojira-reader; renderers.
@@ -27,9 +29,11 @@ Make new kinds of workloads light up automatically.
 
 - The declarative `argus-integrations` catalog plus autodiscovery (`receiver_creator`, `k8s_observer`).
 - The `argus-slo`, `argus-dashboard`, and `argus-cardinality` skills.
+- The gojira rightsizing feedback loop: distill per-app p95/p99 usage from Mimir and POST it to
+  gojira's `/api/v1/usage`, so gojira opens rightsizing PRs from Argus-produced evidence.
 
-**Done when:** a new gojira workload type auto-wires its integration, and cardinality budgets are
-enforced (soft).
+**Done when:** a new gojira workload type auto-wires its integration, cardinality budgets are
+enforced (soft), and a gojira app gets a rightsizing PR from Argus evidence.
 
 ## Phase 3 - Guard
 

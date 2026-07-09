@@ -1,6 +1,6 @@
 # Argus - Project Guide for Claude Code
 
-Argus is the **observability arm of [gojira](https://github.com/shaz/gojira)**: it takes a deployment
+Argus is the **observability arm of [gojira](https://github.com/tenishai/gojira)**: it takes a deployment
 from zero to a full, end-to-end open-source observability platform (OpenTelemetry + Mimir/Loki/Tempo + Perses),
 automatically, driven by a self-contained agent and Agent Skills. Read [docs/design.md](docs/design.md)
 before making structural changes.
@@ -12,10 +12,12 @@ repos meant to be merged into one GitHub org. Each owns one concern; Argus owns 
 
 | Repo | Role | Relationship to Argus |
 |---|---|---|
-| [gojira](https://github.com/shaz/gojira) | Opinionated deploy platform (identity, CI/CD, manifests, sizing) | **Parent.** Argus continues gojira's lifecycle; reads its contract/state; maps its workload class to an observability profile. |
-| [techne](https://github.com/dimartin/techne) | Agentic memory (sessions, knowledge, identity; SQLite) | Argus's SQLite ledger migrates into techne later, so the agent's deploy history becomes its memory. |
-| [limenal](https://github.com/dimartin/limenal) | MCP gateway (one connection point dispatching to many tool handlers) | Argus reaches its tools through limenal once integrated; Argus operations can be exposed as a limenal handler. |
-| [cabal](https://github.com/dimartin/cabal) | Agent orchestration / A2A broker (LLM personas) | Argus's self-contained agent is built to register into cabal as the observability persona later. |
+| [gojira](https://github.com/tenishai/gojira) | Opinionated deploy platform (identity, CI/CD, manifests, sizing) | **Parent.** Argus continues gojira's lifecycle; reads its contract/state; maps its workload class to an observability profile. |
+| [techne](https://github.com/tenishai/techne) | Agentic memory (sessions, knowledge, identity; SQLite) | Argus's SQLite ledger migrates into techne later, so the agent's deploy history becomes its memory. |
+| [limenal](https://github.com/tenishai/limenal) | MCP gateway (one connection point dispatching to many tool handlers) | Argus reaches its tools through limenal once integrated; Argus operations can be exposed as a limenal handler. |
+| [cabal](https://github.com/tenishai/cabal) | Agent orchestration / A2A broker (LLM personas) | Argus registers as the observability persona later (requires a cabal `PERSONA_REGISTRY` PR; the daedalus bundle's cabal peer surface is the nearer path). |
+| [daedalus](https://github.com/tenishai/daedalus) | Agent construction kit ("an agent is a directory": card + persona + wiring) | The Argus agent's shell is a daedalus bundle; Argus keeps a thin CLI fallback while daedalus is v0.1. |
+| [ladon](https://github.com/tenishai/ladon) | Secrets / vault management on OpenBao + External Secrets | Argus onboards as a ladon "team"; ESO syncs OpenBao values into plain K8s Secrets that collectors/backends mount. |
 
 Build Argus to run **self-contained today** (own runtime, step engine, SQLite ledger) but **compose
 with these later** (register into cabal, reach tools via limenal, persist memory into techne). Do not
@@ -25,7 +27,9 @@ duplicate what a sibling owns; integrate with it.
 
 - **No em dashes** in prose, docs, README, UI copy, or commit messages. Use a spaced hyphen ` - `,
   a comma, or parentheses. (Code and generated config are exempt.)
-- **100% open source.** No vendor backend, no proprietary dependency, no phone-home. Apache-2.0.
+- **100% open source.** No vendor backend, no proprietary dependency, no phone-home. Licensed
+  **AGPL-3.0-or-later**, matching the tenishai family (gojira, techne, limenal, cabal, daedalus); this
+  permits library-level embedding of the siblings without a license boundary.
 - **Agent-first, no web UI** as a core surface. The agent is the interface.
 - **gojira-native.** gojira's contract and state are the source of truth; do not duplicate them.
 - **No third-party GitOps** (no ArgoCD/Flux) in the apply path. Argus applies directly via cloud
@@ -59,7 +63,7 @@ skill below, use it before hand-rolling the work.
 
 Argus's own skills live in [agent/skills/](agent/skills/) and follow the Anthropic format
 (lowercase-hyphenated dir = `name`; `SKILL.md` under 500 lines with `name` + `description` frontmatter;
-progressive disclosure to `references/`/`scripts/`/`assets/`; imperative voice; `license: Apache-2.0`).
+progressive disclosure to `references/`/`scripts/`/`assets/`; imperative voice; `license: AGPL-3.0-or-later`).
 
 ## Setup: making the skills available
 

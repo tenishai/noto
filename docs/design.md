@@ -1,12 +1,13 @@
 # Argus - Design Document
 
 > **Status:** Draft / design plan (pre-Phase-1)
-> **Date:** 2026-06-16
+> **Date:** 2026-06-16 (revised 2026-07-08: family alignment - license, real gojira contract,
+> transport/routing, daedalus, rightsizing feedback)
 > **Authors:** Kyle Greiner (kyle@example.com)
-> **License:** Apache-2.0 (intended)
-> **Relationship:** the **observability arm of [gojira](https://github.com/shaz/gojira)**.
-> **Home (for now):** personal GitHub repo `argus`; migrates into the shared org alongside
-> gojira / techne / limenal / cabal once the org exists.
+> **License:** AGPL-3.0-or-later (the tenishai family license)
+> **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
+> **Home (for now):** personal GitHub repo `argus`; migrates into the
+> [tenishai](https://github.com/tenishai) org alongside gojira / techne / limenal / cabal / daedalus.
 
 ---
 
@@ -80,7 +81,12 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | In-cluster components | **Helm** (charts + pinned values) | The OSS standard; versioned, idempotent |
 | Collector/scrape config | **Operator CRDs** (`OpenTelemetryCollector`, `ServiceMonitor`, `PodMonitor`) | Declarative, hot-reloaded, no manual config files |
 | The contract | **Derived from `gojira.yaml` + workload class**, with an optional `observability:` override block | Zero new config for the common case; class drives the defaults |
-| Backend hosting | **Per-cluster** self-hosted backends (Mimir/Loki/Tempo + Perses) | Strong isolation, contained blast radius; no shared failure domain |
+| Backend hosting | **Per-cluster collection, per-region storage** (Mimir/Loki/Tempo + Perses per region) | Revised 2026-07-08: collection stays local and cheap; storage centralizes per region so all clusters ship to one endpoint without cross-region egress. See [transport-and-routing.md](transport-and-routing.md) |
+| Transport | **Durable queue (Redpanda/Kafka) between gateway and storage** | Decouples collection from backends, absorbs backend outages, gives agents a real-time tap. See [transport-and-routing.md](transport-and-routing.md) |
+| Filtering / routing | **Profile-owned `filter` drop rules as early as possible; `routing` connector fan-out in the ingest tier** | Drop noise before it costs egress or storage; route each signal to its logical destination. See [transport-and-routing.md](transport-and-routing.md) |
+| Cloud portability | **Multi-cloud is the goal, GCP first.** Four seams behind provider interfaces from day one: object storage, workload identity, warehouse sink, managed-logging bypass | Everything above the seams (OTel, backends, Helm, CRDs) is already cloud-neutral; only the seams get per-provider implementations |
+| License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/limenal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
+| Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Argus CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and limenal wiring; Argus keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
 | Ledger / state | **SQLite now**, techne-backed later | Proven in gojira; migrate the agent's deploy history into techne when ready |
 | Agent home | **Self-contained in the `argus` repo** | Ships its own minimal runtime; portable, can register into cabal later |
 | First cloud target | **GKE / GCP** | Matches gojira and existing infra; cloud-agnostic is a later phase |
@@ -98,21 +104,33 @@ identity separate from gojira. Multi-cloud on day one. A web UI.
 
 Argus does not introduce a competing source of truth. It reads what gojira already knows:
 
-- **Per-app:** the app name, namespace, workload class, and cluster from `gojira.yaml` and gojira's
-  provisioning state. Workload class is the key signal - it selects the observability profile.
-- **Per-cluster:** the registered cluster, GCP project, and region from gojira's cluster registry.
+- **Per-app:** the app name, workload class, and per-environment cluster/namespace bindings from
+  `gojira.yaml` and gojira's provisioning state. Workload class is the key signal - it selects the
+  observability profile.
+- **Per-cluster:** the registered cluster, GCP project, and location from gojira's cluster registry
+  (a DB table: `name`, `gcp_project`, `location`, `gke_cluster`, `ar_repo`).
 
-The common case needs **no new config**. For the rare override, `gojira.yaml` gains an optional block:
+The real contract (verified against gojira's `gojira.yaml.j2` template, 2026-07-08): `app`, `class`,
+an `environments` list (each entry carries its **own** `cluster` and `namespace`), an optional
+`schedule` for cron, and an optional `overrides` block (`requests`, `limits`, `justification`).
+There is no top-level cluster/namespace, and no observability block exists in gojira today.
+
+The common case needs **no new config**. For the rare override, we will **propose to gojira** (as a
+gojira PR, since gojira owns the contract) an optional block:
 
 ```yaml
-# gojira.yaml (existing gojira contract) - Argus reads this; the observability block is optional
+# gojira.yaml (real gojira contract shape) - Argus reads this; the observability block is proposed
 app: clips-api
 class: web                       # gojira workload class -> Argus observability profile
-cluster: dev-us-east4
-namespace: clips
-environments: [dev, qa, prod]
+environments:
+  - name: dev
+    cluster: dev-us-east4
+    namespace: clips
+  - name: prod
+    cluster: prod-us-east4
+    namespace: clips
 
-observability:                   # OPTIONAL - omit entirely for class defaults
+observability:                   # PROPOSED, OPTIONAL - omit entirely for class defaults
   profile: web                   # override the class->profile mapping if needed
   traces: true                   # opt a web service into tracing
   retention: { metrics: 30d }    # override per-signal retention
@@ -123,9 +141,26 @@ observability:                   # OPTIONAL - omit entirely for class defaults
     justification: "growth RUM expansion, approved 2026-06-14"
 ```
 
-**Trigger:** Argus runs as a continuation of the gojira lifecycle - either invoked at the end of a
-gojira deployment (hand-off) or run against an already-gojira'd cluster to bring it up to full
-observability. Either way the entry point is "here is a gojira-managed thing; make it observed."
+Until gojira accepts the block, Argus treats everything in it as Argus-side profile defaults keyed by
+class; the block is purely additive when it lands.
+
+**Trigger:** gojira has no outbound hook or event bus today (verified 2026-07-08), so Argus runs as a
+**standalone pass over a gojira-managed cluster**: discover apps via the cluster registry and each
+repo's `gojira.yaml`, then make them observed. A tight end-of-deploy hand-off is a future gojira PR.
+
+**Superseding gojira's built-in wiring:** gojira already generates Google Managed Prometheus CRDs per
+app (`monitoring.googleapis.com/v1` `PodMonitoring` + a scrape-down `Rules` alert). GMP is
+GKE-proprietary and the least portable piece of the family. When Argus manages a cluster it must
+**replace** that wiring with its own portable equivalents (ServiceMonitor / OTel scrape via the
+TargetAllocator, plus the profile's alert pack), or every app is double-scraped and double-billed.
+This is handled in step 7 of the order of operations; long-term we propose gojira skip emitting GMP
+CRDs when a cluster is Argus-managed.
+
+**Feeding gojira back (the rightsizing loop):** gojira now accepts distilled usage evidence at
+`POST /api/v1/usage` (cluster-scoped token) and turns it into reviewed rightsizing PRs. Argus sits on
+Mimir with every app's real usage history, making it the natural evidence producer: query per-app
+p95/p99 CPU and memory, distill, POST. Scheduled for Phase 2; this closes the loop between the two
+platforms (gojira deploys, Argus observes, Argus feeds measurements back, gojira resizes).
 
 ---
 
@@ -190,7 +225,7 @@ chosen per layer; everything is applied directly - no GitOps controller in the p
 | 4 | Backends: Mimir, Loki, Tempo, Perses, Alertmanager | Helm (pinned values) | `backend_<name>@<cluster>` |
 | 5 | Collection: Agent DaemonSet, Gateway, TargetAllocator StatefulSet | Operator CRDs | `collector_<role>@<cluster>` |
 | 6 | Scrape sources: kube-state-metrics, node-exporter | Helm | `scrape_<name>@<cluster>` |
-| 7 | Per-app wiring: read gojira apps → profile → ServiceMonitor/PodMonitor + pipeline | CRDs | `wire@<app>` |
+| 7 | Per-app wiring: read gojira apps → profile → ServiceMonitor/PodMonitor + pipeline; **supersede gojira's GMP CRDs** (remove/neutralize the generated `PodMonitoring`/`Rules` so nothing is double-scraped) | CRDs | `wire@<app>` |
 | 8 | Opinionated content: per-profile dashboards, recording rules, SLOs, alerts | CRDs / ConfigMaps | `content@<app>` |
 | 9 | Validation: health checks, self-observability scrape, synthetic round-trip | CLI probes | `validate@<cluster>` |
 
@@ -337,13 +372,32 @@ metric/trace completes a full round-trip.
 
 ## The Agent & Skills
 
-Argus ships a **self-contained agent** in-repo (its own minimal runtime, step engine, SQLite ledger),
-so it runs without a cabal dependency. It is built to register into cabal later (as a persona pulling
-skills from this repo) and to migrate its ledger into techne when ready, but neither is required.
+The Argus agent's **shell is a daedalus bundle** (decision, 2026-07-08): a directory with
+`agent-card.json`, `persona.md`, and `agent.yaml`, run by the daedalus runtime, which already provides
+the transports (CLI, A2A, Slack), the cabal peer surface, and limenal tool wiring the original design
+planned to hand-build. What Argus keeps in this repo is what it genuinely owns: the idempotent step
+engine and SQLite ledger, the gojira-reader, the renderers, the profiles, and the Agent Skills - all
+exposed as the tools the bundle wires in. Because daedalus is v0.1-in-progress, Argus also keeps a
+thin CLI entry point of its own so Phase 1 never blocks on daedalus maturity; the bundle is the
+target shape, the CLI is the escape hatch.
+
+Sibling integration specifics (verified against the repos, 2026-07-08):
+
+- **limenal** - register a native `Handler` via the `limenal.handlers` Python entry-point group
+  (in-process), or run an Argus MCP server behind limenal's `mcp_proxy` / declarative targets.
+- **techne** - embed the stable Python API; map step-engine run IDs onto techne sessions with
+  `init_session_for_external_id`. Ledger migration is a one-time script through the public API
+  (there is no generic foreign-SQLite importer).
+- **cabal** - registering a persona currently requires a cabal PR (`PERSONA_REGISTRY` is a hardcoded
+  dict, no plugin loading); the daedalus bundle's cabal peer surface is the nearer-term path.
+- **ladon** - Argus onboards as a ladon "team"; the External Secrets Operator syncs OpenBao values
+  into plain Kubernetes Secrets that collectors/backends mount. Argus never calls OpenBao at runtime.
+- Now that Argus is AGPL like the family, library-level embedding (techne, limenal) carries no
+  license boundary.
 
 Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hyphenated dir = `name`;
 `SKILL.md` < 500 lines with `name` + `description` frontmatter; progressive disclosure to
-`references/`, `scripts/`, `assets/`; imperative voice, explain the *why*; `license: Apache-2.0`).
+`references/`, `scripts/`, `assets/`; imperative voice, explain the *why*; `license: AGPL-3.0-or-later`).
 
 | Skill | Does | Trigger phrasing | Phase |
 |---|---|---|---|
@@ -366,7 +420,7 @@ vendor `skill-creator` itself.
 | Phase | Ships | Definition of done |
 |---|---|---|
 | **1 - Observe** | `ocb` distro, profiles, Terraform/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full Mimir/Loki/Tempo + Perses + OTel platform + every gojira app auto-observed; a real metric & trace queryable in Perses, < 30 min, no hand-written YAML |
-| **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft) |
+| **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills; **gojira rightsizing feedback** (distill per-app p95/p99 from Mimir → `POST /api/v1/usage`) | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft); a gojira app gets a rightsizing PR from Argus-produced evidence |
 | **3 - Guard** | Policy enforcement (cardinality/retention/PII), drift detection on the observability layer, `argus adopt` for clusters not deployed by gojira | Rogue high-cardinality metric rejected; a non-gojira cluster adopted |
 | **4 - Reason** | `argus-triage` over live telemetry; **runtime-context flight recorder** for dev (below); trace↔log↔metric correlation wired by default | Agent answers "why did this break" from runtime data, not guesses |
 | **Later** | Multi-cloud, Pyroscope profiling as a fifth pillar (Perses-native), predictive cardinality, eBPF auto-instrumentation | - |
@@ -398,7 +452,8 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 
 ## Open-source hygiene
 
-- **Apache-2.0**, all components OSS, no phone-home, no vendor backend required to run.
+- **AGPL-3.0-or-later** (the family license), all components OSS, no phone-home, no vendor backend
+  required to run.
 - Pin everything: `ocb` manifest pins each component gomod + version; Helm charts pinned; Terraform
   providers pinned. No floating `latest`.
 - Generated artifacts are human-readable and inspectable; the SQLite ledger is the audit trail.
@@ -445,10 +500,27 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
    little, and the one Go artifact (the ocb-built distro) is generated from a manifest, not code we
    write. Toolchain: CPython 3.14, `uv`, `ruff`. Pinned versions live in [versions.md](versions.md).
 
+## Resolved questions (2026-07-08, family alignment)
+
+9. **License** → **AGPL-3.0-or-later.** The whole family (gojira, techne, limenal, cabal, daedalus,
+   agents) relicensed from Apache-2.0/MIT to AGPL on 2026-07-08; Argus moves with it. This keeps
+   library-level embedding of the siblings clean; the alternative (stay Apache, integrate only over
+   protocols) was rejected as a permanent seam through the ecosystem. Only ladon remains Apache-2.0.
+10. **Trigger mechanism** → **standalone pass.** gojira has no outbound hook or event bus, so Argus
+    discovers and observes gojira-managed clusters on its own schedule; a tight end-of-deploy
+    hand-off is a future gojira PR.
+11. **Agent shell** → **daedalus bundle** (with a thin Argus CLI fallback while daedalus is v0.1).
+    See "The Agent & Skills."
+12. **Transport, filtering, routing, and cloud seams** → see
+    [transport-and-routing.md](transport-and-routing.md): durable queue between gateway and storage,
+    profile-owned drop rules, routing-connector fan-out, per-cluster collection with per-region
+    storage, and four provider-interface seams (object storage, workload identity, warehouse sink,
+    managed-logging bypass) with GCP as the first implementation.
+
 ## Still open (not blocking Phase 1)
 
-- **Trigger mechanism:** does gojira *call* Argus at the end of its lifecycle (tight hand-off), or does
-  Argus run as a separate pass over a gojira-managed cluster (looser coupling)? Leaning: support both,
-  start with the standalone pass.
-- **Repo name:** `argus` - confirm before scaffolding.
+- **Repo name:** `argus` - confirm before scaffolding (note: name collision with the historical
+  argus network-monitoring project; acceptable within the org namespace).
 - **CI host + WIF/OIDC path** to GCP (reuse gojira's).
+- **gojira contract PR timing:** when to propose the `observability:` block and the
+  "skip GMP CRDs when Argus-managed" flag upstream.

@@ -8,6 +8,31 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Changed
 
+- **Relicensed Apache-2.0 -> AGPL-3.0-or-later**, moving with the tenishai family (gojira, techne,
+  limenal, cabal, daedalus all relicensed 2026-07-08). Permits library-level embedding of the
+  siblings without a license boundary. LICENSE, README, CLAUDE.md, design.md, and the skills-format
+  convention updated.
+- **Backend hosting revised: per-cluster collection, per-region storage**, with a durable
+  Redpanda/Kafka transport and an OTel-collector ingest tier doing profile-owned filtering and
+  routing-connector fan-out. New ADR: [docs/transport-and-routing.md](docs/transport-and-routing.md).
+  Multi-cloud is the stated goal (GCP first) via four provider-interface seams: object storage,
+  workload identity, warehouse sink, managed-logging bypass.
+- **design.md now documents the real gojira contract** (verified against gojira's template,
+  2026-07-08): `app`, `class`, an `environments` list each carrying its own cluster/namespace,
+  optional `schedule` and `overrides`. The `observability:` block is re-labeled as a proposal to
+  gojira, not an existing field. The trigger question is resolved to the standalone pass (gojira has
+  no outbound hook today).
+- **The Argus agent's shell is a daedalus bundle** (agent card + persona + wiring), keeping the step
+  engine, renderers, profiles, and skills as Argus-owned tools, with a thin CLI fallback while
+  daedalus is v0.1.
+- Sibling links updated from personal repos to the [tenishai](https://github.com/tenishai) org;
+  ecosystem tables gained daedalus and ladon with concrete integration paths (limenal entry-point
+  handler, techne `init_session_for_external_id`, cabal registry PR, ladon team onboarding via ESO).
+- Step 7 of the order of operations now **supersedes gojira's generated Google Managed Prometheus
+  CRDs** (`PodMonitoring`/`Rules`) so Argus-managed clusters are not double-scraped; proposing a
+  skip flag upstream is tracked as an open question.
+- Phase 2 gains the **gojira rightsizing feedback loop**: Argus distills per-app p95/p99 usage from
+  Mimir and POSTs it to gojira's `/api/v1/usage`, closing the deploy-observe-resize loop.
 - Visualization is now **Perses**, not Grafana. Perses is CNCF, Apache-2.0, and dashboards-as-code
   (native CRDs), and covers metrics (Mimir), traces (Tempo), and logs (Loki) - satisfying the Phase-1
   trace requirement with no Grafana in the stack. Retires the "LGTM" label in favor of naming the

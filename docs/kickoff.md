@@ -11,13 +11,17 @@ same deployment fully observed.
 
 Argus is one body part of a shared, opinionated SRE/agent platform - sibling repos meant to merge into
 one GitHub org, each owning one concern:
-- **gojira** (https://github.com/shaz/gojira) - deploy platform. PARENT: Argus continues its lifecycle
+- **gojira** (https://github.com/tenishai/gojira) - deploy platform. PARENT: Argus continues its lifecycle
   and maps its workload class to an observability profile.
-- **techne** (https://github.com/dimartin/techne) - agentic memory. Argus's SQLite ledger migrates here
+- **techne** (https://github.com/tenishai/techne) - agentic memory. Argus's SQLite ledger migrates here
   later (deploy history becomes memory).
-- **limenal** (https://github.com/dimartin/limenal) - MCP gateway. Argus reaches tools through it; Argus
+- **limenal** (https://github.com/tenishai/limenal) - MCP gateway. Argus reaches tools through it; Argus
   ops can be exposed as a limenal handler.
-- **cabal** (https://github.com/dimartin/cabal) - agent orchestration / personas. Argus's agent registers
+- **daedalus** (https://github.com/tenishai/daedalus) - agent construction kit. The Argus agent's shell
+  is a daedalus bundle (agent card + persona + wiring); Argus keeps a thin CLI fallback.
+- **ladon** (https://github.com/tenishai/ladon) - secrets on OpenBao. Argus onboards as a ladon team
+  and consumes plain K8s Secrets synced by the External Secrets Operator.
+- **cabal** (https://github.com/tenishai/cabal) - agent orchestration / personas. Argus's agent registers
   here later as the observability persona.
 
 Build Argus self-contained today (own runtime, step engine, SQLite ledger) but composable with these
@@ -33,7 +37,7 @@ later. Do not duplicate what a sibling owns; integrate with it.
 
 **Hard conventions (from CLAUDE.md):**
 - No em dashes in prose/docs/commits (use spaced hyphens).
-- 100% open source, Apache-2.0, no vendor backend, no phone-home.
+- 100% open source, AGPL-3.0-or-later (the family license), no vendor backend, no phone-home.
 - Agent-first, no web UI as a core surface.
 - gojira-native: gojira's contract/state is the source of truth, don't duplicate it.
 - No third-party GitOps (no ArgoCD/Flux). Apply directly via cloud CLI / SDK / Helm + Operator CRDs

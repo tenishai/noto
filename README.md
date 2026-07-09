@@ -2,10 +2,10 @@
 
 # Argus
 
-**The observability arm of [gojira](https://github.com/shaz/gojira).**
+**The observability arm of [gojira](https://github.com/tenishai/gojira).**
 Take a deployment from zero to a full, end-to-end open-source observability platform - automatically.
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-design-orange.svg)](docs/design.md)
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
 [![Stack: Mimir · Loki · Tempo · Perses](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Perses-1f6feb.svg)](docs/design.md)
@@ -40,14 +40,18 @@ Argus is opinionated by design. Its goals:
 Argus is one piece of a shared, opinionated SRE/agent platform - sibling projects that each own one
 concern and are built to compose. Argus owns observability:
 
-- **[gojira](https://github.com/shaz/gojira)** - the deploy platform (identity, CI/CD, manifests,
+- **[gojira](https://github.com/tenishai/gojira)** - the deploy platform (identity, CI/CD, manifests,
   sizing). Argus's parent: it continues gojira's lifecycle and maps workload class to observability.
-- **[techne](https://github.com/dimartin/techne)** - agentic memory. Argus's ledger migrates here, so
+- **[techne](https://github.com/tenishai/techne)** - agentic memory. Argus's ledger migrates here, so
   its deploy history becomes durable memory.
-- **[limenal](https://github.com/dimartin/limenal)** - the MCP gateway. Argus reaches its tools
+- **[limenal](https://github.com/tenishai/limenal)** - the MCP gateway. Argus reaches its tools
   through it, and can expose its own operations as a handler.
-- **[cabal](https://github.com/dimartin/cabal)** - agent orchestration. Argus's agent registers here
+- **[cabal](https://github.com/tenishai/cabal)** - agent orchestration. Argus's agent registers here
   as the observability persona.
+- **[daedalus](https://github.com/tenishai/daedalus)** - agent construction kit. The Argus agent's
+  shell is a daedalus bundle (persona, agent card, wiring).
+- **[ladon](https://github.com/tenishai/ladon)** - secrets on OpenBao. Argus consumes secrets as a
+  ladon team via the External Secrets Operator.
 
 Argus runs self-contained today and composes with these as the platform comes together; it never
 duplicates what a sibling owns.
@@ -95,4 +99,4 @@ operations. Code scaffolding is in progress.
 
 ## License
 
-[Apache 2.0](LICENSE)
+[AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, limenal, cabal, daedalus).
