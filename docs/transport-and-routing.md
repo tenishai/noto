@@ -79,13 +79,26 @@ Filtering runs at three points, earliest first, because a dropped datapoint cost
    kube-state-metrics series, unused histogram buckets, unbounded labels (pod UID, request ID)
    stripped or aggregated away.
 3. **Ingest tier (post-queue)** - destination-specific reduction: the warehouse sink gets a curated
-   subset, not the firehose; retention-driven downsampling hooks live here later.
+   subset, not the firehose; retention-driven downsampling hooks live here later. This is also where
+   the third cost lever beyond drop and compress lives: **aggregate-then-discard-raw** - for known
+   high-cardinality metrics, emit the rollup (recording-rule or `metricstransform` aggregation
+   rendered from the profile) and drop the raw series before storage. Telemetry shaping of this kind
+   is the core of commercial cost-control platforms (Chronosphere's control plane, for one); ours is
+   profiles-in-git. Phase 2/3 scope, but the ingest tier is its home.
 
 The rules are **profile-owned, never hand-authored**: each observability profile carries a
 `drop:`/`keep:` section that renders into OTel `filter` processor (OTTL) config, exactly like every
 other pipeline opinion. The Phase 2/3 cardinality budget is the enforcement backstop behind them.
 This also closes a known gap in the [enablement guide](otel-collector-enablement-guide.md), which
 names `filter` and routing in prose but never demonstrates them; the reference assembly gains both.
+
+## Tenancy: stamped at ingest
+
+The regional backends are shared, so they run multi-tenant: **tenant per cluster**, carried as
+`X-Scope-OrgID` on writes to Mimir/Loki/Tempo. The ingest tier stamps it from the telemetry's
+`cluster` resource attribute (in the `solo` topology, the gateway stamps it directly). Cluster is
+the finest useful isolation and cost-attribution unit; Perses datasources set the tenant header per
+view, and per-team cost attribution falls out of tenant + namespace labels.
 
 ## Routing: send each signal to its logical place
 

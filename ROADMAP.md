@@ -50,6 +50,9 @@ Keep the observability layer honest over time.
 Make telemetry useful to agents, not just humans.
 
 - `argus-triage` over live telemetry; trace <-> log <-> metric correlation wired by default.
+- The observer agent: one generic daedalus-bundled agent, made team-specific by an Argus-rendered
+  config (streams, baselines, escalation) - a consumer group on the regional queue, zero code per
+  team. The forecasting agent reads history instead (Mimir + warehouse) and feeds gojira rightsizing.
 - The runtime-context "flight recorder" for local dev (ring-buffer OTel exporter + a local MCP server
   feeding runtime snapshots into an agent's context).
 

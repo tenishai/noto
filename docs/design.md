@@ -86,6 +86,8 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Transport | **Durable queue (Redpanda/Kafka) between gateway and storage** | Decouples collection from backends, absorbs backend outages, gives agents a real-time tap. See [transport-and-routing.md](transport-and-routing.md) |
 | Filtering / routing | **Profile-owned `filter` drop rules as early as possible; `routing` connector fan-out in the ingest tier** | Drop noise before it costs egress or storage; route each signal to its logical destination. See [transport-and-routing.md](transport-and-routing.md) |
 | Cloud portability | **Multi-cloud is the goal, GCP first.** Four seams behind provider interfaces from day one: object storage, workload identity, warehouse sink, managed-logging bypass | Everything above the seams (OTel, backends, Helm, CRDs) is already cloud-neutral; only the seams get per-provider implementations |
+| Topology sizes | **`solo` and `regional`** - same rendered components, different placement. `solo`: everything in one cluster, queueless (file-backed gateway sending queue), single-node backends; `regional`: shared queue + ingest tier + backends per region | Phase 1's "one cluster, one guided run, < 30 min" DoD and the kind smoke test are `solo`; production estates are `regional`. Mirrors gojira's laptop mode vs production sandbox |
+| Tenancy | **Tenant per cluster**, stamped as `X-Scope-OrgID` by the ingest tier (`solo`: by the gateway) | Mimir/Loki/Tempo are natively multi-tenant; cluster is the finest useful isolation and cost-attribution unit and aggregates upward in Perses; per-team usage attribution falls out of tenant + namespace labels |
 | License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/limenal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
 | Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Argus CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and limenal wiring; Argus keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
 | Ledger / state | **SQLite now**, techne-backed later | Proven in gojira; migrate the agent's deploy history into techne when ready |
@@ -160,8 +162,18 @@ app (`monitoring.googleapis.com/v1` `PodMonitoring` + a scrape-down `Rules` aler
 GKE-proprietary and the least portable piece of the family. When Argus manages a cluster it must
 **replace** that wiring with its own portable equivalents (ServiceMonitor / OTel scrape via the
 TargetAllocator, plus the profile's alert pack), or every app is double-scraped and double-billed.
-This is handled in step 7 of the order of operations; long-term we propose gojira skip emitting GMP
-CRDs when a cluster is Argus-managed.
+
+The mechanics matter: **deleting the CRD in-cluster is not enough**, because gojira's drift capture
+diffs live state against the app repo's manifests and would PR the deletion right back (or flag
+drift forever). The manifest source has to change. Interim mechanism (until the upstream skip flag
+exists): the `wire@<app>` step opens a small PR against the app repo removing
+`k8s/base/podmonitoring.yaml` and `k8s/base/rules.yaml` from the overlay and noting the Argus
+equivalents in the PR body. This means **Phase 1 Argus requires `gh` write access to app repos** -
+the same access gojira itself uses to open setup PRs, but stated here explicitly as a scope. The
+in-cluster CRD is removed only after that PR merges (or in the same reconcile, since gojira treats
+git as catching up to the cluster). Long-term we propose gojira gain an
+`observability: argus`-style flag that skips emitting GMP CRDs at generation time, which retires
+this whole dance.
 
 **Feeding gojira back (the rightsizing loop):** gojira now accepts distilled usage evidence at
 `POST /api/v1/usage` (cluster-scoped token) and turns it into reviewed rightsizing PRs. Argus sits on
@@ -174,10 +186,13 @@ platforms (gojira deploys, Argus observes, Argus feeds measurements back, gojira
 ## Phase 1 scope - "every gojira app, automatically observed"
 
 **Definition of done:** take a gojira-managed cluster with at least one deployed app and, in one
-guided agent run, (1) stand up the per-cluster platform (Mimir/Loki/Tempo + Perses + the OTel collector
-tier), (2) auto-wire every gojira app into it based on its workload class, and (3) prove a real metric
-and trace from a deployed app are queryable in Perses with a default dashboard and golden-signal SLO
-present - no hand-written collector YAML, applied directly via CLI/SDK/Helm.
+guided agent run, (1) stand up the platform in the **`solo` topology** (Mimir/Loki/Tempo + Perses +
+the OTel collector tier, all in-cluster, queueless), (2) auto-wire every gojira app into it based on
+its workload class, and (3) prove a real metric and trace from a deployed app are queryable in
+Perses with a default dashboard and golden-signal SLO present - no hand-written collector YAML,
+applied directly via CLI/SDK/Helm. The `regional` topology (shared queue + ingest tier + backends)
+is the production shape and lands per the entry criteria in
+[transport-and-routing.md](transport-and-routing.md).
 
 ### The opinionated open-source stack (what we target)
 
@@ -436,6 +451,32 @@ Phases are ordered; Phase 1 is the MVP. Argus deploys directly throughout - no G
 ever required.
 
 ---
+
+## North star: the observer agent (generic agent, per-team config)
+
+Phase 4's live-telemetry reasoning takes a specific shape: **one generic observer agent, made
+team-specific by a config file** - no team ever forks or writes agent code. It lands only after the
+OTel pipeline and infra work are complete; it is recorded now so nothing designs it out.
+
+- **The generic agent is a daedalus bundle** (persona + agent card + wiring): how it reasons about
+  anomalies is the persona; what it may touch is the wiring.
+- **The team config is an Argus-rendered artifact**, the same family as profiles: which streams to
+  consume (scoped by the team's tenant + namespace labels - this is why the tenancy decision
+  matters), which SLOs and golden signals anchor "normal", sensitivity and quiet hours, and where to
+  escalate (Slack channel, on-call). Custom per team, zero code per team.
+- **Its feed is a consumer group on the regional queue** - the replayable-queue decision exists
+  partly for this. The first observer is itself a valid trigger for standing up the regional queue
+  (see the entry criteria in [transport-and-routing.md](transport-and-routing.md)).
+- **Observer vs forecaster stays sharp:** the observer consumes the live stream and learns what
+  normal looks like, flagging deviations (minutes of context). The forecaster reads history (Mimir
+  long-range, the warehouse subset) and predicts capacity and cost - it feeds gojira's rightsizing
+  loop. Two configs (or two bundles) of the same generic machinery, different inputs and cadences.
+
+Market note: this problem space - getting off Datadog-scale bills via telemetry shaping,
+cardinality control, and per-team cost attribution - is validated commercially (Chronosphere built
+a company on it, closed-SaaS, M3 lineage). Argus is the open-source, agent-first answer; where they
+shape telemetry with a proprietary control plane, we shape it with profiles, budgets, and rendered
+filter/aggregation rules in git.
 
 ## North star: runtime context for the agent (the "flight recorder")
 

@@ -8,6 +8,22 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Changed
 
+- **Topology sizes named as a first-class concept**: `solo` (one cluster, queueless, file-backed
+  gateway sending queue, single-node backends - the Phase 1 DoD and kind smoke-test shape) and
+  `regional` (shared queue + ingest tier + backends - the production shape). Same rendered
+  components, different placement.
+- **Tenancy decided**: tenant per cluster, stamped as `X-Scope-OrgID` by the ingest tier (gateway in
+  `solo`), giving isolation and per-team cost attribution via tenant + namespace labels.
+- **GMP supersession mechanics specified**: deleting gojira's generated CRDs in-cluster is not
+  enough (drift capture would PR them back); the `wire@<app>` step opens a PR against the app repo
+  removing the GMP manifests, which makes Argus's `gh` write access to app repos an explicit Phase 1
+  scope. Long-term fix remains the upstream gojira skip flag.
+- **Observer-agent north star recorded** in design.md and ROADMAP Phase 4: one generic
+  daedalus-bundled agent made team-specific by an Argus-rendered config file, fed by a queue
+  consumer group; kept sharp against the history-reading forecaster. Market context noted
+  (Chronosphere validates the cost-control thesis commercially; Argus is the open-source,
+  profiles-in-git answer), and aggregate-then-discard-raw added to the ADR as the third cost lever.
+
 - **OpenTofu replaces Terraform** (CLI pin 1.12.3, verified 2026-07-08): Terraform has been BUSL
   (not open source) since 1.6, violating the 100% OSS hard convention. Providers are MPL-2.0 and
   work unchanged; sources re-pointed at the OpenTofu registry. The `terraform/` directory name stays
