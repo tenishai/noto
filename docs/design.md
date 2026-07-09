@@ -565,13 +565,21 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     storage, and four provider-interface seams (object storage, workload identity, warehouse sink,
     managed-logging bypass) with GCP as the first implementation.
 
-## Still open (not blocking Phase 1, except the first)
+## Resolved questions (2026-07-09)
 
-- **Perses capability spike (BLOCKS the Phase 1 DoD):** stand up Perses against real Mimir/Loki/Tempo
-  and prove a dashboard, a trace view, and a log search actually work. Perses is metrics-first and
-  young on Tempo/Loki datasources; the "one pane over all three signals" claim is unverified. Named
-  fallback: Grafana OSS (AGPL, license-clean for us now) via the Grafana Operator, accepting weaker
-  dashboards-as-code. Tracked as a repo issue.
+13. **Perses capability spike** → **PASS, Perses stands; fallback not invoked.** Verified hands-on
+    against Mimir 3.1.1 / Loki 3.7.2 / Tempo 2.10.7 with synthetic OTLP load: all three signals
+    queryable through the Perses proxy, dashboards-as-code via API with mixed-signal panels, tenant
+    headers on datasources, span-metrics/service-graph via Tempo's metrics-generator, UI render
+    confirmed by screenshot. One item carried forward (exemplar click-through at the UI level,
+    verify during Phase 1 content work). Full results, reproduction manifests, and operational
+    gotchas: [spikes/perses/RESULTS.md](spikes/perses/RESULTS.md).
+
+## Still open (not blocking Phase 1)
+
+- **Exemplar / cross-signal click-through in Perses UI** - carried from the spike; verify with a
+  real SDK app emitting exemplars during Phase 1 content work. Mitigation already proven:
+  co-located correlated panels per dashboard.
 - **Sloth vs Pyrra** for SLO generation (half-day evaluation): Sloth is a pure generator (SLO spec
   in, `PrometheusRule` out - fits the renderer pipeline cleanly); Pyrra ships an operator and UI.
   Leaning Sloth for the generator shape; verify latest stable and record in versions.md when

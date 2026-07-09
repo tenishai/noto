@@ -8,6 +8,14 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **Perses capability spike: PASS** ([docs/spikes/perses/RESULTS.md](docs/spikes/perses/RESULTS.md),
+  closes issue #11). Perses 0.53.1 verified hands-on against pinned Mimir/Loki/Tempo on kind: full
+  Loki/Tempo/Prometheus plugin coverage, dashboards-as-code via API, all three query languages
+  through the Perses proxy, tenancy headers, Tempo metrics-generator span-metrics into Mimir, UI
+  render screenshot. Grafana fallback not invoked; exemplar click-through carried as a Phase 1
+  content-work check. Reproduction manifests committed; operational gotchas recorded (config mount
+  must not mask /etc/perses plugins; Loki OTLP structured-metadata config; native OTLP ingest paths).
+
 - [docs/target-fleet.md](docs/target-fleet.md): the first concrete deployment target - 11 production
   GKE clusters, ~2,200 logs/sec fleet-wide, 1 week raw retention then aggregation, Go/Python. Adapted
   from a teammate's earlier fleet roadmap; preserves its Datadog parallel-run migration strategy
