@@ -6,6 +6,17 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- [docs/target-fleet.md](docs/target-fleet.md): the first concrete deployment target - 11 production
+  GKE clusters, ~2,200 logs/sec fleet-wide, 1 week raw retention then aggregation, Go/Python. Adapted
+  from a teammate's earlier fleet roadmap; preserves its Datadog parallel-run migration strategy
+  (instrument once with OTel, dual-ship during the window, deprecate per signal per service), its
+  correlation acceptance checklist (trace_id in logs, exemplars, metric -> trace -> log
+  click-through, folded into the Phase 1/2 DoD and the Perses spike), and its remediation guardrails
+  (risk-tiered actions, blast-radius limits, cooldowns, pause switch) as recorded requirements for
+  the future observer agent - remediation itself stays out of Argus scope.
+
 ### Changed
 
 - **Topology sizes named as a first-class concept**: `solo` (one cluster, queueless, file-backed
