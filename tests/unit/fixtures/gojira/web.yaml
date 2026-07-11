@@ -1,0 +1,18 @@
+# Gojira app spec — this file is the contract between your repo and Gojira.
+# Change the class or add overrides here; Gojira regenerates the manifests
+# when this file changes.
+app: clips-api
+class: web
+environments:
+  - name: dev
+    cluster: dev-cluster
+    namespace: clips
+  - name: qa
+    cluster: qa-cluster
+    namespace: clips
+  - name: prod
+    cluster: prod-cluster
+    namespace: clips
+# overrides:                  # needs a justification — see docs
+#   requests: { cpu: "1", memory: 1Gi }
+#   justification: "measured p99 over 14 days"

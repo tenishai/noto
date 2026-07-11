@@ -1,0 +1,18 @@
+# A gojira.yaml carrying the PROPOSED observability block (design.md) plus a field
+# newer than our reader (forward-compat check: warn, never fail).
+app: clips-api
+class: web
+environments:
+  - name: dev
+    cluster: dev-cluster
+    namespace: clips
+  - name: prod
+    cluster: prod-cluster
+    namespace: clips
+overrides:
+  requests: { cpu: "1", memory: 1Gi }
+  justification: "measured p99 over 14 days"
+observability:
+  traces: true
+  retention: { metrics: 90d }
+future_gojira_field: true

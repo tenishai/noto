@@ -8,6 +8,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **gojira-reader** (issue #19): parses the real gojira.yaml contract (app, class, per-environment
+  cluster/namespace bindings, optional schedule and overrides) with fixtures copied from gojira's
+  own golden tests so the two repos cannot drift silently. Required-field failures are loud
+  (file + field named); unknown fields warn and are retained (gojira owns the contract). The
+  proposed `observability:` block is read when present and feeds the profile layer's
+  `load_override` verbatim. Includes the `ClusterInfo` registry-row shape.
+
+### Added
+
 - **Step engine + SQLite ledger** (issue #18): the idempotent, resumable
   `check() -> apply() -> record` engine ported from gojira's proven provisioner shape, scope-aware
   via `target_ref` (region work shared across clusters, cluster/app work independent). Stdlib
