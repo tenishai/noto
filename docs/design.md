@@ -6,8 +6,8 @@
 > **Authors:** Kyle Greiner (kyle@example.com)
 > **License:** AGPL-3.0-or-later (the tenishai family license)
 > **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
-> **Home (for now):** personal GitHub repo `argus`; migrates into the
-> [tenishai](https://github.com/tenishai) org alongside gojira / techne / limenal / cabal / daedalus.
+> **Home:** [tenishai/argus](https://github.com/tenishai/argus) (transferred into the org
+> 2026-07-11), alongside gojira / techne / limenal / cabal / daedalus / ladon.
 
 ---
 
