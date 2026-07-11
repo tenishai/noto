@@ -9,7 +9,10 @@ authors = [{ name = "Kyle Greiner", email = "kyle@example.com" }]
 # Runtime dependencies land with the code that needs them (Jinja2 with the renderers,
 # PyYAML with the gojira-reader, anthropic with the agent) - each pinned in docs/versions.md
 # at introduction time.
-dependencies = []
+dependencies = [
+    "pydantic==2.13.4",
+    "pyyaml==6.0.3",
+]
 
 [dependency-groups]
 dev = [
@@ -43,6 +46,9 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Python 3.14 site ignores underscore-prefixed .pth files, which breaks hatchling's
+# editable install (_editable_impl_argus.pth). pythonpath makes tests independent of it.
+pythonpath = ["agent", "."]
 addopts = "-q --strict-markers"
 markers = [
     "contract: golden-file / rendered-output assertions (layer 3)",

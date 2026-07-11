@@ -1,0 +1,17 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: sample-cron
+    argus.dev/class: cron
+    argus.dev/managed: 'true'
+  name: sample-cron
+  namespace: sample
+spec:
+  endpoints:
+  - interval: 15s
+    path: /metrics
+    port: http
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sample-cron

@@ -1,0 +1,14 @@
+# web -> HTTP RED: request rate/errors/latency, golden-signal SLOs. Traces opt-in via override.
+class: web
+signals: [metrics, logs]
+slos:
+  - name: availability-99.9
+    objective: 99.9
+    signal: availability
+  - name: latency-p99-500ms
+    objective: 99.0
+    signal: latency
+    latency_threshold: 500ms
+dashboards:
+  - name: web-red
+    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "traces:slow-requests", "logs:errors"]

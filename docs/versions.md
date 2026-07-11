@@ -64,6 +64,9 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 | `anthropic` (Python SDK) | 0.109.2 | [PyPI](https://pypi.org/project/anthropic/) | GA line (0.x by semver). Default model `claude-opus-4-8`. Re-verify when the agent code lands |
 | `ruff` (lint / format) | 0.15.20 | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | verified 2026-07-09; pinned exact in `pyproject.toml`; wired into `make lint` / CI |
 | `pytest` | 9.1.1 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest/releases) | verified 2026-07-09; pinned exact in `pyproject.toml` |
+| `pydantic` | 2.13.4 | [PyPI](https://pypi.org/project/pydantic/) | verified 2026-07-11 at introduction (profile schema); pinned exact |
+| `pyyaml` | 6.0.3 | [PyPI](https://pypi.org/project/PyYAML/) | verified 2026-07-11 at introduction (profile loading / render serialization); pinned exact |
+| Sloth (SLO generator) | 0.16.0 | [slok/sloth](https://github.com/slok/sloth/releases) | verified 2026-07-11; render target `sloth.slok.dev/v1 PrometheusServiceLevel`; binary/chart pinned when the apply path lands |
 
 ## CI (GitHub Actions)
 

@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    argus.dev/class: web
+    argus.dev/managed: 'true'
+  name: argus-alerts-sample-web
+  namespace: sample
+spec:
+  groups:
+  - name: argus-collector-health
+    rules:
+    - alert: ArgusCollectorMemoryHigh
+      annotations:
+        summary: Collector {{ $labels.job }} memory near the limiter threshold
+      expr: otelcol_process_memory_rss / otelcol_process_memory_limit > 0.85
+      for: 10m
+      labels:
+        severity: ticket
+    - alert: ArgusCollectorRefusing
+      annotations:
+        summary: Collector {{ $labels.job }} is refusing telemetry at the door
+      expr: sum by (job) (rate(otelcol_receiver_refused_spans[5m]) + rate(otelcol_receiver_refused_metric_points[5m])
+        + rate(otelcol_receiver_refused_log_records[5m])) > 0
+      for: 5m
+      labels:
+        severity: page
+    - alert: ArgusExporterFailing
+      annotations:
+        summary: Collector exporter {{ $labels.exporter }} failing sends
+      expr: sum by (job, exporter) (rate(otelcol_exporter_send_failed_spans[5m]) +
+        rate(otelcol_exporter_send_failed_metric_points[5m]) + rate(otelcol_exporter_send_failed_log_records[5m]))
+        > 0
+      for: 5m
+      labels:
+        severity: page
+  - name: argus-app-sample-web
+    rules:
+    - alert: ArgusScrapeDown
+      annotations:
+        summary: sample-web scrape target down (no /metrics for 5m)
+      expr: up{job="sample-web"} == 0
+      for: 5m
+      labels:
+        severity: page

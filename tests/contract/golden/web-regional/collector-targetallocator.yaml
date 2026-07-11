@@ -1,0 +1,61 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  labels:
+    argus.dev/cluster: golden-cluster
+    argus.dev/managed: 'true'
+    argus.dev/role: scraper
+  name: argus-scraper
+  namespace: argus
+spec:
+  config:
+    exporters:
+      otlp/gateway:
+        compression: zstd
+        endpoint: argus-gateway-collector.argus.svc:4317
+        tls:
+          insecure: true
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof: {}
+      zpages: {}
+    processors:
+      batch:
+        send_batch_max_size: 2000
+        send_batch_size: 1000
+        timeout: 1s
+      groupbyattrs:
+        keys:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.container.name
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 90
+        spike_limit_percentage: 10
+    receivers:
+      prometheus:
+        config:
+          scrape_configs: []
+    service:
+      extensions:
+      - health_check
+      - zpages
+      - pprof
+      pipelines:
+        metrics:
+          exporters:
+          - otlp/gateway
+          processors:
+          - memory_limiter
+          - groupbyattrs
+          - batch
+          receivers:
+          - prometheus
+  mode: statefulset
+  targetAllocator:
+    enabled: true
+    prometheusCR:
+      enabled: true
+    serviceAccount: argus-targetallocator

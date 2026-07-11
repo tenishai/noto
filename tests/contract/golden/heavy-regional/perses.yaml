@@ -1,0 +1,266 @@
+- kind: Project
+  metadata:
+    name: golden-cluster
+  spec:
+    display:
+      name: Argus - golden-cluster
+- kind: Datasource
+  metadata:
+    name: mimir
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: PrometheusDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://mimir.us-east4.argus.internal:9009/prometheus
+- kind: Datasource
+  metadata:
+    name: loki
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: LokiDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://loki.us-east4.argus.internal:3100
+- kind: Datasource
+  metadata:
+    name: tempo
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: TempoDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://tempo.us-east4.argus.internal:3200
+- kind: Dashboard
+  metadata:
+    name: cluster-baseline
+    project: golden-cluster
+  spec:
+    display:
+      name: cluster-baseline
+    duration: 1h
+    layouts:
+    - kind: Grid
+      spec:
+        items:
+        - content:
+            $ref: '#/spec/panels/metric-node-cpu'
+          height: 8
+          width: 12
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-node-memory'
+          height: 8
+          width: 12
+          x: 12
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-pod-restarts'
+          height: 8
+          width: 12
+          x: 0
+          y: 8
+        - content:
+            $ref: '#/spec/panels/logs-cluster-errors'
+          height: 8
+          width: 12
+          x: 12
+          y: 8
+    panels:
+      logs-cluster-errors:
+        kind: Panel
+        spec:
+          display:
+            name: logs:cluster-errors
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{service_name="sample-heavy"}'
+      metric-node-cpu:
+        kind: Panel
+        spec:
+          display:
+            name: metric:node-cpu
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+      metric-node-memory:
+        kind: Panel
+        spec:
+          display:
+            name: metric:node-memory
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+      metric-pod-restarts:
+        kind: Panel
+        spec:
+          display:
+            name: metric:pod-restarts
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+- kind: Dashboard
+  metadata:
+    name: heavy-use
+    project: golden-cluster
+  spec:
+    display:
+      name: heavy-use
+    duration: 1h
+    layouts:
+    - kind: Grid
+      spec:
+        items:
+        - content:
+            $ref: '#/spec/panels/metric-cpu-saturation'
+          height: 8
+          width: 12
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-memory-saturation'
+          height: 8
+          width: 12
+          x: 12
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-io'
+          height: 8
+          width: 12
+          x: 0
+          y: 8
+        - content:
+            $ref: '#/spec/panels/metric-throttling'
+          height: 8
+          width: 12
+          x: 12
+          y: 8
+        - content:
+            $ref: '#/spec/panels/logs-errors'
+          height: 8
+          width: 12
+          x: 0
+          y: 16
+    panels:
+      logs-errors:
+        kind: Panel
+        spec:
+          display:
+            name: logs:errors
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{service_name="sample-heavy"}'
+      metric-cpu-saturation:
+        kind: Panel
+        spec:
+          display:
+            name: metric:cpu-saturation
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+      metric-io:
+        kind: Panel
+        spec:
+          display:
+            name: metric:io
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+      metric-memory-saturation:
+        kind: Panel
+        spec:
+          display:
+            name: metric:memory-saturation
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}
+      metric-throttling:
+        kind: Panel
+        spec:
+          display:
+            name: metric:throttling
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: up{job="sample-heavy"}

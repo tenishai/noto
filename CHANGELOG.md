@@ -6,6 +6,21 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The core of Argus** (issue #17, per the approved spec and plan): layered observability
+  profiles (`profiles/baseline.yaml` + five class profiles, pydantic-validated, merged by a pure
+  resolver), the OTTL filter-rule compiler (structured `drop:` rules with a justified `raw_ottl`
+  escape hatch; `metric_labels_strip` renders as a transform, not a filter), typed-dict renderers
+  for every artifact family (collector CRDs for agent/gateway/ingest/TargetAllocator across solo
+  and regional topologies, ServiceMonitor/PodMonitor, Sloth `PrometheusServiceLevel`, Perses
+  project/datasources/dashboards with tenant headers, alert packs incl. the portable scrape-down
+  replacement for gojira's GMP rule), and the contract-test layer that makes the opinions
+  enforceable: 80 invariant assertions plus 79 golden files per class x topology, regenerated only
+  via `make regen-golden` with the diff reviewed in PRs. New pinned runtime deps: pydantic 2.13.4,
+  pyyaml 6.0.3 (verified at introduction). The layer-2/3 placeholder tests are replaced by the
+  real suites (134 tests).
+
 ### Changed
 
 - **Scale posture made explicit** (design.md decision row): Argus is designed for arbitrary scale -

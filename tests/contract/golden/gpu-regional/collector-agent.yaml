@@ -1,0 +1,93 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  labels:
+    argus.dev/cluster: golden-cluster
+    argus.dev/managed: 'true'
+    argus.dev/role: agent
+  name: argus-agent
+  namespace: argus
+spec:
+  config:
+    exporters:
+      otlp/gateway:
+        compression: zstd
+        endpoint: argus-gateway-collector.argus.svc:4317
+        tls:
+          insecure: true
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof: {}
+      zpages: {}
+    processors:
+      batch:
+        send_batch_max_size: 2000
+        send_batch_size: 1000
+        timeout: 1s
+      filter/argus-agent:
+        error_mode: ignore
+        logs:
+          log_record:
+          - IsMatch(attributes["url.path"], "^(/health|/healthz|/ready|/livez)")
+          - severity_number < SEVERITY_NUMBER_INFO
+        traces:
+          span:
+          - IsMatch(attributes["url.path"], "^(/health|/healthz|/ready|/livez)")
+      k8sattributes:
+        filter:
+          node_from_env_var: KUBE_NODE_NAME
+        passthrough: true
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 90
+        spike_limit_percentage: 10
+      resourcedetection:
+        detectors:
+        - env
+        - system
+    receivers:
+      filelog:
+        include:
+        - /var/log/pods/*/*/*.log
+        include_file_path: true
+        operators:
+        - type: container
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      statsd:
+        endpoint: 0.0.0.0:8125
+    service:
+      extensions:
+      - health_check
+      - zpages
+      - pprof
+      pipelines:
+        logs:
+          exporters:
+          - otlp/gateway
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resourcedetection
+          - filter/argus-agent
+          - batch
+          receivers:
+          - otlp
+          - filelog
+        metrics:
+          exporters:
+          - otlp/gateway
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resourcedetection
+          - filter/argus-agent
+          - batch
+          receivers:
+          - otlp
+  mode: daemonset

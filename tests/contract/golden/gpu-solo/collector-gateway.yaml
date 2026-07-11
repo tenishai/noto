@@ -1,0 +1,159 @@
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
+metadata:
+  labels:
+    argus.dev/cluster: golden-cluster
+    argus.dev/managed: 'true'
+    argus.dev/role: gateway
+  name: argus-gateway
+  namespace: argus
+spec:
+  config:
+    exporters:
+      otlp/tempo:
+        compression: zstd
+        endpoint: tempo.argus.svc:4317
+        headers:
+          X-Scope-OrgID: golden-cluster
+        retry_on_failure:
+          enabled: true
+        sending_queue:
+          num_consumers: 50
+          queue_size: 1000
+          storage: file_storage
+        timeout: 30s
+        tls:
+          insecure: true
+      otlphttp/loki:
+        compression: zstd
+        endpoint: http://loki.argus.svc:3100/otlp
+        headers:
+          X-Scope-OrgID: golden-cluster
+        retry_on_failure:
+          enabled: true
+        sending_queue:
+          num_consumers: 50
+          queue_size: 1000
+          storage: file_storage
+        timeout: 30s
+      otlphttp/mimir:
+        compression: zstd
+        endpoint: http://mimir.argus.svc:9009/otlp
+        headers:
+          X-Scope-OrgID: golden-cluster
+        retry_on_failure:
+          enabled: true
+        sending_queue:
+          num_consumers: 50
+          queue_size: 1000
+          storage: file_storage
+        timeout: 30s
+    extensions:
+      file_storage:
+        directory: /var/lib/otelcol/queue
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof: {}
+      zpages: {}
+    processors:
+      batch:
+        send_batch_max_size: 2000
+        send_batch_size: 1000
+        timeout: 1s
+      filter/argus-gateway:
+        error_mode: ignore
+        logs:
+          log_record:
+          - resource.attributes["k8s.namespace.name"] == "kube-system"
+        metrics:
+          metric:
+          - IsMatch(name, "^(kube_pod_status_reason|kube_pod_tolerations)$")
+          - resource.attributes["k8s.namespace.name"] == "kube-system"
+        traces:
+          span:
+          - resource.attributes["k8s.namespace.name"] == "kube-system"
+      groupbyattrs:
+        keys:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.container.name
+      k8sattributes: {}
+      memory_limiter:
+        check_interval: 1s
+        limit_percentage: 90
+        spike_limit_percentage: 10
+      resource/default:
+        attributes:
+        - action: upsert
+          key: environment
+          value: prod
+        - action: upsert
+          key: cluster
+          value: golden-cluster
+      resource/self:
+        attributes:
+        - action: upsert
+          key: cluster
+          value: golden-cluster
+      transform/labels-strip:
+        metric_statements:
+        - context: datapoint
+          statements:
+          - delete_key(attributes, "pod_uid")
+          - delete_key(attributes, "request_id")
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      prometheus/self:
+        config:
+          scrape_configs:
+          - job_name: argus-collector-self
+            scrape_interval: 15s
+            static_configs:
+            - targets:
+              - 127.0.0.1:8888
+    service:
+      extensions:
+      - health_check
+      - zpages
+      - pprof
+      - file_storage
+      pipelines:
+        logs:
+          exporters:
+          - otlphttp/loki
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resource/default
+          - filter/argus-gateway
+          - batch
+          receivers:
+          - otlp
+        metrics:
+          exporters:
+          - otlphttp/mimir
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resource/default
+          - groupbyattrs
+          - transform/labels-strip
+          - filter/argus-gateway
+          - batch
+          receivers:
+          - otlp
+        metrics/self:
+          exporters:
+          - otlphttp/mimir
+          processors:
+          - memory_limiter
+          - resource/self
+          - batch
+          receivers:
+          - prometheus/self
+  mode: deployment

@@ -1,0 +1,49 @@
+apiVersion: sloth.slok.dev/v1
+kind: PrometheusServiceLevel
+metadata:
+  labels:
+    argus.dev/class: web
+    argus.dev/managed: 'true'
+  name: argus-slo-sample-web
+  namespace: sample
+spec:
+  labels:
+    cluster: golden-cluster
+    environment: prod
+  service: sample-web
+  slos:
+  - alerting:
+      name: ArgusSLO-sample-web-availability-99.9
+      pageAlert:
+        labels:
+          severity: page
+      ticketAlert:
+        labels:
+          severity: ticket
+    description: Argus web profile SLO availability-99.9 for sample-web
+    name: availability-99.9
+    objective: 99.9
+    sli:
+      events:
+        errorQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
+          k8s_namespace_name="sample", status_code=~"5.."}[{{.window}}]))
+        totalQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
+          k8s_namespace_name="sample"}[{{.window}}]))
+  - alerting:
+      name: ArgusSLO-sample-web-latency-p99-500ms
+      pageAlert:
+        labels:
+          severity: page
+      ticketAlert:
+        labels:
+          severity: ticket
+    description: Argus web profile SLO latency-p99-500ms for sample-web
+    name: latency-p99-500ms
+    objective: 99.0
+    sli:
+      events:
+        errorQuery: (sum(rate(http_server_request_duration_seconds_count{job="sample-web",
+          k8s_namespace_name="sample"}[{{.window}}])) - sum(rate(http_server_request_duration_seconds_bucket{job="sample-web",
+          k8s_namespace_name="sample", le="0.5"}[{{.window}}])))
+        totalQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
+          k8s_namespace_name="sample"}[{{.window}}]))

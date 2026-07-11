@@ -1,0 +1,24 @@
+# Argus baseline profile - what every app and cluster gets, before any class opinion.
+# Layered composition: baseline + class + per-app override (docs/design.md).
+budgets:
+  retention: { metrics: 30d, logs: 7d, traces: 7d }
+  cardinality: { dev: 200000, qa: 500000, prod: 1000000 }
+drop:
+  - name: health-endpoints
+    stage: agent
+    path_matches: [/health, /healthz, /ready, /livez]
+  - name: debug-logs
+    stage: agent
+    log_level_below: info
+  - name: ksm-churn
+    stage: gateway
+    metric_names: [kube_pod_status_reason, kube_pod_tolerations]
+  - name: unbounded-labels
+    stage: gateway
+    metric_labels_strip: [pod_uid, request_id]
+  - name: kube-system-noise
+    stage: gateway
+    namespace_exclude: [kube-system]
+dashboards:
+  - name: cluster-baseline
+    panels: ["metric:node-cpu", "metric:node-memory", "metric:pod-restarts", "logs:cluster-errors"]

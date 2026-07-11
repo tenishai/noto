@@ -1,0 +1,6 @@
+# heavy -> USE: saturation, throttling, capacity.
+class: heavy
+signals: [metrics, logs]
+dashboards:
+  - name: heavy-use
+    panels: ["metric:cpu-saturation", "metric:memory-saturation", "metric:io", "metric:throttling", "logs:errors"]

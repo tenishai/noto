@@ -1,0 +1,6 @@
+# gpu -> USE + accelerator: heavy defaults plus GPU utilization/memory.
+class: gpu
+signals: [metrics, logs]
+dashboards:
+  - name: gpu-use
+    panels: ["metric:cpu-saturation", "metric:memory-saturation", "metric:gpu-utilization", "metric:gpu-memory", "logs:errors"]

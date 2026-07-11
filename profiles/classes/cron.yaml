@@ -1,0 +1,6 @@
+# cron -> job health: run success/duration; alert-based (no SLO - runs are discrete).
+class: cron
+signals: [metrics, logs]
+dashboards:
+  - name: cron-health
+    panels: ["metric:run-success", "metric:run-duration", "logs:errors"]

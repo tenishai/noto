@@ -1,0 +1,10 @@
+budgets:
+  retention: { metrics: 30d, logs: 7d, traces: 7d }
+  cardinality: { dev: 200000, qa: 500000, prod: 1000000 }
+drop:
+  - name: health-endpoints
+    stage: agent
+    path_matches: [/health]
+dashboards:
+  - name: cluster-baseline
+    panels: [metric:node-cpu]

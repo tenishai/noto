@@ -1,0 +1,10 @@
+# worker -> queue/throughput: processing rate, queue depth, failure rate.
+class: worker
+signals: [metrics, logs]
+slos:
+  - name: availability-99.5
+    objective: 99.5
+    signal: availability
+dashboards:
+  - name: worker-throughput
+    panels: ["metric:processing-rate", "metric:queue-depth", "metric:failure-rate", "logs:errors"]
