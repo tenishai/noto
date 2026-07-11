@@ -8,6 +8,18 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **OpenTofu cloud seams, GCP implementations** (issue #21): provider-namespaced modules
+  `terraform/modules/object-storage/gcp` (one lifecycle-managed GCS bucket per backend block
+  store; retention days are inputs per the scale posture) and `terraform/modules/workload-identity/gcp`
+  (one GSA per backend, objectAdmin on its own bucket only, Workload Identity bound to the argus
+  KSAs), plus a validated example wiring and a committed provider lockfile (linux_amd64 +
+  darwin_arm64). The logging-bypass seam is deliberately NOT a module: it mutates the
+  gojira-owned cluster resource, so it lands as an idempotent engine CLI step (README records the
+  reasoning). CI gains a path-relevant opentofu fmt + validate job (setup-opentofu, tofu 1.12.3).
+  AWS/Azure implementations remain explicitly out of scope (multi-cloud goal, GCP first).
+
+### Added
+
 - **The Argus collector distribution** (issue #20): [distro/manifest.yaml](distro/manifest.yaml) -
   core + the exact contrib components the renderers emit, all pinned to the v0.154.0 train with
   gomod lines sourced from the official otelcol-contrib manifest at the same tag. Built locally

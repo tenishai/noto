@@ -53,3 +53,20 @@ jobs:
           version: "0.11.28"
       - name: Validate rendered artifacts
         run: make validate
+
+  # Layer 1 (static) for the OpenTofu seams: fmt + validate with the pinned CLI.
+  opentofu:
+    name: opentofu fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: "1.12.3"
+      - name: fmt
+        run: tofu fmt -check -recursive terraform/
+      - name: validate example (wires both modules)
+        run: |
+          cd terraform/examples/gcp-solo
+          tofu init -backend=false -input=false
+          tofu validate
