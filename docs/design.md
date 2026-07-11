@@ -87,6 +87,8 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Filtering / routing | **Profile-owned `filter` drop rules as early as possible; `routing` connector fan-out in the ingest tier** | Drop noise before it costs egress or storage; route each signal to its logical destination. See [transport-and-routing.md](transport-and-routing.md) |
 | Cloud portability | **Multi-cloud is the goal, GCP first.** Four seams behind provider interfaces from day one: object storage, workload identity, warehouse sink, managed-logging bypass | Everything above the seams (OTel, backends, Helm, CRDs) is already cloud-neutral; only the seams get per-provider implementations |
 | Topology sizes | **`solo` and `regional`** - same rendered components, different placement. `solo`: everything in one cluster, queueless (file-backed gateway sending queue), single-node backends; `regional`: shared queue + ingest tier + backends per region | Phase 1's "one cluster, one guided run, < 30 min" DoD and the kind smoke test are `solo`; production estates are `regional`. Mirrors gojira's laptop mode vs production sandbox |
+| Log shipper | **A seam: OTel `filelog` default; Fluent Bit supported alternative** (FB tails -> OTLP -> same local gateway; downstream identical). Both rendered from the profile schema's log-collection section, both contract-tested. Chosen per deployment by benchmark on real node profiles, not by opinion. FB implementation is post-Phase-1 | Scale-flexible without giving up the one-config-guarantee: at very high per-node log rates FB's footprint/throughput wins; at typical rates one substrate wins. The bypassed GKE logging agent is itself Fluent Bit, so the pattern is native to the platform |
+| Scale posture | **Design for arbitrary scale; size each deployment from its measurements.** Every component is horizontally scalable (Mimir/Loki/Tempo shard on object storage, the queue partitions, collectors HPA, the ingest tier is a stateless consumer group); scale numbers are *inputs* (profile budgets, Helm sizing tiers, topic retention), never constants baked into rendered config | Argus targets many teams and many companies, small and massive. One deployment's volume ([target-fleet.md](target-fleet.md)) is an instance parameter, not the design envelope. Decisions justified "because our volume is small" are reasoning bugs - flexibility across scales is the requirement |
 | Tenancy | **Tenant per cluster**, stamped as `X-Scope-OrgID` by the ingest tier (`solo`: by the gateway) | Mimir/Loki/Tempo are natively multi-tenant; cluster is the finest useful isolation and cost-attribution unit and aggregates upward in Perses; per-team usage attribution falls out of tenant + namespace labels |
 | License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/limenal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
 | Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Argus CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and limenal wiring; Argus keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
@@ -108,21 +110,18 @@ operational model; revisit only if Mimir's operational weight proves unaffordabl
 **ClickHouse replacing Loki/Tempo** (reaffirmed 2026-07-09) - for traces it is blocked outright:
 Perses has no ClickHouse TraceQuery plugin (verified in the capability spike), so traces stored
 there would be invisible in our pane, while Tempo passed every check and ships span-metrics/service
-graph for free. For logs it is possible but not better at our scale (~2.2K logs/sec): Loki is
-object-storage-native, OTLP-verified, and alerts through the ruler, while ClickHouse means schema
-engineering, MergeTree/TTL operations, and disks. Revisit triggers, any of: (1) log
-scale/cardinality outgrows Loki's label model (needle-in-haystack full-text or high-cardinality
-group-bys become the workload), (2) Perses ships a ClickHouse TraceQuery plugin, (3) the
+graph for free. For logs the question is workload *shape*, not volume - Loki shards horizontally on object storage
+to very large scale, is OTLP-verified, and alerts through the ruler, while ClickHouse means schema
+engineering, MergeTree/TTL operations, and disks. Revisit triggers, any of: (1) a deployment's
+query workload outgrows Loki's label model (needle-in-haystack full-text or high-cardinality
+group-bys become the norm, at any volume), (2) Perses ships a ClickHouse TraceQuery plugin, (3) the
 observer/forecaster agents need arbitrary SQL over wide events beyond the warehouse subset. Note
 ClickHouse does enter the stack earlier as the default warehouse-sink implementation - see
 [transport-and-routing.md](transport-and-routing.md). **Hand-rolled SLO
-rules** - see the SLO generation decision. **Fluent Bit as the log shipper** (reviewed 2026-07-11) -
-excellent and battle-tested, but it would be a second telemetry runtime per node with a second
-config language outside the profile/contract-test guarantee, and at fleet volume (~2.2K logs/sec
-total, [target-fleet.md](target-fleet.md)) the OTel `filelog` receiver has ample headroom. Note the
-GKE Cloud Logging agent we bypass *is* Fluent Bit, so the bypass removes one rather than missing
-one. Revisit trigger: measured filelog underperformance (memory/throughput) on real nodes - the
-clean fallback is Fluent Bit tailing to OTLP into the same gateway, disturbing nothing downstream.
+rules** - see the SLO generation decision. **Fluent Bit as a hard-wired log shipper** - superseded by the log-shipper *seam* decision (see
+the decisions table): filelog is the default, Fluent Bit is the supported per-deployment
+alternative chosen by benchmark, both rendered from the same profile schema. What stays rejected is
+FB as a second always-on substrate with hand-authored config outside the contract-test guarantee.
 **Telegraf** - a metrics agent overlapping the Prometheus-scrape and OTLP paths we already have,
 Influx-centric plugin ecosystem, nothing for logs/traces; no gap it fills here.
 

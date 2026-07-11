@@ -6,6 +6,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Scale posture made explicit** (design.md decision row): Argus is designed for arbitrary scale -
+  many teams and many companies, small and massive. Every component scales horizontally; scale
+  numbers are inputs (profile budgets, sizing tiers, topic retention), never constants. One
+  deployment's volume (target-fleet.md, now labeled as instance parameters) is not the design
+  envelope, and "because our volume is small" justifications were corrected in the Fluent Bit,
+  ClickHouse-vs-Loki, and warehouse-sizing records.
+- **Fluent Bit upgraded from rejected to a log-shipper seam**: OTel filelog stays the default;
+  Fluent Bit (tailing to OTLP into the same gateway, downstream untouched) is the supported
+  per-deployment alternative for very high per-node log rates - chosen by benchmark on real node
+  profiles, rendered from the same profile schema, contract-tested. Implementation post-Phase-1.
+  What remains rejected: FB as a second always-on substrate with hand-authored config.
+
 ### Added
 
 - **Design spec for profiles + renderers + contract tests** (issue #17), approved and committed at

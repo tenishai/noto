@@ -3,7 +3,11 @@
 > **Status:** Living document, accepted 2026-07-09
 > **What this is:** the concrete production estate Argus is being built to observe first, and the
 > constraints that estate imposes. [design.md](design.md) stays deliberately generic; this document
-> is where the real numbers live. Adapted from an earlier internal fleet roadmap by a teammate,
+> is where the real numbers live.
+> **Scale posture (important):** these are *one deployment's instance parameters*, never the design
+> envelope. Argus is built for arbitrary scale - many teams, many companies, small and massive -
+> and each deployment is sized from its own measurements (see the scale-posture decision in
+> [design.md](design.md)). Nothing in the architecture may be justified by these numbers. Adapted from an earlier internal fleet roadmap by a teammate,
 > which predates the current design; its scale parameters, migration strategy, correlation
 > acceptance criteria, and remediation guardrails are preserved here so they shape the build.
 
@@ -12,7 +16,7 @@
 | Parameter | Value | Design consequence |
 |---|---|---|
 | Clusters | 11 production GKE clusters (plus dev/qa) | One `regional` topology instance per region; the fleet is the first real multi-cluster tenant test |
-| Log volume | ~2K requests/10s per cluster, ~2,200 logs/sec fleet-wide | Modest. Supports solo-first sequencing; the regional queue and backends start small and grow from measurements, not guesses |
+| Log volume | ~2K requests/10s per cluster, ~2,200 logs/sec fleet-wide | An instance parameter: this deployment's queue/backends start small and grow from measurements. Other deployments plug their own numbers into the same sizing inputs |
 | Retention | 1 week raw, then aggregated | Matches the aggregate-then-discard-raw lever in [transport-and-routing.md](transport-and-routing.md); Mimir compactor and Loki/Tempo retention configured to 7d raw from day one |
 | Languages | Go, Python | OTel SDK instrumentation targets: Go (shared instrumentation library) and Python (`opentelemetry-instrumentation` auto-instrumentation) |
 | Incumbent | Datadog (APM and more) | The business case is the migration; see below |

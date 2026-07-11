@@ -129,8 +129,9 @@ implementations to build and maintain for the multi-cloud goal.
   select it; the managed warehouses become the optional per-cloud alternatives instead of the
   defaults.
 - **Fed by the ingest tier** via the existing OTel contrib ClickHouse exporter on the routed,
-  curated subset - never the firehose. It is therefore a small single-shard deployment, not a
-  fleet-scale ingestion cluster; the operational weight is bounded by the routing rules.
+  curated subset - never the firehose. Its size follows the subset's measured volume per deployment
+  (a single shard where that is small, sharded where it is not); the operational weight is bounded
+  by the routing rules, not by an assumed deployment size.
 - **Queryable where it matters**: Perses ships a native ClickHouse datasource (LogQuery +
   TimeSeriesQuery, verified in the capability spike), and agents get arbitrary SQL - which is what
   the forecaster actually wants (LogQL/TraceQL are for humans debugging; analytics wants SQL).

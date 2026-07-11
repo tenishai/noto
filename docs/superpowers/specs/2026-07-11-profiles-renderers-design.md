@@ -108,6 +108,15 @@ tests/contract/         golden/ + invariant tests
 
 New runtime deps, pinned exact and recorded in versions.md at introduction: `pydantic`, `pyyaml`.
 
+## Scale posture (amended 2026-07-11)
+
+Scale parameters are **inputs, never constants**: retention, cardinality budgets, batch/queue
+sizing, and HPA bounds all flow from profile fields and `Context`, so the same renderers serve a
+one-cluster dev deployment and a massive multi-region estate. The profile's log-collection section
+is also the surface for the log-shipper seam (filelog default, Fluent Bit alternative - see the
+decisions table in design.md); #17 renders the filelog default only, but the schema must not
+assume it is the only possible shipper.
+
 ## Error handling
 
 Load-time schema violations fail loud, naming file and field. A resolved profile referencing a
