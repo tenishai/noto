@@ -1,0 +1,9 @@
+# Perses. THE spike gotcha: never mount config over /etc/perses - it masks the
+# image's bundled plugin archives and Perses starts with zero plugins.
+# The chart's config handling respects this; do not add extraVolumeMounts at /etc/perses.
+config:
+  security:
+    enable_auth: false           # in-cluster; auth fronted by the platform's ingress later
+  database:
+    file: { folder: /perses, extension: yaml }
+persistence: { enabled: true }

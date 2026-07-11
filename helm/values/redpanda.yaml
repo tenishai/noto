@@ -1,0 +1,8 @@
+# Redpanda (regional only - the durable queue, ADR). Sizes are deployment inputs:
+# dev/qa run a single broker; production sizes from measured gateway egress.
+statefulset: { replicas: 1 }
+resources:
+  cpu: { cores: 1 }
+  memory: { container: { max: 2Gi } }
+external: { enabled: false }
+console: { enabled: false }

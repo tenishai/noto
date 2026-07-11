@@ -1,0 +1,70 @@
+# The machine-readable Helm pin manifest - the step engine reads this; humans edit it.
+# Every entry verified against the live chart repos on 2026-07-11 (docs/versions.md).
+# topology: which topologies install the component.
+components:
+  mimir:
+    repo: https://grafana.github.io/helm-charts
+    chart: mimir-distributed
+    version: 6.1.0            # app 3.1.2
+    values: values/mimir.yaml
+    topology: [solo, regional]
+  loki:
+    repo: https://grafana-community.github.io/helm-charts
+    chart: loki
+    version: 18.4.4           # app 3.7.3; OSS charts moved to grafana-community
+    values: values/loki.yaml
+    topology: [solo, regional]
+  tempo:
+    repo: https://grafana-community.github.io/helm-charts
+    chart: tempo
+    version: 2.2.3            # app 2.10.7; monolithic chart (tempo-distributed when regional scale demands)
+    values: values/tempo.yaml
+    topology: [solo, regional]
+  perses:
+    repo: https://perses.github.io/helm-charts
+    chart: perses
+    version: 0.22.0           # app v0.53.1 - matches the spike-verified pin
+    values: values/perses.yaml
+    topology: [solo, regional]
+  kube-prometheus-stack:
+    repo: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    version: 87.15.1          # operator app v0.92.1; Prometheus+Grafana disabled, we want operator CRDs + Alertmanager
+    values: values/kube-prometheus-stack.yaml
+    topology: [solo, regional]
+  opentelemetry-operator:
+    repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-operator
+    version: 0.119.0          # app 0.154.0 - same train as the distro
+    values: values/opentelemetry-operator.yaml
+    topology: [solo, regional]
+  kube-state-metrics:
+    repo: https://prometheus-community.github.io/helm-charts
+    chart: kube-state-metrics
+    version: 7.8.1            # app 2.19.1
+    values: values/kube-state-metrics.yaml
+    topology: [solo, regional]
+  node-exporter:
+    repo: https://prometheus-community.github.io/helm-charts
+    chart: prometheus-node-exporter
+    version: 4.56.0           # app 1.12.0
+    values: values/node-exporter.yaml
+    topology: [solo, regional]
+  cert-manager:
+    repo: https://charts.jetstack.io
+    chart: cert-manager
+    version: v1.21.0
+    values: values/cert-manager.yaml
+    topology: [solo, regional]
+  redpanda:
+    repo: https://charts.redpanda.com
+    chart: redpanda
+    version: 26.1.8           # app v26.1.12
+    values: values/redpanda.yaml
+    topology: [regional]
+  clickhouse-operator:
+    repo: https://helm.altinity.com
+    chart: altinity-clickhouse-operator
+    version: 0.27.1           # the warehouse-sink seam default (ADR)
+    values: values/clickhouse-operator.yaml
+    topology: [regional]

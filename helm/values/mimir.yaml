@@ -1,0 +1,13 @@
+# Mimir (solo baseline). Storage backend + bucket names are supplied by the step
+# engine at apply time (--set mimir.structuredConfig.common.storage...) from the
+# object-storage seam outputs; sizes are deployment inputs (scale posture).
+mimir:
+  structuredConfig:
+    multitenancy_enabled: true   # tenant per cluster, stamped by the collector tier
+    limits:
+      max_global_series_per_user: 1000000   # overridden per deployment from profile budgets
+# Solo sizing tier: smallest sane footprint; regional deployments override.
+alertmanager: { enabled: false }   # Alertmanager comes from kube-prometheus-stack
+minio: { enabled: false }
+nginx: { enabled: false }
+gateway: { enabledNonEnterprise: true }

@@ -2,7 +2,7 @@
 # `make test` runs layers 1-3 (static, unit, contract). Layer 4 (smoke) is gated
 # separately and lands with issue #24.
 
-.PHONY: test lint unit contract smoke sync regen-golden validate
+.PHONY: test lint unit contract smoke sync regen-golden validate validate-helm
 
 sync:
 	uv sync --frozen
@@ -22,6 +22,9 @@ test: lint unit contract
 
 validate:
 	bash scripts/validate-rendered.sh
+
+validate-helm:
+	bash scripts/validate-helm.sh
 
 regen-golden:
 	uv run python scripts/regen-golden.py

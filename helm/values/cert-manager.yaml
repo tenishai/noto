@@ -1,0 +1,2 @@
+# cert-manager: required by the OTel Operator's webhooks.
+crds: { enabled: true }

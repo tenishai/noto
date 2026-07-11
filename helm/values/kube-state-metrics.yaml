@@ -1,0 +1,2 @@
+# KSM: defaults are right; scraped by the TargetAllocator via ServiceMonitor.
+prometheus: { monitor: { enabled: true } }

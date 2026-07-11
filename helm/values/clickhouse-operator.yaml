@@ -1,0 +1,3 @@
+# Altinity ClickHouse operator (regional only - the warehouse-sink seam default, ADR).
+# The ClickHouseInstallation CR (sized from the curated subset's measured volume) is
+# rendered by the engine, not baked here.

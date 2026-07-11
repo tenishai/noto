@@ -23,26 +23,28 @@ exactly why we pin exact versions and back them with the contract-test layer
 | OTel Collector core / builder (`ocb`) | 1.60.0 (stable) / 0.154.0 (beta train) | n/a | [collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) | ocb + distro binaries ship at tag `v0.154.0`; assembled collector is 0.x. Argus distro manifest: [distro/manifest.yaml](../distro/manifest.yaml), all components at v0.154.0, gomods sourced from the official contrib manifest |
 | Go toolchain (distro build only) | 1.26.5 | [go.dev](https://go.dev/dl/) | verified 2026-07-11 at introduction; hard floor >= 1.26: the 0.154 train's generics hit linker relocation bugs on 1.23/1.25.0 (observed) |
 | OTel Collector Contrib | 0.154.0 | n/a | [contrib releases](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) | same 2-week train, 0.x |
-| OTel Operator | 0.153.0 (app) | 0.115.0 | [otel helm charts](https://github.com/open-telemetry/opentelemetry-helm-charts) | 0.x |
-| Prometheus Operator | 0.91.0 (app) | kube-prometheus-stack 86.2.3 | [prometheus-operator](https://github.com/prometheus-operator/prometheus-operator/releases) | verify standalone tag (0.91.0 vs 0.90.1) before pinning |
+| OTel Operator | 0.154.0 (app) | 0.119.0 | [otel helm charts](https://github.com/open-telemetry/opentelemetry-helm-charts) | re-verified 2026-07-11; same train as the distro |
+| Prometheus Operator | 0.92.1 (app) | kube-prometheus-stack 87.15.1 | [prometheus-operator](https://github.com/prometheus-operator/prometheus-operator/releases) | re-verified 2026-07-11 via chart; Grafana/Prometheus subcharts disabled (helm/values) |
 
 ## Backends
 
 | Component | Version | Helm chart | Source | Notes |
 |---|---|---|---|---|
-| Grafana Mimir | 3.1.1 | mimir-distributed 6.1.0 | [mimir releases](https://github.com/grafana/mimir/releases) | pin stable, not `-weekly` dev tags |
-| Grafana Loki | 3.7.2 | loki 17.4.4 | [loki releases](https://github.com/grafana/loki/releases) | OSS chart **moved to `grafana-community/helm-charts`** (~2026-03); old `grafana/loki` ended at 6.55.0. Confirm chart appVersion at pin time |
-| Grafana Tempo | 2.10.7 | tempo-distributed 2.25.2 | [tempo releases](https://github.com/grafana/tempo/releases) | chart also **moved to `grafana-community/helm-charts`** |
-| Perses (visualization) | 0.53.1 | ~0.21.x (verify) | [perses releases](https://github.com/perses/perses/releases) | **0.x, breaking changes between minors - pin tightly.** Charts at `perses/helm-charts` (`https://perses.github.io/helm-charts`); confirm exact chart tag at pin time |
+| Grafana Mimir | 3.1.2 | mimir-distributed 6.1.0 | [mimir releases](https://github.com/grafana/mimir/releases) | re-verified 2026-07-11 (chart 6.1.0 carries app 3.1.2) |
+| Grafana Loki | 3.7.3 | loki 18.4.4 (grafana-community) | [loki releases](https://github.com/grafana/loki/releases) | re-verified 2026-07-11; SingleBinary mode for solo |
+| Grafana Tempo | 2.10.7 | tempo 2.2.3 (grafana-community, monolithic) | [tempo releases](https://github.com/grafana/tempo/releases) | re-verified 2026-07-11; tempo-distributed when regional scale demands |
+| Perses (visualization) | 0.53.1 | 0.22.0 (perses/helm-charts) | [perses releases](https://github.com/perses/perses/releases) | re-verified 2026-07-11; chart 0.22.0 carries exactly the spike-verified app v0.53.1 |
 | Alertmanager | 0.33.0 | ships in kube-prometheus-stack | [alertmanager releases](https://github.com/prometheus/alertmanager/releases) | 0.x |
 
 ## Cluster scrape sources & bootstrap
 
 | Component | Version | Helm chart | Source | Notes |
 |---|---|---|---|---|
-| kube-state-metrics | 2.19.0 | 7.4.1 (subchart in k-p-s) | [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics/releases) | verify standalone app + chart versions at pin time |
-| prometheus node-exporter | 1.11.1 | prometheus-node-exporter 4.55.0 | [node_exporter](https://github.com/prometheus/node_exporter/releases) | standalone chart may be higher than the k-p-s subchart |
-| cert-manager | 1.20.2 | v1.20.2 (chart = app) | [cert-manager](https://github.com/cert-manager/cert-manager/releases) | 1.0+, stable. OCI: `oci://quay.io/jetstack/charts/cert-manager:v1.20.2` |
+| kube-state-metrics | 2.19.1 | 7.8.1 (standalone) | [kube-state-metrics](https://github.com/kubernetes/kube-state-metrics/releases) | re-verified 2026-07-11; k-p-s subchart disabled |
+| prometheus node-exporter | 1.12.0 | prometheus-node-exporter 4.56.0 (standalone) | [node_exporter](https://github.com/prometheus/node_exporter/releases) | re-verified 2026-07-11; k-p-s subchart disabled |
+| cert-manager | 1.21.0 | v1.21.0 (chart = app) | [cert-manager](https://github.com/cert-manager/cert-manager/releases) | re-verified 2026-07-11 at pin time |
+| Redpanda (queue, regional) | 26.1.12 | redpanda 26.1.8 | [redpanda charts](https://charts.redpanda.com) | verified 2026-07-11 at introduction; single broker in dev/qa, sized from measured egress |
+| Altinity clickhouse-operator (warehouse, regional) | 0.27.1 | 0.27.1 | [altinity charts](https://helm.altinity.com) | verified 2026-07-11 at introduction; CHI CRs rendered by the engine |
 
 ## Cloud / infrastructure
 
@@ -87,10 +89,7 @@ reproducible runs we pin to a dated image (e.g. `ubuntu-24.04`); not required to
 
 ## Verify-before-pinning checklist
 
-Confirm these at the moment we author the pins, since the research left them uncertain:
-
-- [ ] Prometheus Operator standalone tag (0.91.0 vs 0.90.1).
-- [ ] kube-state-metrics standalone app + chart versions.
-- [ ] Loki / Tempo chart appVersions under `grafana-community/helm-charts` (and update any reference to
-      the old `grafana/helm-charts` repo).
-- [ ] Perses Helm chart exact tag.
+Resolved 2026-07-11 with the helm/pins.yaml authoring (issue #22): every chart above was verified
+against the live repos and `helm template`-validated with our values (`make validate-helm`). The
+single source of truth for chart pins is [helm/pins.yaml](../helm/pins.yaml); this file records the
+same pins for human reference.

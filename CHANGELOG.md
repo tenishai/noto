@@ -8,6 +8,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **Helm pins + values** (issue #22): [helm/pins.yaml](helm/pins.yaml) - the machine-readable
+  manifest (repo/chart/exact version/values/topology) the step engine reads - plus per-component
+  values encoding the spike gotchas (Perses plugin mount, Loki OTLP structured metadata + index
+  labels, Tempo metrics-generator ownership, k-p-s reduced to operator CRDs + Alertmanager).
+  Every pin re-verified against the live chart repos on 2026-07-11 (several moved since the June
+  research: Loki chart 18.4.4/app 3.7.3, cert-manager 1.21.0, OTel operator chart 0.119.0 landing
+  exactly on the 0.154.0 train, Perses chart 0.22.0 carrying exactly the spike-verified 0.53.1);
+  Redpanda 26.1.8 and Altinity clickhouse-operator 0.27.1 introduced for the regional topology.
+  New `make validate-helm` + CI job templates every pinned chart with our values - it caught the
+  Loki bucketNames template requirement immediately. versions.md verify-before-pinning checklist
+  resolved; crds/README rewritten to reflect renderer-owned CRDs.
+
+### Added
+
 - **OpenTofu cloud seams, GCP implementations** (issue #21): provider-namespaced modules
   `terraform/modules/object-storage/gcp` (one lifecycle-managed GCS bucket per backend block
   store; retention days are inputs per the scale posture) and `terraform/modules/workload-identity/gcp`

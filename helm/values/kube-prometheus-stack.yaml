@@ -1,0 +1,8 @@
+# We want exactly two things from this chart: the Prometheus Operator CRD machinery
+# (ServiceMonitor/PodMonitor/PrometheusRule) and Alertmanager. Everything else off:
+# scraping is the OTel TargetAllocator's job, visualization is Perses.
+grafana: { enabled: false }
+prometheus: { enabled: false }
+alertmanager: { enabled: true }
+nodeExporter: { enabled: false }     # installed standalone (pins.yaml)
+kubeStateMetrics: { enabled: false } # installed standalone (pins.yaml)
