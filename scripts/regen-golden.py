@@ -32,6 +32,9 @@ from argus.rendering.slo import render_sloth  # noqa: E402
 GOLDEN = REPO / "tests" / "contract" / "golden"
 PROFILES = REPO / "profiles"
 CLASSES = ["web", "worker", "cron", "heavy", "gpu"]
+# Goldens are the HUMAN-review artifact: one representative class, both topologies.
+# All-class coverage lives in the contract invariants (cheap, no churn).
+GOLDEN_CLASSES = ["web"]
 TOPOLOGIES = ["solo", "regional"]
 
 REGIONAL_ENDPOINTS = {
@@ -82,7 +85,7 @@ def render_everything(class_name: str, topology: str) -> dict[str, object]:
 def main() -> None:
     if GOLDEN.exists():
         shutil.rmtree(GOLDEN)
-    for class_name in CLASSES:
+    for class_name in GOLDEN_CLASSES:
         for topology in TOPOLOGIES:
             outdir = GOLDEN / f"{class_name}-{topology}"
             outdir.mkdir(parents=True)

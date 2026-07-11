@@ -26,7 +26,7 @@ pytestmark = pytest.mark.contract
 
 CASES = [
     (class_name, topology)
-    for class_name in regen_golden.CLASSES
+    for class_name in regen_golden.GOLDEN_CLASSES
     for topology in regen_golden.TOPOLOGIES
 ]
 

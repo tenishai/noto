@@ -57,6 +57,25 @@ silently drift.
 - **Why it matters:** these are non-negotiable defaults. A contract test is how "non-negotiable"
   becomes enforceable rather than aspirational.
 
+### 3.5 Real-tool validation (every PR; seconds once the tool cache is warm)
+
+The layer self-referential tests cannot provide: rendered artifacts are judged by the **real
+consumers' own validators**, not by our expectations of them. `make validate` renders the
+representative pair (web-solo, web-regional) and runs:
+
+- `otelcol-contrib validate` over every collector config (the big one: invalid keys, config-schema
+  drift on version bumps, unexpanded env syntax).
+- `sloth generate` over the SLO specs (proves Sloth both accepts them and emits rules).
+- `kubeconform` over the CRDs against published schemas (CRDs-catalog).
+- `percli lint` over the Perses resources.
+
+Binaries are pinned (versions.md) and cached under `.argus/tools/`. On its first run this layer
+caught four real bugs that the then-134 green self-referential tests had passed over. When a pin
+bumps, this layer converts silent config-schema drift into a failing check.
+
+- **Why it matters:** every other pre-cluster layer compares our output to our own expectations;
+  this one asks reality.
+
 ### 4. Integration / smoke (gated, minutes)
 
 The real round-trip, against an ephemeral cluster (e.g. `kind`), gated to run on demand and on release,
@@ -73,6 +92,21 @@ not on every PR.
 
 A `make test` target (added with the first code) runs layers 1-3 locally. Layer 4 has its own target
 and runs in CI on demand and at release. CI wires the same commands so local and CI behavior match.
+
+## The test budget (accretion has a gate)
+
+Tests accrete; value does not automatically accrete with them. Rules of thumb, enforced at review:
+
+- **Every new test names the real failure it prevents** (already the rule above; restated because
+  it is the gate). "It increases coverage" is not a failure mode.
+- **Prefer one validator-backed test over five self-referential ones.** If a behavior can be
+  checked by a real consumer's validator (layer 3.5), that beats asserting our own expectations
+  back at ourselves.
+- **A behavior is asserted in exactly one layer.** If a contract invariant covers it, the unit
+  test restating it is deleted, not kept "for safety."
+- **Golden files are a human-review artifact, not coverage.** One representative class x both
+  topologies; breadth belongs to the invariants. If reviewers start rubber-stamping golden diffs,
+  shrink the goldens further.
 
 ## What we deliberately do not do
 

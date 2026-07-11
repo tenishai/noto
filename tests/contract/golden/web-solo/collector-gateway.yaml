@@ -50,6 +50,7 @@ spec:
         timeout: 30s
     extensions:
       file_storage:
+        create_directory: true
         directory: /var/lib/otelcol/queue
       health_check:
         endpoint: 0.0.0.0:13133

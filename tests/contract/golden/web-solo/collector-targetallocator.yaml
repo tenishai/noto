@@ -38,6 +38,10 @@ spec:
       prometheus:
         config:
           scrape_configs: []
+        target_allocator:
+          collector_id: ${env:POD_NAME}
+          endpoint: http://argus-scraper-targetallocator
+          interval: 30s
     service:
       extensions:
       - health_check

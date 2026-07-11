@@ -6,6 +6,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Testing made sharper, not bigger** (test-value review): new layer 3.5 `make validate` runs
+  rendered artifacts through the REAL consumers' validators - `otelcol-contrib validate`,
+  `sloth generate`, `kubeconform` (CRDs-catalog schemas), `percli lint` - all pinned, cached, and
+  wired into CI. On its first run it caught four real bugs the self-referential suite passed over
+  (invalid kafka `encoding` key, missing TargetAllocator receiver wiring, wrong env-var syntax for
+  `collector_id`, `file_storage` needing `create_directory`), all fixed here. Golden files shrunk
+  from ten class-x-topology directories to the human-reviewable pair (web-solo, web-regional);
+  all-class breadth stays with the contract invariants. Duplicated and trivial tests deleted
+  (behaviors now assert in exactly one layer). testing.md gains the layer 3.5 description and a
+  "test budget" section gating future accretion. New pin: kubeconform 0.8.0 (verified at
+  introduction).
+
 ### Added
 
 - **The core of Argus** (issue #17, per the approved spec and plan): layered observability

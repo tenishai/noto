@@ -13,7 +13,6 @@ spec:
       kafka:
         brokers:
         - redpanda.us-east4.argus.internal:9092
-        encoding: otlp_proto
         protocol_version: 2.6.0
     extensions:
       health_check:

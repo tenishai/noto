@@ -6,13 +6,6 @@ from pydantic import ValidationError
 from argus.profiles.models import SLO, ClassProfile, DropRule, Override
 
 
-def test_drop_rule_roundtrip() -> None:
-    rule = DropRule(name="health-endpoints", stage="agent", path_matches=["/health"])
-    assert rule.name == "health-endpoints"
-    assert rule.stage == "agent"
-    assert rule.enabled is True
-
-
 def test_raw_ottl_requires_justification() -> None:
     with pytest.raises(ValidationError, match="justification"):
         DropRule(name="custom", stage="gateway", raw_ottl={"logs": ['body == "x"']})

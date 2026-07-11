@@ -66,7 +66,12 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 | `pytest` | 9.1.1 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest/releases) | verified 2026-07-09; pinned exact in `pyproject.toml` |
 | `pydantic` | 2.13.4 | [PyPI](https://pypi.org/project/pydantic/) | verified 2026-07-11 at introduction (profile schema); pinned exact |
 | `pyyaml` | 6.0.3 | [PyPI](https://pypi.org/project/PyYAML/) | verified 2026-07-11 at introduction (profile loading / render serialization); pinned exact |
-| Sloth (SLO generator) | 0.16.0 | [slok/sloth](https://github.com/slok/sloth/releases) | verified 2026-07-11; render target `sloth.slok.dev/v1 PrometheusServiceLevel`; binary/chart pinned when the apply path lands |
+| Sloth (SLO generator) | 0.16.0 | [slok/sloth](https://github.com/slok/sloth/releases) | verified 2026-07-11; render target `sloth.slok.dev/v1 PrometheusServiceLevel`; binary used by `make validate` |
+| kubeconform | 0.8.0 | [yannh/kubeconform](https://github.com/yannh/kubeconform/releases) | verified 2026-07-11 at introduction; CRD validation in `make validate` (schemas via CRDs-catalog) |
+
+`make validate` (testing.md layer 3.5) also uses the otelcol-contrib binary at the collector-train
+pin (0.154.0, above) and `percli` at the Perses pin (0.53.1, above) - same versions, no separate
+pins.
 
 ## CI (GitHub Actions)
 

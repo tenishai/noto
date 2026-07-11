@@ -63,11 +63,6 @@ def test_statsd_defined_but_never_wired() -> None:
         assert "statsd" not in pipeline["receivers"]
 
 
-def test_agent_k8sattributes_passthrough() -> None:
-    crd = render_agent(_profile(), _solo())
-    assert config_of(crd)["processors"]["k8sattributes"]["passthrough"] is True
-
-
 def test_gateway_solo_exporters() -> None:
     crd = render_gateway(_profile(), _solo())
     exporters = config_of(crd)["exporters"]
@@ -96,20 +91,6 @@ def test_ingest_regional_routes_to_backends() -> None:
     assert exporters["otlphttp/mimir"]["endpoint"] == "http://mimir.r/otlp"
     assert exporters["otlphttp/mimir"]["headers"]["X-Scope-OrgID"] == "c1"
     assert "kafka" in config_of(crd)["receivers"]
-
-
-def test_every_pipeline_memory_limiter_first_batch_last() -> None:
-    for crd in (
-        render_agent(_profile(), _solo()),
-        render_gateway(_profile(), _solo()),
-        render_gateway(_profile(), _regional()),
-        render_ingest(_profile(), _regional()),
-        render_targetallocator(_profile(), _solo()),
-    ):
-        for name, pipeline in iter_pipelines(crd):
-            procs = pipeline["processors"]
-            assert procs[0] == "memory_limiter", (crd["metadata"]["name"], name)
-            assert procs[-1] == "batch", (crd["metadata"]["name"], name)
 
 
 def test_targetallocator_enabled() -> None:

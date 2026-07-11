@@ -262,7 +262,7 @@ def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
     if solo:
         exporters = _backend_exporters(ctx, queue_storage="file_storage")
         extensions, extension_names = _extensions(
-            {"file_storage": {"directory": "/var/lib/otelcol/queue"}}
+            {"file_storage": {"directory": "/var/lib/otelcol/queue", "create_directory": True}}
         )
     else:
         assert ctx.endpoints is not None
@@ -270,7 +270,6 @@ def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
             "kafka": {
                 "brokers": [ctx.endpoints.kafka_bootstrap],
                 "protocol_version": "2.6.0",
-                "encoding": "otlp_proto",
             }
         }
         extensions, extension_names = _extensions()
@@ -306,7 +305,6 @@ def render_ingest(p: ResolvedProfile, ctx: Context) -> dict:
         "kafka": {
             "brokers": [ctx.endpoints.kafka_bootstrap],
             "protocol_version": "2.6.0",
-            "encoding": "otlp_proto",
         }
     }
     processors: dict = {"memory_limiter": MEMORY_LIMITER, "batch": BATCH}
@@ -340,7 +338,14 @@ def render_targetallocator(p: ResolvedProfile, ctx: Context) -> dict:
     }
     receivers = {
         "prometheus": {
-            "config": {"scrape_configs": []}  # populated by the TargetAllocator at runtime
+            "config": {"scrape_configs": []},
+            # The TargetAllocator shards ServiceMonitor/PodMonitor targets across
+            # scraper replicas; this is the canonical operator wiring.
+            "target_allocator": {
+                "endpoint": "http://argus-scraper-targetallocator",
+                "interval": "30s",
+                "collector_id": "${env:POD_NAME}",
+            },
         }
     }
     exporters = {
