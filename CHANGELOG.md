@@ -8,6 +8,16 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **The three Phase 1 skills + the CLI fallback** (issue #23): `agent/skills/argus-platform`,
+  `argus-observe-app` (including the GMP-supersession PR flow), and `argus-pipeline`
+  (profile-owned drop-rule changes only) in the Anthropic skill format, with eval prompts staged
+  in references/ (with/without runs land with the #24 smoke cluster). The `argus` CLI
+  (`render` / `platform` / `observe`) is the daedalus-fallback surface: every flow runs through
+  the step engine + ledger with concrete steps (EnsureNamespace, HelmInstall from pins.yaml,
+  server-side ApplyRendered, ValidateRoundTrip), exercised end to end against a fake runner.
+
+### Added
+
 - **Helm pins + values** (issue #22): [helm/pins.yaml](helm/pins.yaml) - the machine-readable
   manifest (repo/chart/exact version/values/topology) the step engine reads - plus per-component
   values encoding the spike gotchas (Perses plugin mount, Loki OTLP structured metadata + index

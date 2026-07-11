@@ -20,6 +20,9 @@ dev = [
     "ruff==0.15.20",
 ]
 
+[project.scripts]
+argus = "argus.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

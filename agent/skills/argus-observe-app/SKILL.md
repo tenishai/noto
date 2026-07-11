@@ -1,0 +1,43 @@
+---
+name: argus-observe-app
+description: Wire a gojira app into the Argus platform by its workload class - collectors, scrape wiring, dashboards, SLOs, alerts, all rendered from its profile. Use when asked to "observe this app", "add dashboards/SLOs for this service", or after gojira deploys a new app.
+license: AGPL-3.0-or-later
+---
+
+# argus-observe-app
+
+Read the app's `gojira.yaml`, resolve its observability profile (baseline + class +
+optional `observability:` override), render every artifact, and apply them through the
+step engine. Zero hand-written YAML - the class decides what "observed" means.
+
+## Run it
+
+```
+uv run argus observe --gojira <path/to/gojira.yaml> --env <dev|qa|prod> \
+    [--kube-context <ctx>] [--dry-run]
+```
+
+Preview without touching the cluster:
+
+```
+uv run argus render --gojira <path/to/gojira.yaml> --env dev --out .argus/preview
+```
+
+Read the preview when the user asks "what would this app get?" - the YAML is the answer
+(collectors, ServiceMonitor/PodMonitor, Sloth SLOs, Perses dashboards, alert packs).
+
+## The contract
+
+- The workload class in gojira.yaml selects the profile (web -> HTTP RED + SLOs,
+  worker -> throughput, cron -> job health, heavy/gpu -> USE).
+- The optional `observability:` block overrides per app (enable traces, retention,
+  extra SLOs, disable an inherited rule by name with `enabled: false`).
+- Overrides that raise budgets require a `justification:` - refuse to add one without it.
+
+## GMP supersession (GKE clusters)
+
+gojira-generated apps carry Google Managed Prometheus CRDs. Per design.md, removing them
+means changing the manifest source: open a small PR against the app repo deleting
+`k8s/base/podmonitoring.yaml` and `k8s/base/rules.yaml`, referencing the Argus
+equivalents this skill applied. Never just delete the CRDs in-cluster - gojira's drift
+capture will PR them back.
