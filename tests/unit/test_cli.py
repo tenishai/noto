@@ -107,16 +107,17 @@ def test_cli_render_writes_all_families(tmp_path: Path) -> None:
     names = {p.name for p in out.glob("*.yaml")}
     assert {"collectors.yaml", "scrape.yaml", "alerts.yaml", "perses.yaml", "slo.yaml"} <= names
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
-    assert {d["metadata"]["name"] for d in docs} == {
-        "argus-agent",
-        "argus-gateway",
-        "argus-scraper",
-    }
+    names = {d["metadata"]["name"] for d in docs}
+    assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
+    kinds = {d["kind"] for d in docs}
+    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding"} <= kinds
 
 
 def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    # sloth generation has its own binary-gated test below
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
             "observe",
@@ -131,3 +132,30 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     assert code == 0
     applies = [c for c, _ in runner.calls if "apply" in c]
     assert len(applies) == 4  # collectors, scrape, alerts, slo
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.skipif(
+    not (REPO / ".argus" / "tools" / "sloth-0.16.0").exists(),
+    reason="pinned sloth binary not fetched (run `make validate`)",
+)
+def test_generate_slo_rules_via_real_sloth() -> None:
+    """Sloth-as-generator: our rendered spec in, PrometheusRule out (design decision)."""
+    from argus.profiles.loader import load_baseline, load_class, load_override
+    from argus.profiles.resolve import resolve
+    from argus.rendering.context import Context
+    from argus.rendering.slo import render_sloth
+
+    p = resolve(
+        load_baseline(REPO / "profiles" / "baseline.yaml"),
+        load_class(REPO / "profiles" / "classes" / "web.yaml"),
+        load_override(None),
+    )
+    ctx = Context(topology="solo", cluster="c1", environment="dev", app="web1", namespace="s")
+    doc = render_sloth(p, ctx)
+    assert doc is not None
+    rules = cli._generate_slo_rules(doc, "s")
+    assert rules and rules[0]["kind"] == "PrometheusRule"
+    assert rules[0]["metadata"]["namespace"] == "s"

@@ -1,0 +1,29 @@
+# Layer 4: the Phase 1 DoD gate (testing.md). Gated: on demand and on release,
+# never per-PR (it stands up the full solo platform on kind, ~15 minutes).
+name: smoke
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  solo-dod:
+    name: kind solo platform - definition of done
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: "0.11.28"
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: Fetch pinned tools (sloth for SLO generation)
+        run: bash -c 'source /dev/stdin <<< "$(sed -n "/^fetch/,/^$/p" scripts/validate-rendered.sh)" 2>/dev/null || true; make validate || true'
+      - name: Run the smoke test
+        run: make smoke

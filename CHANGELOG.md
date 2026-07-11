@@ -8,6 +8,33 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **Phase 1 definition of done: MET** (issue #24). The kind smoke test
+  (`make smoke` / tests/smoke/) takes an empty cluster through `argus platform` (step engine, 9
+  pinned components) and `argus observe` on a real gojira-shaped app (podinfo, traces opted in via
+  the `observability:` block - exercising the override path), then asserts through the Perses
+  proxies: default dashboard present, Sloth-generated SLO rules applied, a real metric, real logs,
+  and a real trace from the app. All five assertions pass; dashboard screenshot committed
+  (tests/smoke/dod-dashboard.png). Gated smoke workflow added (workflow_dispatch + release).
+
+### Fixed (smoke-found, each now encoded in renderers/values)
+
+- Agent collector needs `KUBE_NODE_NAME` via the downward API (k8sattributes node filter).
+- Solo gateway file_storage queue needs a writable emptyDir (non-root, read-only rootfs).
+- TargetAllocator: rendered ServiceAccount + ClusterRole/Binding (operator does not create them for
+  a user-supplied SA), explicit select-all ServiceMonitor/PodMonitor selectors (defaults select
+  nothing), and secrets read for its prometheus-CR watcher.
+- k8sattributes RBAC ClusterRole bound to the operator-created collector SAs (the enablement
+  guide's "RBAC required", made concrete).
+- Mimir: query-scheduler cannot be disabled (frontend/querier still dial it; queries hang) - solo
+  values keep one replica. Perses: plugins extract to the writable data volume
+  (readOnlyRootFilesystem blocks /etc/perses/plugins - the spike gotcha, chart edition).
+- Default dashboard and SLO queries now use Prometheus-client conventions
+  (`http_requests_total{status=...}`, `http_request_duration_seconds_*`) - what gojira-contract
+  apps actually expose; the OTel-semconv names were verified wrong against a live app.
+- podinfo-class apps: OTLP gRPC goes to :4317 (Go SDK default protocol).
+
+### Added
+
 - **The three Phase 1 skills + the CLI fallback** (issue #23): `agent/skills/argus-platform`,
   `argus-observe-app` (including the GMP-supersession PR flow), and `argus-pipeline`
   (profile-owned drop-rule changes only) in the Anthropic skill format, with eval prompts staged

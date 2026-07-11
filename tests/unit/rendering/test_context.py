@@ -13,9 +13,9 @@ def test_tenant_defaults_to_cluster() -> None:
 
 def test_solo_endpoint_defaults() -> None:
     ctx = Context(topology="solo", cluster="c1", environment="dev")
-    assert ctx.endpoints.mimir_otlp_http == "http://mimir.argus.svc:9009/otlp"
-    assert ctx.endpoints.loki_otlp_http == "http://loki.argus.svc:3100/otlp"
-    assert ctx.endpoints.tempo_otlp_grpc == "tempo.argus.svc:4317"
+    assert ctx.endpoints.mimir_otlp_http == "http://argus-mimir-gateway.argus.svc:80/otlp"
+    assert ctx.endpoints.loki_otlp_http == "http://argus-loki.argus.svc:3100/otlp"
+    assert ctx.endpoints.tempo_otlp_grpc == "argus-tempo.argus.svc:4317"
     assert ctx.endpoints.kafka_bootstrap is None
 
 

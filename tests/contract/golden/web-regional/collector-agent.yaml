@@ -90,4 +90,9 @@ spec:
           - batch
           receivers:
           - otlp
+  env:
+  - name: KUBE_NODE_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
   mode: daemonset

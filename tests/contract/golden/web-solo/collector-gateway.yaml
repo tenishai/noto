@@ -12,7 +12,7 @@ spec:
     exporters:
       otlp/tempo:
         compression: zstd
-        endpoint: tempo.argus.svc:4317
+        endpoint: argus-tempo.argus.svc:4317
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -26,7 +26,7 @@ spec:
           insecure: true
       otlphttp/loki:
         compression: zstd
-        endpoint: http://loki.argus.svc:3100/otlp
+        endpoint: http://argus-loki.argus.svc:3100/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -38,7 +38,7 @@ spec:
         timeout: 30s
       otlphttp/mimir:
         compression: zstd
-        endpoint: http://mimir.argus.svc:9009/otlp
+        endpoint: http://argus-mimir-gateway.argus.svc:80/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -158,3 +158,9 @@ spec:
           receivers:
           - prometheus/self
   mode: deployment
+  volumeMounts:
+  - mountPath: /var/lib/otelcol
+    name: queue
+  volumes:
+  - emptyDir: {}
+    name: queue

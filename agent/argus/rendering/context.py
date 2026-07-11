@@ -9,10 +9,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
+# The helm-chart service names (helm/pins.yaml releases are named argus-<component>).
 SOLO_DEFAULTS = {
-    "mimir_otlp_http": "http://mimir.argus.svc:9009/otlp",
-    "loki_otlp_http": "http://loki.argus.svc:3100/otlp",
-    "tempo_otlp_grpc": "tempo.argus.svc:4317",
+    "mimir_otlp_http": "http://argus-mimir-gateway.argus.svc:80/otlp",
+    "loki_otlp_http": "http://argus-loki.argus.svc:3100/otlp",
+    "tempo_otlp_grpc": "argus-tempo.argus.svc:4317",
 }
 
 

@@ -6,8 +6,29 @@ mimir:
     multitenancy_enabled: true   # tenant per cluster, stamped by the collector tier
     limits:
       max_global_series_per_user: 1000000   # overridden per deployment from profile budgets
+    ingester:
+      ring: { replication_factor: 1 }       # solo: single-node backends (topology decision)
 # Solo sizing tier: smallest sane footprint; regional deployments override.
+# Solo sizing: one replica of everything, zone awareness off. Regional overrides scale out.
+ingester:
+  replicas: 1
+  zoneAwareReplication: { enabled: false }
+store_gateway:
+  replicas: 1
+  zoneAwareReplication: { enabled: false }
+distributor: { replicas: 1 }
+querier: { replicas: 1 }
+query_frontend: { replicas: 1 }
+# NOTE: frontend/querier dial the scheduler even when disabled (chart coupling,
+# smoke-found: queries hang forever without it). Keep it on.
+query_scheduler: { replicas: 1 }
+compactor: { replicas: 1 }
+overrides_exporter: { enabled: false }
+ruler: { enabled: false }
+rollout_operator: { enabled: false }
 alertmanager: { enabled: false }   # Alertmanager comes from kube-prometheus-stack
-minio: { enabled: false }
+# Solo topology: in-cluster object storage (the topology decision: single-node
+# backends, no cloud deps). Production/regional overrides to GCS via seam outputs.
+minio: { enabled: true }
 nginx: { enabled: false }
 gateway: { enabledNonEnterprise: true }

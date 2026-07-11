@@ -30,5 +30,4 @@ regen-golden:
 	uv run python scripts/regen-golden.py
 
 smoke:
-	@echo "Layer 4 (kind smoke test) lands with issue #24 - the Phase 1 DoD gate."
-	@exit 1
+	bash tests/smoke/run-smoke.sh

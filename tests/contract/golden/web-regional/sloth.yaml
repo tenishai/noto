@@ -25,10 +25,9 @@ spec:
     objective: 99.9
     sli:
       events:
-        errorQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-          k8s_namespace_name="sample", status_code=~"5.."}[{{.window}}]))
-        totalQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-          k8s_namespace_name="sample"}[{{.window}}]))
+        errorQuery: sum(rate(http_requests_total{job="sample-web", namespace="sample",
+          status=~"5.."}[{{.window}}]))
+        totalQuery: sum(rate(http_requests_total{job="sample-web", namespace="sample"}[{{.window}}]))
   - alerting:
       name: ArgusSLO-sample-web-latency-p99-500ms
       pageAlert:
@@ -42,8 +41,8 @@ spec:
     objective: 99.0
     sli:
       events:
-        errorQuery: (sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-          k8s_namespace_name="sample"}[{{.window}}])) - sum(rate(http_server_request_duration_seconds_bucket{job="sample-web",
-          k8s_namespace_name="sample", le="0.5"}[{{.window}}])))
-        totalQuery: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-          k8s_namespace_name="sample"}[{{.window}}]))
+        errorQuery: (sum(rate(http_request_duration_seconds_count{job="sample-web",
+          namespace="sample"}[{{.window}}])) - sum(rate(http_request_duration_seconds_bucket{job="sample-web",
+          namespace="sample", le="0.5"}[{{.window}}])))
+        totalQuery: sum(rate(http_request_duration_seconds_count{job="sample-web",
+          namespace="sample"}[{{.window}}]))

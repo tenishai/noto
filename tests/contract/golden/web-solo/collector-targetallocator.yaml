@@ -62,4 +62,6 @@ spec:
     enabled: true
     prometheusCR:
       enabled: true
+      podMonitorSelector: {}
+      serviceMonitorSelector: {}
     serviceAccount: argus-targetallocator

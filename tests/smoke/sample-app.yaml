@@ -1,0 +1,60 @@
+# podinfo: a real web app with /metrics on the http port and OTel tracing via the
+# standard OTLP env vars - exactly the gojira app contract shape.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sample
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podinfo
+  namespace: sample
+  labels: { app.kubernetes.io/name: podinfo }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: podinfo }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: podinfo }
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.14.0
+          command: ["./podinfo", "--port=9898", "--otel-service-name=podinfo"]
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://argus-agent-collector.argus.svc:4317
+          ports:
+            - { name: http, containerPort: 9898 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: podinfo
+  namespace: sample
+  labels: { app.kubernetes.io/name: podinfo }
+spec:
+  selector: { app.kubernetes.io/name: podinfo }
+  ports:
+    - { name: http, port: 9898, targetPort: http }
+---
+# Synthetic traffic so metrics move and traces exist.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic
+  namespace: sample
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: traffic }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: traffic }
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command: ["/bin/sh", "-c", "while true; do curl -s http://podinfo.sample.svc:9898/ >/dev/null; curl -s http://podinfo.sample.svc:9898/delay/1 >/dev/null; sleep 2; done"]

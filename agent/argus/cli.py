@@ -12,6 +12,7 @@ construction. `--dry-run` threads through to helm/kubectl server-side dry runs.
 import argparse
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -26,6 +27,7 @@ from argus.rendering.collectors import (
     render_agent,
     render_gateway,
     render_targetallocator,
+    render_targetallocator_rbac,
 )
 from argus.rendering.context import Context
 from argus.rendering.perses import render_perses
@@ -71,6 +73,7 @@ def _resolved(class_name: str, override: dict | None):
 def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
     families: dict[str, list[dict]] = {
         "collectors": [
+            *render_targetallocator_rbac(ctx),
             render_agent(p, ctx),
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
@@ -133,12 +136,37 @@ def cmd_platform(args: argparse.Namespace) -> int:
     return 0 if result.completed else 1
 
 
+def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
+    """Sloth is a GENERATOR, not an operator (design decision): spec in,
+    PrometheusRule out. Requires the pinned sloth binary (make validate fetches it)."""
+    sloth_bin = REPO_ROOT / ".argus" / "tools" / "sloth-0.16.0"
+    if not sloth_bin.exists():
+        raise RuntimeError("sloth binary missing; run `make validate` once to fetch pinned tools")
+    with tempfile.TemporaryDirectory() as td:
+        spec = Path(td) / "slo.yaml"
+        out = Path(td) / "rules.yaml"
+        spec.write_text(yaml.safe_dump(sloth_doc))
+        proc = subprocess.run(
+            [str(sloth_bin), "generate", "-i", str(spec), "-o", str(out)],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"sloth generate failed: {proc.stderr[-1000:]}")
+        docs = [d for d in yaml.safe_load_all(out.read_text()) if d]
+    for doc in docs:
+        doc.setdefault("metadata", {})["namespace"] = namespace
+    return docs
+
+
 def cmd_observe(args: argparse.Namespace) -> int:
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
     steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts")]
     if "slo" in rendered:
+        assert ctx.namespace is not None
+        rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
         steps.append(ApplyRendered(family="slo"))
     result = ProvisionEngine(steps).run(ledger, f"wire@{ctx.app}", _step_context(args, rendered))
     _report(result)

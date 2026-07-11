@@ -218,8 +218,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-                    status_code=~"5.."}[5m]))
+                  query: sum(rate(http_requests_total{job="sample-web", status=~"5.."}[5m]))
       metric-latency-p99:
         kind: Panel
         spec:
@@ -234,7 +233,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job="sample-web"}[5m]))
+                  query: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="sample-web"}[5m]))
                     by (le))
       metric-request-rate:
         kind: Panel
@@ -250,7 +249,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: sum(rate(http_server_request_duration_seconds_count{job="sample-web"}[5m]))
+                  query: sum(rate(http_requests_total{job="sample-web"}[5m]))
       traces-slow-requests:
         kind: Panel
         spec:

@@ -2,6 +2,12 @@
 # image's bundled plugin archives and Perses starts with zero plugins.
 # The chart's config handling respects this; do not add extraVolumeMounts at /etc/perses.
 config:
+  plugin:
+    # readOnlyRootFilesystem blocks extraction into /etc/perses/plugins (the spike
+    # gotcha, chart edition - smoke-found). Extract into the writable data volume;
+    # archives stay at the image default /etc/perses/plugins-archive.
+    path: /perses/plugins
+    archive_path: /etc/perses/plugins-archive
   security:
     enable_auth: false           # in-cluster; auth fronted by the platform's ingress later
   database:

@@ -18,17 +18,21 @@ def _duration_to_seconds(value: str) -> float:
 
 
 def _sli(slo: SLO, app: str, namespace: str) -> dict:
-    base = f'{{job="{app}", k8s_namespace_name="{namespace}"}}'
-    total = f"sum(rate(http_server_request_duration_seconds_count{base}[{{{{.window}}}}]))"
+    # Prometheus-client conventions (verified against a live gojira-shaped app in the
+    # smoke run): http_requests_total{status=...} + http_request_duration_seconds_*.
+    base = f'{{job="{app}", namespace="{namespace}"}}'
+    total = f"sum(rate(http_requests_total{base}[{{{{.window}}}}]))"
     if slo.signal == "availability":
-        error_selector = f'{{job="{app}", k8s_namespace_name="{namespace}", status_code=~"5.."}}'
-        error = f"sum(rate(http_server_request_duration_seconds_count{error_selector}[{{{{.window}}}}]))"  # noqa: E501
+        error_selector = f'{{job="{app}", namespace="{namespace}", status=~"5.."}}'
+        error = f"sum(rate(http_requests_total{error_selector}[{{{{.window}}}}]))"
     else:
         seconds = _duration_to_seconds(slo.latency_threshold or "")
         le = f"{seconds:g}"
-        fast_selector = f'{{job="{app}", k8s_namespace_name="{namespace}", le="{le}"}}'
-        fast = f"sum(rate(http_server_request_duration_seconds_bucket{fast_selector}[{{{{.window}}}}]))"  # noqa: E501
-        error = f"({total} - {fast})"
+        fast_selector = f'{{job="{app}", namespace="{namespace}", le="{le}"}}'
+        duration_total = f"sum(rate(http_request_duration_seconds_count{base}[{{{{.window}}}}]))"
+        fast = f"sum(rate(http_request_duration_seconds_bucket{fast_selector}[{{{{.window}}}}]))"
+        error = f"({duration_total} - {fast})"
+        return {"events": {"errorQuery": error, "totalQuery": duration_total}}
     return {"events": {"errorQuery": error, "totalQuery": total}}
 
 

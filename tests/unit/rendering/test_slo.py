@@ -44,7 +44,7 @@ def test_availability_slo_query() -> None:
     assert doc["spec"]["service"] == "clips"
     slo = doc["spec"]["slos"][0]
     assert slo["objective"] == 99.9
-    assert 'status_code=~"5.."' in slo["sli"]["events"]["errorQuery"]
+    assert 'status=~"5.."' in slo["sli"]["events"]["errorQuery"]
     assert "ArgusSLO" in slo["alerting"]["name"]
 
 

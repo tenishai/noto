@@ -18,7 +18,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://mimir.argus.svc:9009/prometheus
+            url: http://argus-mimir-gateway.argus.svc:80/prometheus
 - kind: Datasource
   metadata:
     name: loki
@@ -33,7 +33,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://loki.argus.svc:3100
+            url: http://argus-loki.argus.svc:3100
 - kind: Datasource
   metadata:
     name: tempo
@@ -48,7 +48,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://tempo.argus.svc:3200
+            url: http://argus-tempo.argus.svc:3200
 - kind: Dashboard
   metadata:
     name: cluster-baseline
@@ -218,8 +218,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: sum(rate(http_server_request_duration_seconds_count{job="sample-web",
-                    status_code=~"5.."}[5m]))
+                  query: sum(rate(http_requests_total{job="sample-web", status=~"5.."}[5m]))
       metric-latency-p99:
         kind: Panel
         spec:
@@ -234,7 +233,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job="sample-web"}[5m]))
+                  query: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="sample-web"}[5m]))
                     by (le))
       metric-request-rate:
         kind: Panel
@@ -250,7 +249,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: sum(rate(http_server_request_duration_seconds_count{job="sample-web"}[5m]))
+                  query: sum(rate(http_requests_total{job="sample-web"}[5m]))
       traces-slow-requests:
         kind: Panel
         spec:

@@ -199,7 +199,13 @@ def render_agent(p: ResolvedProfile, ctx: Context) -> dict:
         "extensions": extensions,
         "service": {"extensions": extension_names, "pipelines": pipelines},
     }
-    return _crd("agent", "daemonset", ctx, config)
+    spec_extra = {
+        # k8sattributes node scoping reads this (crashes without it - smoke-found).
+        "env": [
+            {"name": "KUBE_NODE_NAME", "valueFrom": {"fieldRef": {"fieldPath": "spec.nodeName"}}}
+        ]
+    }
+    return _crd("agent", "daemonset", ctx, config, spec_extra)
 
 
 def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
@@ -264,6 +270,13 @@ def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
         extensions, extension_names = _extensions(
             {"file_storage": {"directory": "/var/lib/otelcol/queue", "create_directory": True}}
         )
+        # The collector container is non-root with a read-only rootfs: the durable
+        # sending queue needs a writable volume (smoke-found). Solo uses emptyDir
+        # (survives container restarts within the pod); regional gateways get PVCs.
+        gateway_spec_extra = {
+            "volumes": [{"name": "queue", "emptyDir": {}}],
+            "volumeMounts": [{"name": "queue", "mountPath": "/var/lib/otelcol"}],
+        }
     else:
         assert ctx.endpoints is not None
         exporters = {
@@ -273,6 +286,7 @@ def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
             }
         }
         extensions, extension_names = _extensions()
+        gateway_spec_extra = None
 
     def _exporter_for(signal: str) -> list[str]:
         return [_SIGNAL_EXPORTER[signal]] if solo else ["kafka"]
@@ -291,7 +305,7 @@ def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:
         "extensions": extensions,
         "service": {"extensions": extension_names, "pipelines": pipelines},
     }
-    return _crd("gateway", "deployment", ctx, config)
+    return _crd("gateway", "deployment", ctx, config, gateway_spec_extra)
 
 
 def render_ingest(p: ResolvedProfile, ctx: Context) -> dict:
@@ -368,7 +382,112 @@ def render_targetallocator(p: ResolvedProfile, ctx: Context) -> dict:
         "targetAllocator": {
             "enabled": True,
             "serviceAccount": "argus-targetallocator",
-            "prometheusCR": {"enabled": True},
+            "prometheusCR": {
+                "enabled": True,
+                # Explicit select-all: without these the operator selects nothing
+                # (smoke-found). Argus-managed monitors are the only ones present.
+                "serviceMonitorSelector": {},
+                "podMonitorSelector": {},
+            },
         }
     }
     return _crd("scraper", "statefulset", ctx, config, spec_extra)
+
+
+def render_targetallocator_rbac(ctx: Context) -> list[dict]:
+    """RBAC the operator does NOT create (smoke-found): the TargetAllocator's SA (reads
+    ServiceMonitors/PodMonitors and discovers targets cluster-wide) and the k8sattributes
+    ClusterRole for the gateway collector's operator-created SA (pod/namespace metadata
+    enrichment - the enablement guide's "RBAC required" made concrete)."""
+    name = "argus-targetallocator"
+    k8sattributes = [
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": "argus-k8sattributes"},
+            "rules": [
+                {
+                    "apiGroups": [""],
+                    "resources": ["pods", "namespaces", "nodes"],
+                    "verbs": ["get", "list", "watch"],
+                },
+                {
+                    "apiGroups": ["apps"],
+                    "resources": ["replicasets", "deployments", "statefulsets", "daemonsets"],
+                    "verbs": ["get", "list", "watch"],
+                },
+            ],
+        },
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRoleBinding",
+            "metadata": {"name": "argus-k8sattributes"},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": "argus-k8sattributes",
+            },
+            "subjects": [
+                # Operator-created collector SAs (<collector-name>-collector).
+                {"kind": "ServiceAccount", "name": "argus-gateway-collector", "namespace": "argus"},
+                {"kind": "ServiceAccount", "name": "argus-agent-collector", "namespace": "argus"},
+                {"kind": "ServiceAccount", "name": "argus-ingest-collector", "namespace": "argus"},
+            ],
+        },
+    ]
+    return [
+        *k8sattributes,
+        {
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {"name": name, "namespace": "argus"},
+        },
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRole",
+            "metadata": {"name": name},
+            "rules": [
+                {
+                    "apiGroups": ["monitoring.coreos.com"],
+                    "resources": ["servicemonitors", "podmonitors", "scrapeconfigs", "probes"],
+                    "verbs": ["get", "list", "watch"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": [
+                        "nodes",
+                        "nodes/metrics",
+                        "services",
+                        "endpoints",
+                        "pods",
+                        "namespaces",
+                        "configmaps",
+                        "secrets",
+                    ],
+                    "verbs": ["get", "list", "watch"],
+                },
+                {
+                    "apiGroups": ["discovery.k8s.io"],
+                    "resources": ["endpointslices"],
+                    "verbs": ["get", "list", "watch"],
+                },
+                {
+                    "apiGroups": ["networking.k8s.io"],
+                    "resources": ["ingresses"],
+                    "verbs": ["get", "list", "watch"],
+                },
+                {"nonResourceURLs": ["/metrics"], "verbs": ["get"]},
+            ],
+        },
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1",
+            "kind": "ClusterRoleBinding",
+            "metadata": {"name": name},
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "ClusterRole",
+                "name": name,
+            },
+            "subjects": [{"kind": "ServiceAccount", "name": name, "namespace": "argus"}],
+        },
+    ]

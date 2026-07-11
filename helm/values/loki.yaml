@@ -4,15 +4,15 @@ deploymentMode: SingleBinary
 loki:
   auth_enabled: true             # tenant per cluster
   storage:
-    # Placeholders so the chart templates/validates; the engine overrides these at
-    # apply time from the object-storage seam outputs (terraform/modules).
-    bucketNames: { chunks: argus-loki-chunks-PLACEHOLDER, ruler: argus-loki-ruler-PLACEHOLDER, admin: argus-loki-admin-PLACEHOLDER }
+    # Solo topology default: filesystem (single-node backends, no cloud deps).
+    # Production/regional: the engine overrides type + bucketNames from seam outputs.
+    type: filesystem
   commonConfig: { replication_factor: 1 }
   schemaConfig:
     configs:
       - from: "2026-01-01"
         store: tsdb
-        object_store: gcs        # engine overrides per cloud seam
+        object_store: filesystem # solo default; engine overrides per cloud seam
         schema: v13
         index: { prefix: index_, period: 24h }
   limits_config:

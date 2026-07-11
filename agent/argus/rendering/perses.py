@@ -17,10 +17,12 @@ _PANEL_PLUGINS = {
 
 # Default PromQL per known metric panel name; unknown names fall back to a placeholder
 # that dashboards-as-code reviewers see immediately in the golden diff.
+# Prometheus-client conventions - what gojira-contract apps (promhttp on :8080/metrics)
+# actually expose; verified against a live app in the smoke run (semconv names were wrong).
 _METRIC_QUERIES = {
-    "request-rate": 'sum(rate(http_server_request_duration_seconds_count{job="%s"}[5m]))',
-    "error-rate": 'sum(rate(http_server_request_duration_seconds_count{job="%s", status_code=~"5.."}[5m]))',  # noqa: E501
-    "latency-p99": 'histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job="%s"}[5m])) by (le))',  # noqa: E501
+    "request-rate": 'sum(rate(http_requests_total{job="%s"}[5m]))',
+    "error-rate": 'sum(rate(http_requests_total{job="%s", status=~"5.."}[5m]))',
+    "latency-p99": 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="%s"}[5m])) by (le))',  # noqa: E501
 }
 
 

@@ -1,0 +1,9 @@
+# The smoke test's gojira-shaped sample app (podinfo: real /metrics + OTLP traces).
+app: podinfo
+class: web
+environments:
+  - name: dev
+    cluster: argus-smoke
+    namespace: sample
+observability:
+  traces: true    # web class is traces-opt-in; the DoD needs a trace - exercises the override path
