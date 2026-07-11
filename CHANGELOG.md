@@ -6,6 +6,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Step engine + SQLite ledger** (issue #18): the idempotent, resumable
+  `check() -> apply() -> record` engine ported from gojira's proven provisioner shape, scope-aware
+  via `target_ref` (region work shared across clusters, cluster/app work independent). Stdlib
+  sqlite3 with WAL; `provision_steps` (one row per step per target_ref) + append-only `events`;
+  ephemeral steps re-check every run; failures halt, record, and resume exactly where they
+  stopped. Deterministic tests via injectable clock.
+
 ### Changed
 
 - **Testing made sharper, not bigger** (test-value review): new layer 3.5 `make validate` runs
