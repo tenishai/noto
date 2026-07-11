@@ -1,0 +1,52 @@
+# Builds the Argus collector distribution with ocb and validates the rendered
+# configs against the RESULTING binary - proving the manifest's component set is
+# sufficient for everything the renderers emit. Path-filtered: runs only when the
+# distro, the renderers, or this workflow change.
+name: distro
+
+on:
+  pull_request:
+    paths:
+      - "distro/**"
+      - "agent/argus/rendering/**"
+      - ".github/workflows/distro.yml"
+  push:
+    branches: [main]
+    paths:
+      - "distro/**"
+      - "agent/argus/rendering/**"
+      - ".github/workflows/distro.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-validate:
+    name: ocb build + validate against own binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5" # pinned; 0.154's generics need >= 1.26 linker (docs/versions.md)
+          cache-dependency-path: distro/manifest.yaml
+      - uses: astral-sh/setup-uv@v8.3.2
+        with:
+          version: "0.11.28"
+      - name: Fetch pinned ocb
+        run: |
+          curl -sSfL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.154.0/ocb_0.154.0_linux_amd64" -o /usr/local/bin/ocb
+          chmod +x /usr/local/bin/ocb
+          ocb version
+      - name: Build the distro
+        run: cd distro && ocb --config manifest.yaml
+      - name: Validate rendered configs against the built binary
+        env:
+          KUBE_NODE_NAME: validation-node
+          POD_NAME: validation-pod
+        run: |
+          uv run python scripts/render-for-validation.py .argus/rendered
+          for cfg in .argus/rendered/otelcol/*.yaml; do
+            ./distro/_build/argus-otelcol validate --config="$cfg"
+            echo "ok: $(basename "$cfg")"
+          done

@@ -20,7 +20,8 @@ exactly why we pin exact versions and back them with the contract-test layer
 
 | Component | Version | Helm chart | Source | Notes |
 |---|---|---|---|---|
-| OTel Collector core / builder (`ocb`) | 1.60.0 (stable) / 0.154.0 (beta train) | n/a | [collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) | ocb + distro binaries ship at tag `v0.154.0`; assembled collector is 0.x |
+| OTel Collector core / builder (`ocb`) | 1.60.0 (stable) / 0.154.0 (beta train) | n/a | [collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) | ocb + distro binaries ship at tag `v0.154.0`; assembled collector is 0.x. Argus distro manifest: [distro/manifest.yaml](../distro/manifest.yaml), all components at v0.154.0, gomods sourced from the official contrib manifest |
+| Go toolchain (distro build only) | 1.26.5 | [go.dev](https://go.dev/dl/) | verified 2026-07-11 at introduction; hard floor >= 1.26: the 0.154 train's generics hit linker relocation bugs on 1.23/1.25.0 (observed) |
 | OTel Collector Contrib | 0.154.0 | n/a | [contrib releases](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) | same 2-week train, 0.x |
 | OTel Operator | 0.153.0 (app) | 0.115.0 | [otel helm charts](https://github.com/open-telemetry/opentelemetry-helm-charts) | 0.x |
 | Prometheus Operator | 0.91.0 (app) | kube-prometheus-stack 86.2.3 | [prometheus-operator](https://github.com/prometheus-operator/prometheus-operator/releases) | verify standalone tag (0.91.0 vs 0.90.1) before pinning |

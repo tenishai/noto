@@ -8,6 +8,19 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **The Argus collector distribution** (issue #20): [distro/manifest.yaml](distro/manifest.yaml) -
+  core + the exact contrib components the renderers emit, all pinned to the v0.154.0 train with
+  gomod lines sourced from the official otelcol-contrib manifest at the same tag. Built locally
+  with pinned ocb 0.154.0 and validated: all 7 rendered collector configs pass
+  `argus-otelcol validate` against our own binary. New CI workflow (path-filtered on distro/ and
+  the renderers) rebuilds and re-validates on change. Go toolchain pinned 1.26.5 (0.154's generics
+  hit linker bugs on older Go - observed on 1.23/1.25.0). Span-metrics ownership decided:
+  Tempo metrics-generator owns (spike-verified); the spanmetrics connector ships unwired as the
+  fallback. resourceprocessor added to the component set (the renderers emit resource/default;
+  the issue's original list missed it - caught by validating against our own binary).
+
+### Added
+
 - **gojira-reader** (issue #19): parses the real gojira.yaml contract (app, class, per-environment
   cluster/namespace bindings, optional schedule and overrides) with fixtures copied from gojira's
   own golden tests so the two repos cannot drift silently. Required-field failures are loud
