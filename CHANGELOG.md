@@ -8,6 +8,22 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **Design spec for profiles + renderers + contract tests** (issue #17), approved and committed at
+  [docs/superpowers/specs/2026-07-11-profiles-renderers-design.md](docs/superpowers/specs/2026-07-11-profiles-renderers-design.md):
+  layered composition (baseline + class + override), structured filter rules with a justified
+  `raw_ottl` escape hatch, ephemeral renders with golden files as the only persisted output, typed
+  models -> `yaml.dump` renderers (no Jinja2 for these artifacts), and the invariant list the
+  contract tests enforce.
+
+### Changed
+
+- **SLO generator decided: Sloth** (with the #17 design) - pure spec-in/rules-out generator fits the
+  renderer pipeline; Pyrra (operator + UI) recorded as the alternative. Closes the open question.
+- **Fluent Bit and Telegraf recorded as rejected alternatives**: one telemetry substrate per node
+  stands (OTel filelog has ample headroom at fleet volume; the bypassed GKE logging agent is itself
+  Fluent Bit). Revisit trigger recorded: measured filelog underperformance, with
+  Fluent-Bit-to-OTLP-gateway as the clean fallback. Telegraf overlaps existing scrape/OTLP paths.
+
 - **Python scaffold** (issue #16, the first code PR): `pyproject.toml` (package `argus` under
   `agent/`, hatchling, CPython 3.14.6 via `.python-version`), uv-managed env with committed
   lockfile, ruff lint+format, pytest with the unit and contract layers wired, `make test` running

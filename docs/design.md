@@ -74,7 +74,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Traces backend | **Tempo** | Object-storage, cheap, OTLP-native, exemplar links to metrics |
 | Visualization | **Perses** | CNCF, Apache-2.0, dashboards-as-code (native CRD/GitOps); one pane over Mimir/Loki/Tempo (and Pyroscope later). Fits Argus's agent-first, declarative, "no hand-authored dashboards" model far better than Grafana's JSON blobs |
 | Alerting | **Alertmanager** (+ `PrometheusRule` CRDs) | Standard Prometheus alerting path; rules are declarative CRDs, not UI-authored |
-| SLO generation | **Sloth or Pyrra** (evaluation pending, see open questions) - profiles render an SLO *spec*, the generator emits the multiwindow-multiburn recording rules and alerts | Burn-rate math is easy to get subtly wrong by hand; both are OSS and emit standard `PrometheusRule` output. We do not hand-roll SLO rules |
+| SLO generation | **Sloth** (decided 2026-07-11 with the #17 design) - profiles carry a tool-neutral `slos:` block, the renderer emits Sloth specs, Sloth emits the multiwindow-multiburn recording rules and alerts | Pure generator fits the renderer pipeline (spec in, `PrometheusRule` out, nothing to operate); burn-rate math is not something we own. Pyrra (operator + UI) is the recorded alternative |
 | Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry |
 | Collection topology | **Agent (DaemonSet) + Gateway (Deployment) + TargetAllocator (StatefulSet)** | The recommended architecture from the enablement guide |
 | **Apply model** | **Direct apply via cloud CLI / SDK / Helm** through an idempotent step engine | **No third-party GitOps (no ArgoCD/Flux).** Argus provisions directly, like gojira shells to gcloud/gh/kubectl |
@@ -116,7 +116,15 @@ group-bys become the workload), (2) Perses ships a ClickHouse TraceQuery plugin,
 observer/forecaster agents need arbitrary SQL over wide events beyond the warehouse subset. Note
 ClickHouse does enter the stack earlier as the default warehouse-sink implementation - see
 [transport-and-routing.md](transport-and-routing.md). **Hand-rolled SLO
-rules** - see the SLO generation decision.
+rules** - see the SLO generation decision. **Fluent Bit as the log shipper** (reviewed 2026-07-11) -
+excellent and battle-tested, but it would be a second telemetry runtime per node with a second
+config language outside the profile/contract-test guarantee, and at fleet volume (~2.2K logs/sec
+total, [target-fleet.md](target-fleet.md)) the OTel `filelog` receiver has ample headroom. Note the
+GKE Cloud Logging agent we bypass *is* Fluent Bit, so the bypass removes one rather than missing
+one. Revisit trigger: measured filelog underperformance (memory/throughput) on real nodes - the
+clean fallback is Fluent Bit tailing to OTLP into the same gateway, disturbing nothing downstream.
+**Telegraf** - a metrics agent overlapping the Prometheus-scrape and OTLP paths we already have,
+Influx-centric plugin ecosystem, nothing for logs/traces; no gap it fills here.
 
 ---
 
@@ -591,10 +599,6 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 - **Exemplar / cross-signal click-through in Perses UI** - carried from the spike; verify with a
   real SDK app emitting exemplars during Phase 1 content work. Mitigation already proven:
   co-located correlated panels per dashboard.
-- **Sloth vs Pyrra** for SLO generation (half-day evaluation): Sloth is a pure generator (SLO spec
-  in, `PrometheusRule` out - fits the renderer pipeline cleanly); Pyrra ships an operator and UI.
-  Leaning Sloth for the generator shape; verify latest stable and record in versions.md when
-  introduced.
 - **Repo name:** `argus` - confirm before scaffolding (note: name collision with the historical
   argus network-monitoring project; acceptable within the org namespace).
 - **CI host + WIF/OIDC path** to GCP (reuse gojira's).
