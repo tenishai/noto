@@ -6,6 +6,8 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-11
+
 ### Added
 
 - **Phase 1 definition of done: MET** (issue #24). The kind smoke test
