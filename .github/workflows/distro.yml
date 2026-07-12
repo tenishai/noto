@@ -45,6 +45,11 @@ jobs:
           KUBE_NODE_NAME: validation-node
           POD_NAME: validation-pod
         run: |
+          sudo mkdir -p /var/run/secrets/kubernetes.io/serviceaccount
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out /tmp/ca.crt -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
+          sudo cp /tmp/ca.crt /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          echo placeholder | sudo tee /var/run/secrets/kubernetes.io/serviceaccount/token >/dev/null
+          sudo chmod -R a+rX /var/run/secrets
           uv run python scripts/render-for-validation.py .argus/rendered
           for cfg in .argus/rendered/otelcol/*.yaml; do
             ./distro/_build/argus-otelcol validate --config="$cfg"

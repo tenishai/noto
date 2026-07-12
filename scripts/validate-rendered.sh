@@ -63,7 +63,28 @@ uv run python "$REPO/scripts/render-for-validation.py" "$RENDERED"
 echo "==> otelcol validate ($(ls "$RENDERED/otelcol" | wc -l | tr -d ' ') configs)"
 export KUBE_NODE_NAME=validation-node
 export POD_NAME=validation-pod
+# kubeletstats (serviceAccount auth) reads the in-cluster SA cert at config-build
+# time. Create the expected files when we can (Linux CI: sudo works); otherwise the
+# agent configs are validated in CI and live in the smoke test - skip LOUDLY here.
+SA_DIR=/var/run/secrets/kubernetes.io/serviceaccount
+SKIP_AGENT=0
+if [ ! -f "$SA_DIR/ca.crt" ]; then
+  PLACEHOLDER_CERT=$(mktemp)
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out "$PLACEHOLDER_CERT" \
+    -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
+  if sudo -n mkdir -p "$SA_DIR" 2>/dev/null && sudo -n cp "$PLACEHOLDER_CERT" "$SA_DIR/ca.crt" 2>/dev/null && sudo -n tee "$SA_DIR/token" >/dev/null 2>&1 <<<"validation-placeholder" && sudo -n chmod -R a+rX /var/run/secrets 2>/dev/null; then
+    echo "    (created placeholder in-cluster SA files for kubeletstats validation)"
+  else
+    SKIP_AGENT=1
+    echo "    WARNING: cannot create $SA_DIR (no passwordless sudo) - agent configs"
+    echo "    SKIPPED locally; they are fully validated in CI (linux) and live in smoke."
+  fi
+fi
 for cfg in "$RENDERED"/otelcol/*.yaml; do
+  if [ "$SKIP_AGENT" = "1" ] && [[ "$(basename "$cfg")" == *-agent.yaml ]]; then
+    echo "    SKIPPED (local, no SA files): $(basename "$cfg")"
+    continue
+  fi
   "$OTELCOL" validate --config="$cfg"
   echo "    ok: $(basename "$cfg")"
 done

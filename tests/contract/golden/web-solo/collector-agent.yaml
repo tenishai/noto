@@ -53,6 +53,22 @@ spec:
         include_file_path: true
         operators:
         - type: container
+      hostmetrics:
+        collection_interval: 60s
+        scrapers:
+          cpu: {}
+          filesystem: {}
+          load: {}
+          memory: {}
+      kubeletstats:
+        auth_type: serviceAccount
+        collection_interval: 30s
+        endpoint: https://${env:KUBE_NODE_NAME}:10250
+        insecure_skip_verify: true
+        metric_groups:
+        - pod
+        - container
+        - node
       otlp:
         protocols:
           grpc:
@@ -90,6 +106,8 @@ spec:
           - batch
           receivers:
           - otlp
+          - kubeletstats
+          - hostmetrics
   env:
   - name: KUBE_NODE_NAME
     valueFrom:

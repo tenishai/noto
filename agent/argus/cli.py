@@ -1,15 +1,18 @@
 """The thin Argus CLI - the daedalus-bundle fallback surface (design decision).
 
-Three flows, mirroring the Phase 1 skills:
+Flows:
   argus render    profile + gojira.yaml -> artifacts on disk (no cluster touched)
   argus platform  stand up the solo platform on the current kube context
   argus observe   wire one gojira app into the platform
+  argus feedback  distill usage evidence from Mimir -> POST to gojira (rightsizing)
 
 Everything runs through the step engine and its ledger; re-runs are safe by
 construction. `--dry-run` threads through to helm/kubectl server-side dry runs.
 """
 
 import argparse
+import datetime
+import os
 import subprocess
 import sys
 import tempfile
@@ -173,6 +176,47 @@ def cmd_observe(args: argparse.Namespace) -> int:
     return 0 if result.completed else 1
 
 
+def cmd_feedback(args: argparse.Namespace) -> int:
+    from argus.feedback.distill import distill_resource, to_cpu_quantity, to_mem_quantity
+    from argus.feedback.gojira_client import post_profile
+    from argus.feedback.mimir import MimirClient, collect
+    from argus.feedback.models import UsageProfile
+
+    spec = read_gojira_yaml(Path(args.gojira))
+    env = spec.environment(args.env)
+    client = MimirClient(base_url=args.mimir_url, tenant=env.cluster)
+    raw = collect(client, spec.app, env.namespace, args.window_days)
+
+    profile = UsageProfile(
+        app=spec.app,
+        environment=args.env,
+        cluster=env.cluster,
+        window_days=args.window_days,
+        samples=len(raw["cpu_samples"]),
+        cpu=distill_resource(
+            raw["cpu_samples"], raw["cpu_request"], raw["cpu_limit"], to_cpu_quantity
+        ),
+        memory=distill_resource(
+            raw["memory_samples"], raw["memory_request"], raw["memory_limit"], to_mem_quantity
+        ),
+        restarts=raw["restarts"],
+        oom_kills=raw["oom_kills"],
+        reported_by=f"argus/{env.cluster}",
+        reported_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    print(profile.serialize())
+    if args.dry_run:
+        print("dry-run: nothing posted", file=sys.stderr)
+        return 0
+    token = os.environ.get("GOJIRA_USAGE_TOKEN")
+    if not token:
+        print("GOJIRA_USAGE_TOKEN not set (never a flag - process lists leak)", file=sys.stderr)
+        return 2
+    profile_id = post_profile(args.gojira_url, token, profile)
+    print(f"posted: gojira usage profile id {profile_id}", file=sys.stderr)
+    return 0
+
+
 def _report(result) -> None:
     for name in result.steps_skipped:
         print(f"  skipped  {name}")
@@ -209,6 +253,17 @@ def main(argv: list[str] | None = None) -> int:
     p_observe = sub.add_parser("observe", help="wire a gojira app into the platform")
     common(p_observe, needs_app=True)
     p_observe.set_defaults(func=cmd_observe)
+
+    p_feedback = sub.add_parser("feedback", help="usage evidence from Mimir -> gojira rightsizing")
+    common(p_feedback, needs_app=True)
+    p_feedback.add_argument("--window-days", type=int, default=14)
+    p_feedback.add_argument(
+        "--mimir-url",
+        default="http://localhost:9009/prometheus",
+        help="Mimir Prometheus API base (port-forward the gateway in solo)",
+    )
+    p_feedback.add_argument("--gojira-url", default="http://localhost:8080")
+    p_feedback.set_defaults(func=cmd_feedback)
 
     args = parser.parse_args(argv)
     Path(args.ledger).parent.mkdir(parents=True, exist_ok=True)

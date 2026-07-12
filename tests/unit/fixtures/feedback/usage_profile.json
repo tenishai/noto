@@ -1,0 +1,27 @@
+{
+  "app": "clips-api",
+  "environment": "prod",
+  "cluster": "my-prod-cluster",
+  "window_days": 14,
+  "samples": 20160,
+  "cpu": {
+    "request": "250m",
+    "limit": "500m",
+    "p50": "180m",
+    "p95": "760m",
+    "p99": "820m",
+    "max": "1100m"
+  },
+  "memory": {
+    "request": "256Mi",
+    "limit": "512Mi",
+    "p50": "210Mi",
+    "p95": "300Mi",
+    "p99": "340Mi",
+    "max": "402Mi"
+  },
+  "restarts": 0,
+  "oom_kills": 0,
+  "reported_by": "gojira-sizing-agent/my-prod-cluster",
+  "reported_at": "2026-07-06T12:00:00Z"
+}

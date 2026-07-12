@@ -6,6 +6,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The gojira rightsizing feedback loop** (Phase 2, issue #42): `argus feedback` distills an
+  app's usage from Mimir (per-pod cpu/memory percentiles via kubeletstats, declared
+  requests/limits + restarts/OOM via kube-state-metrics) into gojira's `UsageProfile` and POSTs it
+  to `/api/v1/usage` (Bearer token from `GOJIRA_USAGE_TOKEN`, never a flag). The wire contract is
+  locked by gojira's own cross-repo golden fixture, asserted byte-identical in both repos exactly
+  as gojira's docstring prescribes. `--dry-run` prints the evidence and posts nothing.
+- **Agent now collects host + pod usage telemetry**: kubeletstats + hostmetrics receivers wired
+  into the metrics pipeline (a design-stated duty the smoke run revealed missing), with
+  nodes/stats+proxy RBAC rendered, and Mimir values gain `promote_otel_resource_attributes` so
+  k8s labels are queryable on the OTLP path. Live verification of the kubeletstats-as-stored
+  names rides the next `make smoke` run (stated, not assumed).
+
 ## [0.1.0] - 2026-07-11
 
 ### Added

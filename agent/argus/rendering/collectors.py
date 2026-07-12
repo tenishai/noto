@@ -157,6 +157,20 @@ def render_agent(p: ResolvedProfile, ctx: Context) -> dict:
         # CAN be caught by an explicit pipeline change; wired into no default pipeline.
         "statsd": {"endpoint": "0.0.0.0:8125"},
     }
+    if "metrics" in p.signals:
+        # Host + pod usage telemetry (design.md: the agent's node-level duty).
+        # kubeletstats feeds the rightsizing feedback loop (container cpu/memory usage).
+        receivers["kubeletstats"] = {
+            "collection_interval": "30s",
+            "auth_type": "serviceAccount",
+            "endpoint": "https://${env:KUBE_NODE_NAME}:10250",
+            "insecure_skip_verify": True,
+            "metric_groups": ["pod", "container", "node"],
+        }
+        receivers["hostmetrics"] = {
+            "collection_interval": "60s",
+            "scrapers": {"cpu": {}, "memory": {}, "filesystem": {}, "load": {}},
+        }
     if "logs" in p.signals and p.log_collection == "filelog":
         receivers["filelog"] = {
             "include": ["/var/log/pods/*/*/*.log"],
@@ -188,7 +202,12 @@ def render_agent(p: ResolvedProfile, ctx: Context) -> dict:
 
     pipelines: dict = {}
     for signal in p.signals:
-        pipeline_receivers = ["otlp", "filelog"] if signal == "logs" else ["otlp"]
+        if signal == "logs":
+            pipeline_receivers = ["otlp", "filelog"]
+        elif signal == "metrics":
+            pipeline_receivers = ["otlp", "kubeletstats", "hostmetrics"]
+        else:
+            pipeline_receivers = ["otlp"]
         pipelines[signal] = _pipeline(pipeline_receivers, middle, ["otlp/gateway"])
 
     extensions, extension_names = _extensions()
@@ -410,6 +429,11 @@ def render_targetallocator_rbac(ctx: Context) -> list[dict]:
                     "apiGroups": [""],
                     "resources": ["pods", "namespaces", "nodes"],
                     "verbs": ["get", "list", "watch"],
+                },
+                {
+                    "apiGroups": [""],
+                    "resources": ["nodes/stats", "nodes/proxy"],
+                    "verbs": ["get"],
                 },
                 {
                     "apiGroups": ["apps"],
