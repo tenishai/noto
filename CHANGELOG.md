@@ -6,6 +6,25 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **argus-integrations: declarative autodiscovery** (issue #43): `integrations/<name>/integration.yaml`
+  (match labels/port + receiver template, pydantic-validated, duplicate names rejected) renders
+  into `receiver_creator` + `k8s_observer` on the agent. Two seed integrations ship (redis, nginx).
+  Rules target "port" endpoints - live-verified: pod.container endpoints carry no port and the
+  sub-receiver fails ("missing port in address"). Distro gains receivercreator, k8sobserver,
+  redisreceiver, nginxreceiver (all v0.154.0). Live acceptance in the smoke suite: a redis pod
+  with only the `argus.dev/integration: redis` label lights up with zero config -
+  `redis_clients_connected` queryable in Mimir with full k8s labels.
+- **Cardinality budgets, enforced soft** (issue #44): the profile budget becomes Mimir's
+  `max_global_series_per_user` at platform time (`argus platform --env`); budget-burn alerts
+  (80% ticket / exceeded page) join the alert pack; `argus cardinality --tenant` prints top metric
+  names by series count (Mimir cardinality API; `cardinality_analysis_enabled` in values).
+- **The ruler, and rules that actually evaluate** (design gap found during #44): nothing evaluated
+  our PrometheusRules (no Prometheus runs; Mimir's ruler was disabled). Mimir ruler enabled;
+  `argus rules-sync` pushes every rendered group (alert packs + Sloth SLO output) to the ruler API
+  per tenant. Live-verified: 9 groups synced and evaluating, asserted in the smoke DoD.
+
 ### Changed
 
 - **Feedback-loop queries corrected to live-verified names** (against a running smoke cluster):

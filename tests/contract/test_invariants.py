@@ -233,3 +233,25 @@ def test_self_scrape_pipeline_on_gateway(class_name: str) -> None:
     ext = config_of(gateway)["extensions"]
     assert ext["health_check"]["endpoint"].endswith(":13133")
     assert "zpages" in ext and "pprof" in ext
+
+
+@pytest.mark.parametrize("class_name", CLASSES)
+def test_integrations_autodiscovery_wired(class_name: str) -> None:
+    """The shipped catalog renders into every agent: k8s_observer + receiver_creator
+    in the metrics pipeline, with the exact contract rule strings."""
+    from argus.integrations.catalog import load_catalog
+    from argus.rendering.collectors import render_agent
+
+    catalog = load_catalog(REPO / "integrations")
+    agent = render_agent(_profile(class_name), _ctx("solo", class_name), catalog=catalog)
+    cfg = config_of(agent)
+    assert "k8s_observer" in cfg["extensions"]
+    assert "k8s_observer" in cfg["service"]["extensions"]
+    creator = cfg["receivers"]["receiver_creator"]
+    assert creator["watch_observers"] == ["k8s_observer"]
+    assert (
+        'pod.labels["argus.dev/integration"] == "redis"'
+        in (creator["receivers"]["redis/argus-redis"]["rule"])
+    )
+    pipelines = dict(iter_pipelines(agent))
+    assert "receiver_creator" in pipelines["metrics"]["receivers"]

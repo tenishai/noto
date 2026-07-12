@@ -15,6 +15,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "agent"))
 
+from argus.integrations.catalog import load_catalog  # noqa: E402
 from argus.profiles.loader import load_baseline, load_class, load_override  # noqa: E402
 from argus.profiles.resolve import resolve  # noqa: E402
 from argus.rendering.alerts import render_alert_rules  # noqa: E402
@@ -66,7 +67,7 @@ def render_everything(class_name: str, topology: str) -> dict[str, object]:
     ctx = fixture_context(topology, class_name)
 
     artifacts: dict[str, object] = {
-        "collector-agent": render_agent(p, ctx),
+        "collector-agent": render_agent(p, ctx, catalog=load_catalog(REPO / "integrations")),
         "collector-gateway": render_gateway(p, ctx),
         "collector-targetallocator": render_targetallocator(p, ctx),
         "servicemonitor": render_servicemonitor(p, ctx),

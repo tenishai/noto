@@ -12,6 +12,8 @@ inputs - scale flows from profiles and Context (scale-posture decision).
 
 from typing import Literal
 
+from argus.integrations.catalog import Integration
+from argus.integrations.render import render_receiver_creator
 from argus.profiles.models import ResolvedProfile
 from argus.rendering.context import Context
 from argus.rendering.ottl import CompiledFilter, compile_rules
@@ -143,7 +145,9 @@ def _extensions(extra: dict | None = None) -> tuple[dict, list[str]]:
     return ext, list(ext)
 
 
-def render_agent(p: ResolvedProfile, ctx: Context) -> dict:
+def render_agent(
+    p: ResolvedProfile, ctx: Context, catalog: list[Integration] | None = None
+) -> dict:
     compiled = compile_rules(_rules_without_strip(p), "agent")
 
     receivers: dict = {
@@ -200,17 +204,28 @@ def render_agent(p: ResolvedProfile, ctx: Context) -> dict:
         }
     }
 
+    extra_extensions: dict = {}
+    creator_wired = False
+    if catalog and "metrics" in p.signals:
+        # argus-integrations autodiscovery: labeled pods light up with zero config.
+        creator, observer = render_receiver_creator(catalog)
+        receivers["receiver_creator"] = creator
+        extra_extensions["k8s_observer"] = observer
+        creator_wired = True
+
     pipelines: dict = {}
     for signal in p.signals:
         if signal == "logs":
             pipeline_receivers = ["otlp", "filelog"]
         elif signal == "metrics":
             pipeline_receivers = ["otlp", "kubeletstats", "hostmetrics"]
+            if creator_wired:
+                pipeline_receivers.append("receiver_creator")
         else:
             pipeline_receivers = ["otlp"]
         pipelines[signal] = _pipeline(pipeline_receivers, middle, ["otlp/gateway"])
 
-    extensions, extension_names = _extensions()
+    extensions, extension_names = _extensions(extra_extensions or None)
     config = {
         "receivers": receivers,
         "processors": processors,

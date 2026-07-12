@@ -34,6 +34,23 @@ spec:
       for: 5m
       labels:
         severity: page
+  - name: argus-cardinality
+    rules:
+    - alert: ArgusCardinalityBudget80
+      annotations:
+        summary: Tenant series count past 80% of the 1000000 budget (profile budgets.cardinality)
+      expr: sum(cortex_ingester_active_series) > 800000
+      for: 15m
+      labels:
+        severity: ticket
+    - alert: ArgusCardinalityBudgetExceeded
+      annotations:
+        summary: Tenant series count EXCEEDS the 1000000 budget - find offenders with
+          `argus cardinality`
+      expr: sum(cortex_ingester_active_series) > 1000000
+      for: 5m
+      labels:
+        severity: page
   - name: argus-app-sample-web
     rules:
     - alert: ArgusScrapeDown

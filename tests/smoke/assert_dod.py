@@ -60,6 +60,20 @@ def dashboard_present() -> bool:
     return any(d["metadata"]["name"] == "web-red" for d in data)
 
 
+def ruler_evaluating() -> bool:
+    """#44: the ruler holds and evaluates our synced groups (SLOs + budget alerts)."""
+    data = get(f"{PROXY}/mimir/api/v1/rules")
+    groups = [g for grp in data["data"]["groups"] for g in [grp["name"]]]
+    return "argus-cardinality" in groups and any("sloth" in g or "slo" in g for g in groups)
+
+
+def redis_autodiscovered() -> bool:
+    """#43 acceptance: the labeled redis pod's metrics appear with zero config."""
+    q = urllib.parse.quote('redis_clients_connected{k8s_namespace_name="sample"}')
+    data = get(f"{PROXY}/mimir/api/v1/query?query={q}")
+    return bool(data["data"]["result"])
+
+
 def slo_rules_present() -> bool:
     out = subprocess.run(
         [
@@ -86,6 +100,8 @@ def main() -> None:
     poll("real metric from the app via Perses->Mimir", metric_from_app)
     poll("real logs via Perses->Loki", logs_flowing)
     poll("real trace from the app via Perses->Tempo", trace_from_app)
+    poll("redis autodiscovered via integration label (zero config)", redis_autodiscovered)
+    poll("ruler evaluating synced groups (SLO + cardinality budget)", ruler_evaluating)
     print("definition of done: MET")
 
 

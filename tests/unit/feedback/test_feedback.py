@@ -12,6 +12,7 @@ from argus.feedback.gojira_client import GojiraPostError, post_profile
 from argus.feedback.models import ResourceUsage, UsageProfile
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "feedback"
+REPO = Path(__file__).parents[3]
 
 
 def _golden_profile() -> UsageProfile:
@@ -126,3 +127,51 @@ def test_cli_feedback_dry_run(tmp_path, monkeypatch, capsys) -> None:
     assert profile["app"] == "clips-api"
     assert profile["cpu"]["max"] == "1100m"
     assert profile["reported_by"] == "argus/dev-cluster"
+
+
+def test_ruler_sync_pushes_groups() -> None:
+    from argus.feedback.ruler import sync_rules
+
+    calls = []
+
+    def fake_http(url, data, headers):
+        calls.append((url, data, headers))
+        return 202, ""
+
+    docs = [
+        {
+            "kind": "PrometheusRule",
+            "spec": {
+                "groups": [
+                    {"name": "g1", "rules": [{"alert": "A", "expr": "up == 0"}]},
+                    {"name": "g2", "rules": [{"record": "r", "expr": "1"}]},
+                ]
+            },
+        },
+        {"kind": "SomethingElse"},
+    ]
+    n = sync_rules("http://mimir/prometheus", "t1", "podinfo", docs, http=fake_http)
+    assert n == 2
+    url, data, headers = calls[0]
+    assert url == "http://mimir/prometheus/config/v1/rules/podinfo"
+    assert headers["X-Scope-OrgID"] == "t1"
+    assert b"name: g1" in data
+
+
+def test_cardinality_budget_alerts_render() -> None:
+    from argus.profiles.loader import load_baseline, load_class, load_override
+    from argus.profiles.resolve import resolve
+    from argus.rendering.alerts import render_alert_rules
+    from argus.rendering.context import Context
+
+    p = resolve(
+        load_baseline(REPO / "profiles" / "baseline.yaml"),
+        load_class(REPO / "profiles" / "classes" / "web.yaml"),
+        load_override(None),
+    )
+    ctx = Context(topology="solo", cluster="c1", environment="prod", app="a", namespace="n")
+    doc = render_alert_rules(p, ctx)
+    card = next(g for g in doc["spec"]["groups"] if g["name"] == "argus-cardinality")
+    exprs = {r["alert"]: r["expr"] for r in card["rules"]}
+    assert exprs["ArgusCardinalityBudgetExceeded"] == "sum(cortex_ingester_active_series) > 1000000"
+    assert exprs["ArgusCardinalityBudget80"] == "sum(cortex_ingester_active_series) > 800000"

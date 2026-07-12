@@ -61,3 +61,29 @@ spec:
         - name: curl
           image: curlimages/curl:8.11.1
           command: ["/bin/sh", "-c", "while true; do curl -s http://podinfo.sample.svc:9898/ >/dev/null; curl -s http://podinfo.sample.svc:9898/delay/1 >/dev/null; sleep 2; done"]
+---
+# Autodiscovery acceptance (issue #43): a redis pod with only the integration label -
+# no ServiceMonitor, no config - must light up via receiver_creator + k8s_observer.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: sample
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: redis }
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        argus.dev/integration: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7.4.2-alpine
+          ports:
+            - { name: redis, containerPort: 6379 }
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { cpu: 100m, memory: 64Mi }

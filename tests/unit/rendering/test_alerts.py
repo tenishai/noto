@@ -24,12 +24,12 @@ def test_groups() -> None:
     doc = _doc()
     assert doc["kind"] == "PrometheusRule"
     names = [g["name"] for g in doc["spec"]["groups"]]
-    assert names == ["argus-collector-health", "argus-app-clips"]
+    assert names == ["argus-collector-health", "argus-cardinality", "argus-app-clips"]
 
 
 def test_scrape_down_expr() -> None:
     doc = _doc()
-    app_group = doc["spec"]["groups"][1]
+    app_group = doc["spec"]["groups"][2]
     scrape_down = next(r for r in app_group["rules"] if r["alert"] == "ArgusScrapeDown")
     assert scrape_down["expr"] == 'up{job="clips"} == 0'
     assert scrape_down["for"] == "5m"

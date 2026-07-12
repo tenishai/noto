@@ -40,6 +40,17 @@ for i in $(seq 1 30); do
 done
 uv run python "$REPO/tests/smoke/provision_perses.py" "$REPO/.argus/smoke-rendered/perses.yaml"
 
+step "rules-sync (Mimir ruler, tenant-scoped) + cardinality report"
+kubectl --context "$CTX" -n argus port-forward svc/argus-mimir-gateway 9009:80 >/dev/null 2>&1 &
+PF_MIMIR=$!
+for i in $(seq 1 15); do
+  curl -sf -m 2 -H "X-Scope-OrgID: argus-smoke" http://localhost:9009/prometheus/api/v1/labels >/dev/null 2>&1 && break
+  sleep 2
+done
+uv run argus rules-sync --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
+  --mimir-url http://localhost:9009/prometheus --ledger "$LEDGER"
+uv run argus cardinality --tenant argus-smoke --mimir-url http://localhost:9009/prometheus --limit 8
+
 step "wait for telemetry, then assert the DoD through the Perses proxy"
 uv run python "$REPO/tests/smoke/assert_dod.py"
 kill $PF_PERSES 2>/dev/null || true

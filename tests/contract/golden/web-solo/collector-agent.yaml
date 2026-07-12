@@ -18,6 +18,10 @@ spec:
     extensions:
       health_check:
         endpoint: 0.0.0.0:13133
+      k8s_observer:
+        auth_type: serviceAccount
+        observe_pods: true
+        observe_services: false
       pprof: {}
       zpages: {}
     processors:
@@ -75,6 +79,22 @@ spec:
             endpoint: 0.0.0.0:4317
           http:
             endpoint: 0.0.0.0:4318
+      receiver_creator:
+        receivers:
+          nginx/argus-nginx:
+            config:
+              collection_interval: 30s
+              endpoint: http://`endpoint`/stub_status
+            rule: type == "port" and (pod.labels["argus.dev/integration"] == "nginx"
+              or port == 80)
+          redis/argus-redis:
+            config:
+              collection_interval: 30s
+              endpoint: '`endpoint`'
+            rule: type == "port" and (pod.labels["argus.dev/integration"] == "redis"
+              or port == 6379)
+        watch_observers:
+        - k8s_observer
       statsd:
         endpoint: 0.0.0.0:8125
     service:
@@ -82,6 +102,7 @@ spec:
       - health_check
       - zpages
       - pprof
+      - k8s_observer
       pipelines:
         logs:
           exporters:
@@ -108,6 +129,7 @@ spec:
           - otlp
           - kubeletstats
           - hostmetrics
+          - receiver_creator
   env:
   - name: KUBE_NODE_NAME
     valueFrom:

@@ -23,6 +23,7 @@ import yaml
 from argus.engine.engine import ProvisionEngine
 from argus.engine.ledger import Ledger
 from argus.gojira.reader import read_gojira_yaml
+from argus.integrations.catalog import load_catalog
 from argus.profiles.loader import load_baseline, load_class, load_override
 from argus.profiles.resolve import resolve
 from argus.rendering.alerts import render_alert_rules
@@ -77,7 +78,7 @@ def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
     families: dict[str, list[dict]] = {
         "collectors": [
             *render_targetallocator_rbac(ctx),
-            render_agent(p, ctx),
+            render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
         ],
@@ -129,9 +130,23 @@ def _step_context(args: argparse.Namespace, rendered: dict | None = None) -> Ste
 
 def cmd_platform(args: argparse.Namespace) -> int:
     ledger = Ledger(Path(args.ledger))
+    baseline = load_baseline(REPO_ROOT / "profiles" / "baseline.yaml")
+    budget = baseline.budgets.cardinality[args.env]
     steps = [
         EnsureNamespace(),
-        *[HelmInstall(component=c) for c in PLATFORM_ORDER],
+        *[
+            HelmInstall(
+                component=c,
+                extra_sets=(
+                    # The profile budget becomes the tenant series limit (soft
+                    # enforcement, issue #44); numbers are inputs, never constants.
+                    {"mimir.structuredConfig.limits.max_global_series_per_user": str(budget)}
+                    if c == "mimir"
+                    else {}
+                ),
+            )
+            for c in PLATFORM_ORDER
+        ],
         ValidateRoundTrip(),
     ]
     result = ProvisionEngine(steps).run(ledger, f"platform@{args.cluster}", _step_context(args))
@@ -217,6 +232,34 @@ def cmd_feedback(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rules_sync(args: argparse.Namespace) -> int:
+    from argus.feedback.ruler import sync_rules
+    from argus.rendering.slo import render_sloth
+
+    p, ctx = _app_context(args)
+    docs = [render_alert_rules(p, ctx)]
+    sloth_doc = render_sloth(p, ctx)
+    if sloth_doc is not None:
+        docs.extend(_generate_slo_rules(sloth_doc, ctx.namespace or "default"))
+    count = sync_rules(args.mimir_url, ctx.tenant, ctx.app or "argus", docs)
+    print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
+    return 0
+
+
+def cmd_cardinality(args: argparse.Namespace) -> int:
+    from argus.feedback.cardinality import top_metric_names
+
+    rows = top_metric_names(args.mimir_url, args.tenant, args.limit)
+    if not rows:
+        print("no series (or cardinality API empty)")
+        return 0
+    width = max(len(name) for name, _ in rows)
+    print(f"top {len(rows)} metric names by series count (tenant {args.tenant}):")
+    for name, count in rows:
+        print(f"  {name:<{width}}  {count}")
+    return 0
+
+
 def _report(result) -> None:
     for name in result.steps_skipped:
         print(f"  skipped  {name}")
@@ -248,11 +291,24 @@ def main(argv: list[str] | None = None) -> int:
     p_platform = sub.add_parser("platform", help="stand up the solo platform")
     common(p_platform, needs_app=False)
     p_platform.add_argument("--cluster", required=True)
+    p_platform.add_argument("--env", default="dev", choices=["dev", "qa", "prod"])
     p_platform.set_defaults(func=cmd_platform)
 
     p_observe = sub.add_parser("observe", help="wire a gojira app into the platform")
     common(p_observe, needs_app=True)
     p_observe.set_defaults(func=cmd_observe)
+
+    p_rules = sub.add_parser("rules-sync", help="push rendered rule groups into Mimir's ruler")
+    common(p_rules, needs_app=True)
+    p_rules.add_argument("--mimir-url", default="http://localhost:9009/prometheus")
+    p_rules.set_defaults(func=cmd_rules_sync)
+
+    p_card = sub.add_parser("cardinality", help="top metric names by series count, per tenant")
+    p_card.add_argument("--ledger", default=".argus/argus.db")
+    p_card.add_argument("--mimir-url", default="http://localhost:9009/prometheus")
+    p_card.add_argument("--tenant", required=True)
+    p_card.add_argument("--limit", type=int, default=15)
+    p_card.set_defaults(func=cmd_cardinality)
 
     p_feedback = sub.add_parser("feedback", help="usage evidence from Mimir -> gojira rightsizing")
     common(p_feedback, needs_app=True)

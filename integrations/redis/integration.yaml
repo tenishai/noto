@@ -1,0 +1,11 @@
+# Redis integration: any pod labeled argus.dev/integration=redis (or exposing 6379)
+# lights up with redis metrics - zero per-app config (the north star).
+name: redis
+match:
+  labels: { argus.dev/integration: redis }
+  port: 6379
+receiver:
+  type: redis
+  config:
+    endpoint: "`endpoint`"          # receiver_creator backtick expansion
+    collection_interval: 30s

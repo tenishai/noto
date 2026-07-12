@@ -40,6 +40,33 @@ _COLLECTOR_HEALTH_RULES = [
 ]
 
 
+def _cardinality_rules(p: ResolvedProfile, ctx: Context) -> list[dict]:
+    budget = p.budgets.cardinality[ctx.environment]
+    total = "sum(cortex_ingester_active_series)"
+    return [
+        {
+            "alert": "ArgusCardinalityBudget80",
+            "expr": f"{total} > {int(budget * 0.8)}",
+            "for": "15m",
+            "labels": {"severity": "ticket"},
+            "annotations": {
+                "summary": f"Tenant series count past 80% of the {budget} budget "
+                "(profile budgets.cardinality)"
+            },
+        },
+        {
+            "alert": "ArgusCardinalityBudgetExceeded",
+            "expr": f"{total} > {budget}",
+            "for": "5m",
+            "labels": {"severity": "page"},
+            "annotations": {
+                "summary": f"Tenant series count EXCEEDS the {budget} budget - "
+                "find offenders with `argus cardinality`"
+            },
+        },
+    ]
+
+
 def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
     if not ctx.app or not ctx.namespace:
         raise ValueError("alert packs are per-app: Context.app and Context.namespace are required")
@@ -54,6 +81,7 @@ def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
         "spec": {
             "groups": [
                 {"name": "argus-collector-health", "rules": list(_COLLECTOR_HEALTH_RULES)},
+                {"name": "argus-cardinality", "rules": _cardinality_rules(p, ctx)},
                 {
                     "name": f"argus-app-{ctx.app}",
                     "rules": [

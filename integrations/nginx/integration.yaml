@@ -1,0 +1,11 @@
+# NGINX integration: pods labeled argus.dev/integration=nginx with the stub_status
+# endpoint exposed on the standard port.
+name: nginx
+match:
+  labels: { argus.dev/integration: nginx }
+  port: 80
+receiver:
+  type: nginx
+  config:
+    endpoint: "http://`endpoint`/stub_status"
+    collection_interval: 30s
