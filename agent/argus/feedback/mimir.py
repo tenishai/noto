@@ -1,10 +1,11 @@
 """Tenant-aware Mimir range queries + the measurement set for one app.
 
-Metric names follow the OTel->Prometheus naming rules for the kubeletstats receiver
-(dots to underscores, unit suffix, _total on monotonic sums) with resource attributes
-promoted to labels via Mimir's promote_otel_resource_attributes (helm values). The
-declared request/limit and restart/OOM counts come from kube-state-metrics via the
-scrape path. Names are live-verified by the smoke run (tests/smoke/), not assumed.
+Metric names LIVE-VERIFIED against a smoke cluster (2026-07-11): Mimir's OTLP ingest
+stores kubeletstats names WITHOUT unit/_total suffixes (k8s_pod_cpu_time,
+k8s_pod_memory_working_set - pod-level, containers already summed), with resource
+attributes promoted to labels via promote_otel_resource_attributes (helm values).
+Declared request/limit and restart/OOM counts come from kube-state-metrics via the
+scrape path.
 """
 
 import json
@@ -72,9 +73,9 @@ def measurements(app: str, namespace: str) -> dict[str, str]:
     sel = app_selector(app, namespace)
     ksm = ksm_selector(app, namespace)
     return {
-        # kubeletstats (OTLP path, promoted labels)
-        "cpu_usage": f"sum by (k8s_pod_name) (rate(container_cpu_time_seconds_total{{{sel}}}[5m]))",
-        "memory_usage": f"sum by (k8s_pod_name) (container_memory_working_set_bytes{{{sel}}})",
+        # kubeletstats via OTLP (live-verified names; pod-level = per-pod sizing basis)
+        "cpu_usage": f"sum by (k8s_pod_name) (rate(k8s_pod_cpu_time{{{sel}}}[5m]))",
+        "memory_usage": f"sum by (k8s_pod_name) (k8s_pod_memory_working_set{{{sel}}})",
         # kube-state-metrics (scrape path)
         "cpu_request": f'max(kube_pod_container_resource_requests{{{ksm}, resource="cpu"}})',
         "cpu_limit": f'max(kube_pod_container_resource_limits{{{ksm}, resource="cpu"}})',

@@ -6,6 +6,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Feedback-loop queries corrected to live-verified names** (against a running smoke cluster):
+  Mimir's OTLP path stores kubeletstats metrics WITHOUT unit/_total suffixes - the real names are
+  `k8s_pod_cpu_time` / `k8s_pod_memory_working_set` (pod-level, containers pre-summed). Mimir's
+  `promote_otel_resource_attributes` limit is a comma-separated string, not a YAML list
+  (fixed in helm values; the list form crashed every Mimir component at config parse). The smoke
+  sample app now declares requests/limits (gojira-shaped apps always do; KSM had no series to
+  report otherwise).
+- **The loop verified end to end, live**: a local gojira (its own venv + seeded dev DB, repo
+  untouched) accepted Argus's evidence (`usage profile id 1`) and immediately computed an open
+  sizing recommendation (cpu 1m->50m, memory 1Mi->64Mi) with a justification quoting our
+  percentiles. Deploy -> observe -> distill -> recommend, across both repos.
+
 ### Added
 
 - **The gojira rightsizing feedback loop** (Phase 2, issue #42): `argus feedback` distills an
