@@ -7,6 +7,7 @@ apply path; the solo topology needs none (in-cluster storage for dev, GCS via th
 example root when a deployment brings a project).
 """
 
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -53,10 +54,17 @@ class EnsureNamespace:
 
 @dataclass
 class HelmInstall:
-    """Install one helm/pins.yaml component at its pinned version with its values file."""
+    """Install one helm/pins.yaml component at its pinned version with its values file.
+
+    Drift-aware (issue #46): a fingerprint of (chart version + values file content +
+    extra_sets) is stored in the helm release description; check() re-verifies it every
+    run (ephemeral), so a pin bump or values edit re-applies instead of ledger-skipping.
+    The fingerprint lives in helm's own state - it survives ledger loss.
+    """
 
     component: str
     tooling: str = "helm"
+    ephemeral: bool = True  # DONE never skips; drift is re-decided against helm state
     extra_sets: dict[str, str] = field(default_factory=dict)  # seam outputs at apply time
 
     @property
@@ -69,11 +77,42 @@ class HelmInstall:
         except KeyError as e:
             raise RuntimeError(f"component {self.component!r} not in helm/pins.yaml") from e
 
-    def check(self, ctx: StepContext) -> str | None:
-        code, _ = ctx.runner(
-            ["helm", "status", f"argus-{self.component}", "--namespace", ctx.namespace], None
+    def fingerprint(self, ctx: StepContext) -> str:
+        pin = self._pin(ctx)
+        values = (ctx.repo_root / "helm" / pin["values"]).read_bytes()
+        material = json.dumps(
+            {
+                "chart": pin["chart"],
+                "version": str(pin["version"]),
+                "values_sha": hashlib.sha256(values).hexdigest(),
+                "sets": dict(sorted(self.extra_sets.items())),
+            },
+            sort_keys=True,
         )
-        return f"helmrelease/argus-{self.component}" if code == 0 else None
+        return "argus-fp:" + hashlib.sha256(material.encode()).hexdigest()[:16]
+
+    def check(self, ctx: StepContext) -> str | None:
+        code, out = ctx.runner(
+            [
+                "helm",
+                "status",
+                f"argus-{self.component}",
+                "--namespace",
+                ctx.namespace,
+                "-o",
+                "json",
+            ],
+            None,
+        )
+        if code != 0:
+            return None  # not installed
+        try:
+            description = json.loads(out).get("info", {}).get("description", "")
+        except json.JSONDecodeError, AttributeError:
+            return None  # unreadable state -> re-apply (idempotent)
+        if description == self.fingerprint(ctx):
+            return f"helmrelease/argus-{self.component}"
+        return None  # installed but drifted -> upgrade
 
     def apply(self, ctx: StepContext) -> str:
         pin = self._pin(ctx)
@@ -93,6 +132,8 @@ class HelmInstall:
             ctx.namespace,
             "--create-namespace",
             "--wait",
+            "--description",
+            self.fingerprint(ctx),
         ]
         for key, value in self.extra_sets.items():
             cmd += ["--set", f"{key}={value}"]

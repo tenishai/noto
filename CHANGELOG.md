@@ -6,6 +6,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **HelmInstall detects values/pin drift** (issue #46 - the gap that cost two manual
+  `helm upgrade` interventions during live work): a fingerprint of (chart version + values file
+  content + extra_sets) is stored in the helm release description and re-verified every run
+  (the step is now ephemeral - ledger DONE never masks drift). Matching fingerprint skips;
+  missing or stale fingerprint upgrades. Lives in helm's own state, so it survives ledger loss.
+  Live-proven: first platform run stamped all nine releases, second run skipped all nine.
+
 ### Added
 
 - **argus-integrations: declarative autodiscovery** (issue #43): `integrations/<name>/integration.yaml`

@@ -4,6 +4,7 @@ The fake runner records every command; assertions check the real command lines t
 steps would execute (pins honored, dry-run threaded, stdin manifests applied).
 """
 
+import json
 from pathlib import Path
 
 import yaml
@@ -18,10 +19,16 @@ REPO = Path(__file__).parents[2]
 
 
 class FakeRunner:
-    def __init__(self, fail_on: str | None = None, missing: bool = True) -> None:
+    def __init__(
+        self,
+        fail_on: str | None = None,
+        missing: bool = True,
+        release_description: str = "",
+    ) -> None:
         self.calls: list[tuple[list[str], str | None]] = []
         self.fail_on = fail_on
         self.missing = missing  # get/status probes report absent
+        self.release_description = release_description  # helm status description when present
 
     def __call__(self, cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
         self.calls.append((cmd, stdin_text))
@@ -30,6 +37,8 @@ class FakeRunner:
             return 1, "boom"
         if self.missing and (" get namespace" in joined or "helm status" in joined):
             return 1, "not found"
+        if "helm status" in joined:
+            return 0, json.dumps({"info": {"description": self.release_description}})
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
 
 
@@ -54,14 +63,48 @@ def test_platform_steps_honor_pins_and_order(tmp_path: Path) -> None:
     assert helm_cmds[1][helm_cmds[1].index("--version") + 1] == "6.1.0"  # mimir pin
 
 
-def test_helm_status_hit_skips_install(tmp_path: Path) -> None:
-    runner = FakeRunner(missing=False)  # status reports the release exists
+def test_helm_matching_fingerprint_skips_install(tmp_path: Path) -> None:
+    step = HelmInstall(component="mimir")
+    probe = FakeRunner()
+    fp = step.fingerprint(_ctx(probe))
+    runner = FakeRunner(missing=False, release_description=fp)
     ledger = Ledger(tmp_path / "l.db")
-    result = ProvisionEngine([HelmInstall(component="mimir")]).run(
-        ledger, "platform@c1", _ctx(runner)
-    )
+    result = ProvisionEngine([step]).run(ledger, "platform@c1", _ctx(runner))
     assert result.steps_skipped == ["helm_mimir"]
     assert not any(c[1] == "upgrade" for c, _ in runner.calls if c[0] == "helm")
+
+
+def test_helm_drift_triggers_upgrade(tmp_path: Path) -> None:
+    """Issue #46: an installed release with a stale fingerprint (values/pin/sets changed)
+    re-applies instead of ledger-skipping - the gap that cost two manual upgrades live."""
+    step = HelmInstall(component="mimir")
+    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    ledger = Ledger(tmp_path / "l.db")
+    result = ProvisionEngine([step]).run(ledger, "platform@c1", _ctx(runner))
+    assert result.steps_run == ["helm_mimir"]
+    upgrade = next(c for c, _ in runner.calls if c[0] == "helm" and c[1] == "upgrade")
+    idx = upgrade.index("--description")
+    assert upgrade[idx + 1].startswith("argus-fp:")
+
+
+def test_helm_rerun_after_values_edit_reapplies(tmp_path: Path) -> None:
+    """Even a DONE ledger row does not mask drift (ephemeral): second engine run with a
+    changed fingerprint upgrades."""
+    step = HelmInstall(component="mimir")
+    probe = FakeRunner()
+    fp = step.fingerprint(_ctx(probe))
+    ledger = Ledger(tmp_path / "l.db")
+    r1 = ProvisionEngine([step]).run(
+        ledger, "platform@c1", _ctx(FakeRunner(missing=False, release_description=fp))
+    )
+    assert r1.steps_skipped == ["helm_mimir"]
+    # simulate a values edit: live release still carries the OLD fingerprint
+    r2 = ProvisionEngine([step]).run(
+        ledger,
+        "platform@c1",
+        _ctx(FakeRunner(missing=False, release_description="argus-fp:oldoldoldoldold1")),
+    )
+    assert r2.steps_run == ["helm_mimir"]
 
 
 def test_apply_rendered_pipes_manifest_via_stdin(tmp_path: Path) -> None:
