@@ -1,75 +1,49 @@
 # Argus - Session Kickoff Prompt
 
 > Paste the block below as your first message to Claude Code when starting work in this repo.
+> Last updated 2026-07-12 (post v0.1.0, mid-Phase-2).
 
 ---
 
-You're working in the **argus** repo. Argus is the **observability arm of gojira** - it takes a gojira
-deployment from zero to a full, end-to-end, 100% open-source observability platform, automatically. It
-is NOT a standalone "gojira of observability"; the input is a gojira deployment and the output is that
-same deployment fully observed.
+You're working in **tenishai/argus** - the observability arm of gojira. Read `CLAUDE.md` first,
+then skim `docs/design.md` (decisions tables + resolved questions are current),
+`docs/transport-and-routing.md`, and `CHANGELOG.md` [Unreleased] for the latest state.
 
-Argus is one body part of a shared, opinionated SRE/agent platform - sibling repos meant to merge into
-one GitHub org, each owning one concern:
-- **gojira** (https://github.com/tenishai/gojira) - deploy platform. PARENT: Argus continues its lifecycle
-  and maps its workload class to an observability profile.
-- **techne** (https://github.com/tenishai/techne) - agentic memory. Argus's SQLite ledger migrates here
-  later (deploy history becomes memory).
-- **limenal** (https://github.com/tenishai/limenal) - MCP gateway. Argus reaches tools through it; Argus
-  ops can be exposed as a limenal handler.
-- **daedalus** (https://github.com/tenishai/daedalus) - agent construction kit. The Argus agent's shell
-  is a daedalus bundle (agent card + persona + wiring); Argus keeps a thin CLI fallback.
-- **ladon** (https://github.com/tenishai/ladon) - secrets on OpenBao. Argus onboards as a ladon team
-  and consumes plain K8s Secrets synced by the External Secrets Operator.
-- **cabal** (https://github.com/tenishai/cabal) - agent orchestration / personas. Argus's agent registers
-  here later as the observability persona.
+**Where the project stands:**
+- **v0.1.0 shipped** - Phase 1 (Observe) complete and live-proven: `argus platform` stands up the
+  solo topology (pinned Helm components via the drift-aware step engine), `argus observe` wires a
+  gojira app by class, and the kind smoke test (`make smoke`, tests/smoke/) asserts a 7-point DoD
+  through the Perses proxies (metric/logs/trace, dashboard, Sloth SLO rules evaluated by the Mimir
+  ruler, redis autodiscovered by label, ruler groups synced).
+- **Phase 2 nearly done**: #42 rightsizing feedback (live-proven against a local gojira - evidence
+  in, open sizing recommendation out), #43 integrations autodiscovery, #44 cardinality budgets +
+  ruler sync, #46 helm drift detection - all merged.
+- **Test layers**: `make test` (lint + unit + contract incl. golden files), `make validate`
+  (rendered artifacts judged by real validators: otelcol/sloth/kubeconform/percli),
+  `make validate-helm` (pinned charts template with our values), `make smoke` (the DoD gate).
+  Golden regeneration is `make regen-golden`, reviewed as a PR diff.
 
-Build Argus self-contained today (own runtime, step engine, SQLite ledger) but composable with these
-later. Do not duplicate what a sibling owns; integrate with it.
+**Open work (check `gh issue list` - it is the source of truth):**
+- **#52 COORDINATION FIRST**: `tenishai/gojira-sizing-agent` (gojira-side, Track C, auto-deployed
+  by gojira) duplicates `argus feedback`'s measuring half - same /api/v1/usage loop, same shared
+  fixture. Decide ownership with Shaz/Rich (options in the issue) BEFORE extending either side.
+  Argus's lean position: adopt their agent as the one producer (it needs an X-Scope-OrgID header
+  option + an "Argus Mimir" query preset), keep `argus feedback --dry-run` as a diagnostic.
+- **#45**: the three Phase 2 skills (argus-slo/dashboard/cardinality) + the deferred live skill
+  evals. **#47**: exemplar click-through verification (oldest open thread, needs an
+  exemplar-emitting sample app). **#53**: Phase 3 candidate - closed-loop telemetry value
+  attribution (Chronosphere-style utility scoring in git; the research is in the issue).
 
-**First, read these in order before doing anything:**
-1. `CLAUDE.md` - repo conventions and the skills you must use
-2. `docs/design.md` - the full design plan (architecture, decisions, deployment model, phased roadmap)
-3. `docs/otel-collector-enablement-guide.md` - the collector patterns and pipeline opinions Argus ships
-   as defaults
-4. `docs/observability-platform-design.md` - the agent topology and "integrations that just work" north
-   star
+**Hard rules that bite:** no em dashes in prose (linted); pin everything + verify latest-stable at
+introduction (versions.md); write to argus (and ladon if asked) ONLY - all other tenishai repos
+are read-only (pull/read/run locally is fine; gojira especially is a coworker's active repo);
+check `make test` exit codes before committing; merges allowed once PR checks are non-empty
+all-pass.
 
-**Hard conventions (from CLAUDE.md):**
-- No em dashes in prose/docs/commits (use spaced hyphens).
-- 100% open source, AGPL-3.0-or-later (the family license), no vendor backend, no phone-home.
-- Agent-first, no web UI as a core surface.
-- gojira-native: gojira's contract/state is the source of truth, don't duplicate it.
-- No third-party GitOps (no ArgoCD/Flux). Apply directly via cloud CLI / SDK / Helm + Operator CRDs
-  through an idempotent step engine.
-- Pin everything (ocb components, Helm charts, OpenTofu providers).
-- README style mirrors the OpenTelemetry Collector README.
+**Family integration mechanisms to USE, not reinvent** (verified 2026-07-12): techne v0.9
+deposit-and-drain for the ledger-to-memory migration; requirements-sources.txt git-tag pinning
+when depending on techne/limenal; daedalus's published canonical bundle schema for the agent
+shell; limenal capability-card scope maps for the future argus handler.
 
-**The stack we target:** OTel Collector (custom `ocb` distro) for collection - Agent (DaemonSet) +
-Gateway (Deployment) + TargetAllocator (StatefulSet) - into Mimir (metrics), Loki (logs), Tempo
-(traces), with Perses for visualization and Alertmanager for alerting; cluster sources
-kube-state-metrics + node-exporter + kubelet/cAdvisor.
-The opinion is **observability profiles mapped from gojira workload class** (web->HTTP RED, worker->queue,
-cron->job health, heavy->USE, gpu->accelerator). Decisions: per-cluster self-hosted backends, SQLite
-ledger now (techne later), self-contained agent in this repo, GKE/GCP first.
-
-**Skills loaded - use them:**
-- `skill-creator` - author/eval Argus's own skills in `agent/skills/`
-- `doc-coauthoring` - any doc/spec/ADR work
-- `claude-api` - any agent code that calls the Claude API
-- `mcp-builder` - any MCP server (incl. the Phase-4 flight-recorder)
-- `webapp-testing`, `frontend-design`, `web-artifacts-builder`, `web-design-guidelines` (Vercel,
-  project-local) - only if/when we build a web surface
-
-**Repo layout (already scaffolded with stub READMEs):** `distro/`, `terraform/`, `helm/`, `crds/`,
-`profiles/`, `content/`, `agent/skills/`, `docs/`.
-
-**Phased roadmap:** Phase 1 "Observe" (ocb distro, profiles, step engine, gojira-reader,
-`argus-platform`/`argus-observe-app`/`argus-pipeline` skills, default dashboards/SLOs, synthetic
-round-trip validation) -> Phase 2 "Curate" (declarative integrations catalog + autodiscovery) -> Phase 3
-"Guard" (policy enforcement + drift->PR) -> Phase 4 "Reason" (runtime-context flight recorder).
-
-**To start:** confirm you've read the four files and understand the design, then propose a concrete
-Phase-1 plan. I want to begin with either (a) the first `argus-platform` SKILL.md authored via
-`skill-creator`, or (b) pinning the Phase-1 `ocb` distro manifest in `distro/`. Recommend an order and
-let's go.
+**To start:** run `gh issue list`, confirm the state above matches, and continue with the highest
+item the user names (default order: #52 conversation outcome -> #45 -> #47).
