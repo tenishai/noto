@@ -1,7 +1,8 @@
 # Argus - Session Kickoff Prompt
 
 > Paste the block below as your first message to Claude Code when starting work in this repo.
-> Last updated 2026-07-12 (post v0.1.0, mid-Phase-2).
+> Last updated 2026-07-13 (post v0.1.0; Phase 2 complete: #42-#46 shipped, #45 skills
+> live-evaled, #47 resolved).
 
 ---
 
@@ -30,10 +31,17 @@ then skim `docs/design.md` (decisions tables + resolved questions are current),
   patch (PROMETHEUS_HEADERS + Argus Mimir recipe, verified git-am onto their main) waits in
   docs/proposals/. Remaining: Shaz reviews/applies the patch, then close #52. If he reshapes
   the header option, only the README recipe here needs to track it.
-- **#45**: the three Phase 2 skills (argus-slo/dashboard/cardinality) + the deferred live skill
-  evals. **#47**: exemplar click-through verification (oldest open thread, needs an
-  exemplar-emitting sample app). **#53**: Phase 3 candidate - closed-loop telemetry value
-  attribution (Chronosphere-style utility scoring in git; the research is in the issue).
+- **#57**: rules-sync is upsert-only - disabled/renamed SLO groups keep evaluating in the
+  ruler forever (found live by the #45 slo eval; fix is reconcile-delete in
+  agent/argus/feedback/ruler.py plus a smoke assertion that disabled groups are ABSENT).
+- **#53**: Phase 3 candidate - closed-loop telemetry value attribution (Chronosphere-style
+  utility scoring in git; the research is in the issue).
+- Done and closed, for context: **#45** (Phase 2 skills, 18-run eval program - evidence on the
+  issue) and **#47** (exemplar verdict: pipeline carries exemplars end to end and the smoke DoD
+  asserts it; Perses 0.53.1 UI cannot render them - design.md resolved question 15). Loose
+  threads from the eval program worth a look: metric_labels_strip renders only at gateway
+  (silent no-op at other stages - schema-reject or implement); hostmetrics duplicates
+  node-exporter (drop rule currently hides the source question, note in baseline.yaml).
 
 **Hard rules that bite:** no em dashes in prose (linted); pin everything + verify latest-stable at
 introduction (versions.md); write to argus (and ladon if asked) ONLY - all other tenishai repos
@@ -47,4 +55,4 @@ when depending on techne/limenal; daedalus's published canonical bundle schema f
 shell; limenal capability-card scope maps for the future argus handler.
 
 **To start:** run `gh issue list`, confirm the state above matches, and continue with the highest
-item the user names (default order: #45 -> #47; #52 only if Shaz has replied).
+item the user names (default order: #52 if Shaz has replied -> #57 -> #53).

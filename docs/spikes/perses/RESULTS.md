@@ -38,6 +38,29 @@ exemplars; until then, default dashboards mitigate by co-locating correlated pan
 matters operationally and Perses cannot do it, that is when the fallback conversation reopens -
 with data.
 
+### Addendum (2026-07-13, issue #47): verified with a real exemplar-emitting app
+
+The open item is now answered, live, in two halves:
+
+**Argus's pipeline carries exemplars end to end.** A pinned OTel Python SDK app
+([tests/smoke/exemplar-app.yaml](../../../tests/smoke/exemplar-app.yaml); trace_based exemplar
+filter, the SDK default) shipped OTLP through agent -> gateway -> Mimir (exemplar storage enabled
+in [helm/values/mimir.yaml](../../../helm/values/mimir.yaml), `max_global_exemplars_per_user`).
+`query_exemplars` through the Perses **mimir datasource proxy** returned exemplars carrying
+`trace_id`/`span_id`, and fetching that exact trace through the **tempo datasource proxy**
+returned the full trace - every byte a UI click-through needs is served by our stack, through
+Perses's own proxy paths. The smoke DoD now asserts this permanently (8th assertion).
+
+**Perses 0.53.1 cannot render them.** A TimeSeriesChart panel over the exemplar-bearing metric
+renders the series but no exemplar markers ([exemplar-check.png](exemplar-check.png)), and the
+frontend has no code path for it: all 83 loaded JS assets contain zero occurrences of "exemplar"
+(scanned via Playwright against the live UI), and the upstream changelog through 0.54.0-beta.2
+has never mentioned exemplars. Not a hidden toggle - an absent feature.
+
+**Standing answer:** co-located correlated panels remain the documented mitigation. Revisit
+trigger: a Perses release notes exemplar support in TimeSeriesChart; Argus's backend is already
+exemplar-ready, so adoption is then a UI-version bump, not a pipeline change.
+
 ## Operational gotchas learned (feed into Helm values / renderers)
 
 1. **Never mount config over `/etc/perses`** - it masks the image's bundled plugin archives and

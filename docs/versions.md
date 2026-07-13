@@ -24,6 +24,7 @@ exactly why we pin exact versions and back them with the contract-test layer
 | Go toolchain (distro build only) | 1.26.5 | [go.dev](https://go.dev/dl/) | verified 2026-07-11 at introduction; hard floor >= 1.26: the 0.154 train's generics hit linker relocation bugs on 1.23/1.25.0 (observed) |
 | OTel Collector Contrib | 0.154.0 | n/a | [contrib releases](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) | same 2-week train, 0.x |
 | OTel Operator | 0.154.0 (app) | 0.119.0 | [otel helm charts](https://github.com/open-telemetry/opentelemetry-helm-charts) | re-verified 2026-07-11; same train as the distro |
+| OTel Python SDK + OTLP gRPC exporter | 1.43.0 | n/a | [opentelemetry-python releases](https://github.com/open-telemetry/opentelemetry-python/releases) | verified latest stable on PyPI 2026-07-13; pinned inline in [tests/smoke/exemplar-app.yaml](../tests/smoke/exemplar-app.yaml) (the #47 exemplar-emitting sample app) |
 | Prometheus Operator | 0.92.1 (app) | kube-prometheus-stack 87.15.1 | [prometheus-operator](https://github.com/prometheus-operator/prometheus-operator/releases) | re-verified 2026-07-11 via chart; Grafana/Prometheus subcharts disabled (helm/values) |
 
 ## Backends

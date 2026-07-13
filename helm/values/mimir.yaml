@@ -6,6 +6,9 @@ mimir:
     multitenancy_enabled: true   # tenant per cluster, stamped by the collector tier
     limits:
       max_global_series_per_user: 1000000   # overridden per deployment from profile budgets
+      # Exemplar storage is off (0) by default; #47 needs Mimir keeping exemplars so
+      # query_exemplars can prove the OTLP path carries them end to end.
+      max_global_exemplars_per_user: 100000
       # OTLP ingest keeps resource attributes in target_info unless promoted; these are
       # the labels profiles/dashboards/the feedback loop filter by.
       cardinality_analysis_enabled: true   # the `argus cardinality` report needs it

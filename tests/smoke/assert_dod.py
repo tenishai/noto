@@ -74,6 +74,19 @@ def redis_autodiscovered() -> bool:
     return bool(data["data"]["result"])
 
 
+def exemplars_stored() -> bool:
+    """#47: the OTLP path carries exemplars end to end (SDK -> agent -> gateway -> Mimir),
+    queryable through the Perses proxy - everything a UI click-through needs, server-side.
+    (Perses 0.53.1 cannot render them; docs/spikes/perses/RESULTS.md addendum.)"""
+    end = int(time.time())
+    data = get(
+        f"{PROXY}/mimir/api/v1/query_exemplars"
+        f"?query=demo_request_duration_bucket&start={end - 900}&end={end}"
+    )
+    series = data.get("data") or []
+    return any("trace_id" in ex.get("labels", {}) for s in series for ex in s.get("exemplars", []))
+
+
 def slo_rules_present() -> bool:
     out = subprocess.run(
         [
@@ -102,6 +115,7 @@ def main() -> None:
     poll("real trace from the app via Perses->Tempo", trace_from_app)
     poll("redis autodiscovered via integration label (zero config)", redis_autodiscovered)
     poll("ruler evaluating synced groups (SLO + cardinality budget)", ruler_evaluating)
+    poll("exemplars stored + queryable via Perses proxy (trace_id attached)", exemplars_stored)
     print("definition of done: MET")
 
 

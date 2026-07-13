@@ -8,6 +8,16 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **Exemplar click-through: verified, answered, and permanently asserted** (issue #47, the
+  oldest open thread - carried from the Perses spike): a pinned OTel Python SDK sample app
+  (tests/smoke/exemplar-app.yaml) proves exemplars flow SDK -> agent -> gateway -> Mimir
+  (`max_global_exemplars_per_user` now in the pinned values) and out through the Perses
+  datasource proxies with resolvable trace ids; the smoke DoD gains an 8th assertion so the
+  path stays live-proven. Perses 0.53.1's UI cannot render exemplars (zero exemplar code in
+  all 83 frontend assets, Playwright-verified; screenshot in the spike addendum), so
+  co-located correlated panels remain the documented answer, with a named revisit trigger.
+  The backend is exemplar-ready the day Perses ships the UI.
+
 - **The Phase 2 skills, live-proven** (issue #45): `argus-slo`, `argus-dashboard`,
   `argus-cardinality` join the Phase 1 three, each with eval prompts in `evals/evals.json`
   (the Phase 1 eval definitions, deferred from #23, land too). 18 eval runs on a live kind

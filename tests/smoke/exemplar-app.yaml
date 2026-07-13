@@ -1,0 +1,84 @@
+# exemplar-demo: the missing piece for issue #47 - an app whose SDK attaches exemplars.
+# podinfo's SDK does not; the OTel Python SDK does by default (trace_based exemplar
+# filter: a histogram record inside a sampled span carries that span's trace/span id).
+# OTLP end to end: app -> agent -> gateway -> Mimir; no scrape-path OpenMetrics
+# negotiation involved. Versions pinned inline (docs/versions.md).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: exemplar-demo
+  namespace: sample
+data:
+  main.py: |
+    import random
+    import time
+
+    from opentelemetry import metrics, trace
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    res = Resource.create({"service.name": "exemplar-demo"})
+    tp = TracerProvider(resource=res)
+    tp.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(tp)
+    mp = MeterProvider(
+        resource=res,
+        metric_readers=[
+            PeriodicExportingMetricReader(OTLPMetricExporter(), export_interval_millis=15000)
+        ],
+    )
+    metrics.set_meter_provider(mp)
+
+    tracer = trace.get_tracer("exemplar-demo")
+    hist = metrics.get_meter("exemplar-demo").create_histogram(
+        "demo_request_duration", unit="s", description="synthetic request latency"
+    )
+
+    while True:
+        with tracer.start_as_current_span("demo-request"):
+            duration = random.uniform(0.05, 1.5)
+            time.sleep(min(duration, 0.2))
+            hist.record(duration)  # sampled span active -> exemplar attached
+        time.sleep(1)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exemplar-demo
+  namespace: sample
+  labels: { app.kubernetes.io/name: exemplar-demo }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: exemplar-demo }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: exemplar-demo }
+    spec:
+      containers:
+        - name: app
+          image: python:3.12-slim
+          command: ["sh", "-c"]
+          args:
+            - pip install --quiet --no-cache-dir
+              opentelemetry-sdk==1.43.0
+              opentelemetry-exporter-otlp-proto-grpc==1.43.0
+              && exec python /app/main.py
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://argus-agent-collector.argus.svc:4317
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: grpc
+          volumeMounts:
+            - { name: app, mountPath: /app }
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 200m, memory: 192Mi }
+      volumes:
+        - name: app
+          configMap: { name: exemplar-demo }

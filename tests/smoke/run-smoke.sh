@@ -22,8 +22,9 @@ step "argus platform (step engine; resumable)"
 rm -f "$LEDGER"
 uv run argus platform --cluster "$CLUSTER" --kube-context "$CTX" --ledger "$LEDGER"
 
-step "sample app (podinfo + traffic)"
+step "sample apps (podinfo + traffic; exemplar-demo for the #47 exemplar assertion)"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/sample-app.yaml"
+kubectl --context "$CTX" apply -f "$REPO/tests/smoke/exemplar-app.yaml"
 
 step "argus observe (wire podinfo by class)"
 uv run argus observe --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \

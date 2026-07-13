@@ -608,11 +608,22 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     shared `usage_profile.json` fixture remains the three-repo contract. This also dissolves the
     deploy-race concern: only gojira's agent-deploy step touches the producer now.
 
+## Resolved questions (2026-07-13)
+
+15. **Exemplar / cross-signal click-through in Perses UI (issue #47)** → **pipeline ready, UI
+    cannot; co-located panels stay the answer.** Verified live with a real OTel Python SDK app
+    (tests/smoke/exemplar-app.yaml): exemplars flow SDK -> agent -> gateway -> Mimir (storage
+    enabled in helm values) and `query_exemplars` returns trace ids through the Perses mimir
+    datasource proxy, with the referenced trace fetching fully through the tempo proxy - the
+    smoke DoD now asserts this (8th assertion). Perses 0.53.1's UI has no exemplar rendering:
+    zero "exemplar" occurrences across all 83 frontend JS assets and no upstream changelog
+    mention through 0.54.0-beta.2. Full record + screenshot:
+    [spikes/perses/RESULTS.md](spikes/perses/RESULTS.md) addendum. Revisit trigger: Perses
+    ships exemplar support; the backend is already exemplar-ready, so adoption is a UI-version
+    bump.
+
 ## Still open (not blocking Phase 1)
 
-- **Exemplar / cross-signal click-through in Perses UI** - carried from the spike; verify with a
-  real SDK app emitting exemplars during Phase 1 content work. Mitigation already proven:
-  co-located correlated panels per dashboard.
 - **Repo name:** `argus` - confirm before scaffolding (note: name collision with the historical
   argus network-monitoring project; acceptable within the org namespace).
 - **CI host + WIF/OIDC path** to GCP (reuse gojira's).
