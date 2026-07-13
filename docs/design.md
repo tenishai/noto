@@ -461,7 +461,7 @@ vendor `skill-creator` itself.
 | Phase | Ships | Definition of done |
 |---|---|---|
 | **1 - Observe** | `ocb` distro, profiles, OpenTofu/Helm/CRD step engine, gojira-reader, `argus-platform`/`argus-observe-app`/`argus-pipeline` skills | A gojira'd cluster → full Mimir/Loki/Tempo + Perses + OTel platform + every gojira app auto-observed; a real metric & trace queryable in Perses, < 30 min, no hand-written YAML |
-| **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills; **gojira rightsizing feedback** (distill per-app p95/p99 from Mimir → `POST /api/v1/usage`) | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft); a gojira app gets a rightsizing PR from Argus-produced evidence |
+| **2 - Curate** | `argus-integrations` declarative catalog + autodiscovery; `argus-slo`/`argus-dashboard`/`argus-cardinality` skills; **gojira rightsizing feedback** (production evidence produced by gojira-sizing-agent against Argus's Mimir per issue #52; `argus feedback --dry-run` is the diagnostic twin) | A new gojira workload type auto-wires its integration; cardinality budget enforced (soft); a gojira app gets a rightsizing PR from measured evidence |
 | **3 - Guard** | Policy enforcement (cardinality/retention/PII), drift detection on the observability layer, `argus adopt` for clusters not deployed by gojira | Rogue high-cardinality metric rejected; a non-gojira cluster adopted |
 | **4 - Reason** | `argus-triage` over live telemetry; **runtime-context flight recorder** for dev (below); trace↔log↔metric correlation wired by default | Agent answers "why did this break" from runtime data, not guesses |
 | **Later** | Multi-cloud, Pyroscope profiling as a fifth pillar (Perses-native), predictive cardinality, eBPF auto-instrumentation | - |
@@ -593,6 +593,20 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     confirmed by screenshot. One item carried forward (exemplar click-through at the UI level,
     verify during Phase 1 content work). Full results, reproduction manifests, and operational
     gotchas: [spikes/perses/RESULTS.md](spikes/perses/RESULTS.md).
+
+## Resolved questions (2026-07-12)
+
+14. **Rightsizing evidence-producer ownership (issue #52)** → **Option A: gojira-sizing-agent is
+    the single producer everywhere.** Decided on live evidence, not preference: the agent (built
+    from its main, unmodified) ran on an Argus solo cluster, discovered the labeled app, queried
+    Argus's Mimir through an `X-Scope-OrgID`-injecting bridge, POSTed to gojira first try, and its
+    measurements converged with `argus feedback`'s (cpu p95 4m/4m, mem p95 40Mi/38Mi). Argus
+    retired its POST path the same day (`argus feedback` is diagnostic-only, `--dry-run` required)
+    and proposed the two missing pieces upstream as a verified patch
+    ([docs/proposals/](proposals/gojira-sizing-agent-prometheus-headers.md)): a
+    `PROMETHEUS_HEADERS` option (replaces the bridge) and the kubeletstats query recipe. The
+    shared `usage_profile.json` fixture remains the three-repo contract. This also dissolves the
+    deploy-race concern: only gojira's agent-deploy step touches the producer now.
 
 ## Still open (not blocking Phase 1)
 

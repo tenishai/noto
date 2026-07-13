@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from argus.feedback.distill import DistillError, distill_resource, to_cpu_quantity, to_mem_quantity
-from argus.feedback.gojira_client import GojiraPostError, post_profile
 from argus.feedback.models import ResourceUsage, UsageProfile
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "feedback"
@@ -64,27 +63,27 @@ def test_distill_empty_series_fails_loud() -> None:
         distill_resource([], request=0.1, limit=0.2, quantize=to_cpu_quantity)
 
 
-def test_post_profile_bearer_and_201() -> None:
-    calls: list = []
+def test_cli_feedback_without_dry_run_refuses(tmp_path, capsys) -> None:
+    """The production POST path is retired (issue #52): gojira-sizing-agent is the
+    single evidence producer. The refusal happens before any Mimir query."""
+    from argus import cli
 
-    def fake_http(url: str, data: bytes, headers: dict) -> tuple[int, str]:
-        calls.append((url, data, headers))
-        return 201, json.dumps({"ok": True, "profile_id": 7})
-
-    pid = post_profile("http://gojira:8080", "sekret", _golden_profile(), http=fake_http)
-    assert pid == 7
-    url, data, headers = calls[0]
-    assert url == "http://gojira:8080/api/v1/usage"
-    assert headers["Authorization"] == "Bearer sekret"
-    assert json.loads(data)["app"] == "clips-api"
-
-
-def test_post_profile_error_surfaces() -> None:
-    def fake_http(url: str, data: bytes, headers: dict) -> tuple[int, str]:
-        return 401, json.dumps({"error": "unknown token"})
-
-    with pytest.raises(GojiraPostError, match=r"401.*unknown token"):
-        post_profile("http://gojira:8080", "bad", _golden_profile(), http=fake_http)
+    gojira_fixture = Path(__file__).parents[1] / "fixtures" / "gojira" / "web.yaml"
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(gojira_fixture),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "gojira-sizing-agent" in err
+    assert "--dry-run" in err
 
 
 def test_cli_feedback_dry_run(tmp_path, monkeypatch, capsys) -> None:

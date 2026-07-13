@@ -36,6 +36,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Changed
 
+- **`argus feedback` is diagnostic-only; gojira-sizing-agent is the single evidence producer**
+  (issue #52, Option A - decided on live evidence: the agent ran unmodified on an Argus solo
+  cluster, reported first try, and both producers' measurements converged, 4m/40Mi vs 4m/38Mi).
+  The POST path and `--gojira-url` are gone (`gojira_client.py` deleted); running without
+  `--dry-run` now exits 2 with a pointer, before touching Mimir. The measuring half stays as
+  the `--dry-run` diagnostic, and the cross-repo `usage_profile.json` fixture stays asserted
+  byte-identical (the three-repo contract). The missing pieces on the agent's side (an
+  `X-Scope-OrgID` header option + the kubeletstats query preset) are proposed upstream as a
+  verified git-am patch: [docs/proposals/](docs/proposals/gojira-sizing-agent-prometheus-headers.md).
 - **Feedback-loop queries corrected to live-verified names** (against a running smoke cluster):
   Mimir's OTLP path stores kubeletstats metrics WITHOUT unit/_total suffixes - the real names are
   `k8s_pod_cpu_time` / `k8s_pod_memory_working_set` (pod-level, containers pre-summed). Mimir's

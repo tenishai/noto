@@ -24,11 +24,12 @@ then skim `docs/design.md` (decisions tables + resolved questions are current),
   Golden regeneration is `make regen-golden`, reviewed as a PR diff.
 
 **Open work (check `gh issue list` - it is the source of truth):**
-- **#52 COORDINATION FIRST**: `tenishai/gojira-sizing-agent` (gojira-side, Track C, auto-deployed
-  by gojira) duplicates `argus feedback`'s measuring half - same /api/v1/usage loop, same shared
-  fixture. Decide ownership with Shaz/Rich (options in the issue) BEFORE extending either side.
-  Argus's lean position: adopt their agent as the one producer (it needs an X-Scope-OrgID header
-  option + an "Argus Mimir" query preset), keep `argus feedback --dry-run` as a diagnostic.
+- **#52 ACTED ON (Option A), awaiting Shaz**: gojira-sizing-agent is the single evidence
+  producer (decided on live interop evidence in the issue). Argus's side is done: `argus
+  feedback` is diagnostic-only (`--dry-run` required, POST path deleted) and the upstream
+  patch (PROMETHEUS_HEADERS + Argus Mimir recipe, verified git-am onto their main) waits in
+  docs/proposals/. Remaining: Shaz reviews/applies the patch, then close #52. If he reshapes
+  the header option, only the README recipe here needs to track it.
 - **#45**: the three Phase 2 skills (argus-slo/dashboard/cardinality) + the deferred live skill
   evals. **#47**: exemplar click-through verification (oldest open thread, needs an
   exemplar-emitting sample app). **#53**: Phase 3 candidate - closed-loop telemetry value
@@ -46,4 +47,4 @@ when depending on techne/limenal; daedalus's published canonical bundle schema f
 shell; limenal capability-card scope maps for the future argus handler.
 
 **To start:** run `gh issue list`, confirm the state above matches, and continue with the highest
-item the user names (default order: #52 conversation outcome -> #45 -> #47).
+item the user names (default order: #45 -> #47; #52 only if Shaz has replied).

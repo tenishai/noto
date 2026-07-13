@@ -4,7 +4,8 @@ Flows:
   argus render    profile + gojira.yaml -> artifacts on disk (no cluster touched)
   argus platform  stand up the solo platform on the current kube context
   argus observe   wire one gojira app into the platform
-  argus feedback  distill usage evidence from Mimir -> POST to gojira (rightsizing)
+  argus feedback  distill usage evidence from Mimir, print it (diagnostic only -
+                  gojira-sizing-agent is the production evidence producer, issue #52)
 
 Everything runs through the step engine and its ledger; re-runs are safe by
 construction. `--dry-run` threads through to helm/kubectl server-side dry runs.
@@ -12,7 +13,6 @@ construction. `--dry-run` threads through to helm/kubectl server-side dry runs.
 
 import argparse
 import datetime
-import os
 import subprocess
 import sys
 import tempfile
@@ -193,9 +193,17 @@ def cmd_observe(args: argparse.Namespace) -> int:
 
 def cmd_feedback(args: argparse.Namespace) -> int:
     from argus.feedback.distill import distill_resource, to_cpu_quantity, to_mem_quantity
-    from argus.feedback.gojira_client import post_profile
     from argus.feedback.mimir import MimirClient, collect
     from argus.feedback.models import UsageProfile
+
+    if not args.dry_run:
+        print(
+            "argus feedback is diagnostic-only: gojira-sizing-agent is the single evidence\n"
+            "producer (issue #52, Option A - measurements converged live 2026-07-12).\n"
+            "Re-run with --dry-run to print the distilled profile without posting.",
+            file=sys.stderr,
+        )
+        return 2
 
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
@@ -220,15 +228,7 @@ def cmd_feedback(args: argparse.Namespace) -> int:
         reported_at=datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
     print(profile.serialize())
-    if args.dry_run:
-        print("dry-run: nothing posted", file=sys.stderr)
-        return 0
-    token = os.environ.get("GOJIRA_USAGE_TOKEN")
-    if not token:
-        print("GOJIRA_USAGE_TOKEN not set (never a flag - process lists leak)", file=sys.stderr)
-        return 2
-    profile_id = post_profile(args.gojira_url, token, profile)
-    print(f"posted: gojira usage profile id {profile_id}", file=sys.stderr)
+    print("dry-run: nothing posted", file=sys.stderr)
     return 0
 
 
@@ -310,7 +310,11 @@ def main(argv: list[str] | None = None) -> int:
     p_card.add_argument("--limit", type=int, default=15)
     p_card.set_defaults(func=cmd_cardinality)
 
-    p_feedback = sub.add_parser("feedback", help="usage evidence from Mimir -> gojira rightsizing")
+    p_feedback = sub.add_parser(
+        "feedback",
+        help="distill usage evidence from Mimir, diagnostic only "
+        "(the producer is gojira-sizing-agent; requires --dry-run)",
+    )
     common(p_feedback, needs_app=True)
     p_feedback.add_argument("--window-days", type=int, default=14)
     p_feedback.add_argument(
@@ -318,7 +322,6 @@ def main(argv: list[str] | None = None) -> int:
         default="http://localhost:9009/prometheus",
         help="Mimir Prometheus API base (port-forward the gateway in solo)",
     )
-    p_feedback.add_argument("--gojira-url", default="http://localhost:8080")
     p_feedback.set_defaults(func=cmd_feedback)
 
     args = parser.parse_args(argv)
