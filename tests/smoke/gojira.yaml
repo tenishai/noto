@@ -7,3 +7,20 @@ environments:
     namespace: sample
 observability:
   traces: true    # web class is traces-opt-in; the DoD needs a trace - exercises the override path
+  slos:
+    - name: availability-99.9
+      objective: 99.9
+      signal: availability
+      enabled: false
+    - name: latency-p99-500ms
+      objective: 99.0
+      signal: latency
+      latency_threshold: 500ms
+      enabled: false
+    - name: availability-99.5
+      objective: 99.5
+      signal: availability
+    - name: latency-p99-1s
+      objective: 99.0
+      signal: latency
+      latency_threshold: 1s

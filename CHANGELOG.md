@@ -6,6 +6,23 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The Phase 2 skills, live-proven** (issue #45): `argus-slo`, `argus-dashboard`,
+  `argus-cardinality` join the Phase 1 three, each with eval prompts in `evals/evals.json`
+  (the Phase 1 eval definitions, deferred from #23, land too). 18 eval runs on a live kind
+  cluster: with/without judgment pairs (the skills flip dangerous-by-default outcomes:
+  silent budget raises, SLOs that can never fire) and six live runs (platform 4/4,
+  observe 4/4, pipeline 4/4, slo 7/7, dashboard 5/5, cardinality 6/6). Evidence on the issue.
+- **web-red gains a memory panel** with the live-verified kubeletstats query (the eval caught
+  the cAdvisor name returning nothing on the OTLP-only Mimir); `traces:slow-requests` now
+  filters by the class latency SLO threshold (a panel's title is a promise about what it
+  shows); baseline drops platform internals (`alertmanager_.+`, `system[._].+` - hostmetrics
+  duplicating node-exporter) for ~13% live-measured headroom with no budget change.
+- Eval-program fallout: #56 (HelmInstall status check, merged), #57 (rules-sync is
+  upsert-only, filed), a mis-applied golden-fixture gateway CR on the smoke cluster routing
+  ingest to the wrong tenant (fixed live).
+
 ### Fixed
 
 - **HelmInstall no longer trusts a fingerprint on a non-deployed release**: helm stamps

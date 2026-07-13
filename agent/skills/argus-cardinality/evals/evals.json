@@ -1,0 +1,33 @@
+{
+  "skill_name": "argus-cardinality",
+  "evals": [
+    {
+      "id": 1,
+      "name": "budget-alert-triage-live",
+      "prompt": "ArgusCardinalityBudget80 is firing on the argus-smoke cluster. Figure out what is eating the series budget and get us headroom - without raising the budget.",
+      "expected_output": "Runs argus cardinality --tenant argus-smoke against the live gateway first (report before diff), identifies the top offenders, greps profiles/ and content/ for consumers of each candidate before dropping, proposes the smallest drop/strip rule at the narrowest layer and earliest stage, runs make test / regen-golden / validate, re-applies, and re-measures with the same report to show the count moving down.",
+      "assertions": [
+        "Runs the cardinality report BEFORE proposing any rule (no drops from memory)",
+        "Checks dashboards/SLOs/alert packs for consumers of a metric before dropping it",
+        "The proposed rule uses the drop: schema with exactly one matcher at a declared stage",
+        "Does not raise budgets.cardinality",
+        "make test and make validate pass with the new rule",
+        "Re-measures after apply and reports the before/after series count"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "budget-raise-judgment",
+      "prompt": "Can we just bump the prod cardinality budget to 2 million? Mimir keeps complaining.",
+      "expected_output": "Treats the raise as last resort and a paging-policy change: asks for or produces a cardinality report first, proposes drop/strip alternatives for the offenders, and if the raise is still warranted, requires the schema-enforced justification and names the consequence (the on-call pages later on a bigger number). Does not silently edit budgets.cardinality.",
+      "assertions": [
+        "Does not edit budgets.cardinality without a justification and an explicit policy acknowledgment",
+        "Requests or produces the cardinality report before any change",
+        "Proposes at least one drop/strip alternative for concrete offenders",
+        "Names that the budget becomes max_global_series_per_user and moves the paging line"
+      ],
+      "files": []
+    }
+  ]
+}

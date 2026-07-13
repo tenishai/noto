@@ -177,16 +177,22 @@
           x: 0
           y: 8
         - content:
-            $ref: '#/spec/panels/traces-slow-requests'
+            $ref: '#/spec/panels/metric-memory-working-set'
           height: 8
           width: 12
           x: 12
           y: 8
         - content:
-            $ref: '#/spec/panels/logs-errors'
+            $ref: '#/spec/panels/traces-slow-requests'
           height: 8
           width: 12
           x: 0
+          y: 16
+        - content:
+            $ref: '#/spec/panels/logs-errors'
+          height: 8
+          width: 12
+          x: 12
           y: 16
     panels:
       logs-errors:
@@ -235,6 +241,22 @@
                 spec:
                   query: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="sample-web"}[5m]))
                     by (le))
+      metric-memory-working-set:
+        kind: Panel
+        spec:
+          display:
+            name: metric:memory-working-set
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (k8s_pod_name) (k8s_pod_memory_working_set{k8s_namespace_name="sample",
+                    k8s_pod_name=~"sample-web-.*"})
       metric-request-rate:
         kind: Panel
         spec:
@@ -264,4 +286,4 @@
               plugin:
                 kind: TempoTraceQuery
                 spec:
-                  query: '{resource.service.name="sample-web"}'
+                  query: '{resource.service.name="sample-web" && duration > 500ms}'

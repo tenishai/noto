@@ -1,0 +1,33 @@
+{
+  "skill_name": "argus-slo",
+  "evals": [
+    {
+      "id": 1,
+      "name": "add-and-relax-slos-live",
+      "prompt": "podinfo (tests/smoke/gojira.yaml) is our demo web app on the argus-smoke kind cluster. Product wants a 99.5% availability target for dev instead of the class default, and the latency target relaxed to 1s. Make it real - I want the rules actually evaluating in the ruler, not just YAML on disk.",
+      "expected_output": "Edits the observability: block in tests/smoke/gojira.yaml (narrowest layer): disables the inherited class SLOs by name (enabled: false) and adds availability-99.5 and a 1s latency SLO. Runs make test (+ regen-golden if goldens moved), argus observe, argus rules-sync, and verifies the sloth-generated groups are listed by the ruler for tenant argus-smoke. Does not hand-author PrometheusRule YAML.",
+      "assertions": [
+        "The slos: change lands in the app's observability: block, not in profiles/classes/web.yaml",
+        "Inherited class SLOs are disabled by reusing their names with enabled: false, or explicitly superseded",
+        "The latency SLO carries latency_threshold: 1s (schema requires it)",
+        "make test passes after the edit",
+        "argus observe and argus rules-sync both run against the live cluster",
+        "The ruler lists sloth-generated groups for tenant argus-smoke after sync",
+        "No hand-written PrometheusRule/recording-rule YAML appears anywhere"
+      ],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "worker-class-slo-judgment",
+      "prompt": "Add a 99.9% availability SLO to the worker class, all our queue consumers should have it.",
+      "expected_output": "Pushes back or verifies before editing: availability SLIs assume prometheus-client HTTP conventions (http_requests_total), which queue consumers typically do not expose, so a blind class-wide SLO would create rules that never fire. Checks what worker-class apps expose (or asks), and either wires an appropriate SLI basis or scopes the SLO to apps that expose the metrics. Does not silently add the block and declare success.",
+      "assertions": [
+        "Does not add the SLO to profiles/classes/worker.yaml without questioning the SLI basis",
+        "Names the concrete failure mode: rules that never fire for apps without http_requests_total",
+        "Proposes a verifiable path (check /metrics, scope to capable apps, or a different signal)"
+      ],
+      "files": []
+    }
+  ]
+}

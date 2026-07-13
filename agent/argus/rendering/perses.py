@@ -20,9 +20,16 @@ _PANEL_PLUGINS = {
 # Prometheus-client conventions - what gojira-contract apps (promhttp on :8080/metrics)
 # actually expose; verified against a live app in the smoke run (semconv names were wrong).
 _METRIC_QUERIES = {
-    "request-rate": 'sum(rate(http_requests_total{job="%s"}[5m]))',
-    "error-rate": 'sum(rate(http_requests_total{job="%s", status=~"5.."}[5m]))',
-    "latency-p99": 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="%s"}[5m])) by (le))',  # noqa: E501
+    "request-rate": 'sum(rate(http_requests_total{job="%(app)s"}[5m]))',
+    "error-rate": 'sum(rate(http_requests_total{job="%(app)s", status=~"5.."}[5m]))',
+    "latency-p99": 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job="%(app)s"}[5m])) by (le))',  # noqa: E501
+    # kubeletstats via OTLP, not cAdvisor/node-exporter container_* names - Argus's Mimir
+    # only has the OTel kubeletstats shape (live-verified; same selector as
+    # feedback/mimir.py's app_selector/measurements()). Saturation view next to latency.
+    "memory-working-set": (
+        "sum by (k8s_pod_name) (k8s_pod_memory_working_set"
+        '{k8s_namespace_name="%(namespace)s", k8s_pod_name=~"%(app)s-.*"})'
+    ),
 }
 
 
@@ -53,12 +60,35 @@ def _datasource(name: str, kind: str, url: str, project: str, tenant: str) -> di
     }
 
 
-def _panel(panel_name: str, ctx: Context) -> dict:
+def _slow_requests_query(service: str, p: ResolvedProfile) -> str:
+    """TraceQL for traces:slow-requests - traces slower than the class's own latency SLO.
+
+    Falls back to the spike-verified generic per-service query (docs/spikes/perses/RESULTS.md)
+    when the class defines no latency SLO to borrow a threshold from, so the panel never
+    goes empty for want of a number; it just stops being duration-filtered.
+    """
+    threshold = next(
+        (s.latency_threshold for s in p.slos if s.signal == "latency" and s.latency_threshold),
+        None,
+    )
+    if threshold is None:
+        return f'{{resource.service.name="{service}"}}'
+    return f'{{resource.service.name="{service}" && duration > {threshold}}}'
+
+
+def _panel(panel_name: str, ctx: Context, p: ResolvedProfile) -> dict:
     prefix, _, metric = panel_name.partition(":")
     chart_kind, query_kind, plugin_kind, default_query = _PANEL_PLUGINS[prefix]
     if prefix == "metric":
-        template = _METRIC_QUERIES.get(metric, 'up{job="%s"}')
-        query = template % (ctx.app or ctx.cluster)
+        template = _METRIC_QUERIES.get(metric, 'up{job="%(app)s"}')
+        query = template % {
+            "app": ctx.app or ctx.cluster,
+            "namespace": ctx.namespace or ctx.cluster,
+        }
+    elif prefix == "traces" and metric == "slow-requests":
+        # Named panel gets a query that actually matches its name (same principle as
+        # _METRIC_QUERIES: a panel's title is a promise about what it shows).
+        query = _slow_requests_query(ctx.app or ctx.cluster, p)
     else:
         query = default_query % (ctx.app or ctx.cluster)
     return {
@@ -76,8 +106,8 @@ def _panel(panel_name: str, ctx: Context) -> dict:
     }
 
 
-def _dashboard(dash: Dashboard, project: str, ctx: Context) -> dict:
-    panels = {name.replace(":", "-"): _panel(name, ctx) for name in dash.panels}
+def _dashboard(dash: Dashboard, project: str, ctx: Context, p: ResolvedProfile) -> dict:
+    panels = {name.replace(":", "-"): _panel(name, ctx, p) for name in dash.panels}
     items = [
         {
             "x": (i % 2) * 12,
@@ -111,5 +141,5 @@ def render_perses(p: ResolvedProfile, ctx: Context) -> list[dict]:
     docs.append(_datasource("mimir", "PrometheusDatasource", mimir_query, project, ctx.tenant))
     docs.append(_datasource("loki", "LokiDatasource", loki_query, project, ctx.tenant))
     docs.append(_datasource("tempo", "TempoDatasource", tempo_query, project, ctx.tenant))
-    docs.extend(_dashboard(d, project, ctx) for d in p.dashboards if d.enabled)
+    docs.extend(_dashboard(d, project, ctx, p) for d in p.dashboards if d.enabled)
     return docs

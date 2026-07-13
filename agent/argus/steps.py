@@ -108,6 +108,9 @@ class HelmInstall:
             return None  # not installed
         try:
             info = json.loads(out).get("info", {})
+        # Bare multi-exception except is PEP 758 (valid on our pinned 3.14; ruff format
+        # strips the parens). Pre-3.14 interpreters and tools mis-read it as a
+        # SyntaxError - it is not one; test with `uv run python`, never system python3.
         except json.JSONDecodeError, AttributeError:
             return None  # unreadable state -> re-apply (idempotent)
         if info.get("status") != "deployed":

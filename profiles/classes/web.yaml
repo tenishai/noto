@@ -11,4 +11,4 @@ slos:
     latency_threshold: 500ms
 dashboards:
   - name: web-red
-    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "traces:slow-requests", "logs:errors"]
+    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "metric:memory-working-set", "traces:slow-requests", "logs:errors"]
