@@ -24,11 +24,13 @@ class FakeRunner:
         fail_on: str | None = None,
         missing: bool = True,
         release_description: str = "",
+        release_status: str = "deployed",
     ) -> None:
         self.calls: list[tuple[list[str], str | None]] = []
         self.fail_on = fail_on
         self.missing = missing  # get/status probes report absent
         self.release_description = release_description  # helm status description when present
+        self.release_status = release_status  # helm status .info.status when present
 
     def __call__(self, cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
         self.calls.append((cmd, stdin_text))
@@ -38,7 +40,8 @@ class FakeRunner:
         if self.missing and (" get namespace" in joined or "helm status" in joined):
             return 1, "not found"
         if "helm status" in joined:
-            return 0, json.dumps({"info": {"description": self.release_description}})
+            info = {"description": self.release_description, "status": self.release_status}
+            return 0, json.dumps({"info": info})
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
 
 
@@ -72,6 +75,22 @@ def test_helm_matching_fingerprint_skips_install(tmp_path: Path) -> None:
     result = ProvisionEngine([step]).run(ledger, "platform@c1", _ctx(runner))
     assert result.steps_skipped == ["helm_mimir"]
     assert not any(c[1] == "upgrade" for c, _ in runner.calls if c[0] == "helm")
+
+
+def test_helm_timed_out_release_reapplies_despite_matching_fingerprint(tmp_path: Path) -> None:
+    """A --wait timeout (or any interrupted apply) leaves helm status "failed"/"pending-*"
+    even though --description already stamped the fingerprint on the release. Matching
+    description alone must not be read as done - only a "deployed" release counts - or a
+    resumed run silently ledger-skips a mimir install that never actually came up, and the
+    only signal left is a confusing failure later in the unrelated `validate` step."""
+    step = HelmInstall(component="mimir")
+    probe = FakeRunner()
+    fp = step.fingerprint(_ctx(probe))
+    runner = FakeRunner(missing=False, release_description=fp, release_status="failed")
+    ledger = Ledger(tmp_path / "l.db")
+    result = ProvisionEngine([step]).run(ledger, "platform@c1", _ctx(runner))
+    assert result.steps_run == ["helm_mimir"]
+    assert any(c[1] == "upgrade" for c, _ in runner.calls if c[0] == "helm")
 
 
 def test_helm_drift_triggers_upgrade(tmp_path: Path) -> None:

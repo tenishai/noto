@@ -8,6 +8,13 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Fixed
 
+- **HelmInstall no longer trusts a fingerprint on a non-deployed release**: helm stamps
+  `--description` (the drift fingerprint) even when `--wait` times out, so a failed or
+  `pending-*` release could ledger-skip on resume and surface later as a confusing `validate`
+  failure. `check()` now requires `info.status == "deployed"` before honoring the fingerprint.
+  Found during the issue #45 live skill evals (the argus-platform resume eval traced this exact
+  scenario); regression-tested.
+
 - **HelmInstall detects values/pin drift** (issue #46 - the gap that cost two manual
   `helm upgrade` interventions during live work): a fingerprint of (chart version + values file
   content + extra_sets) is stored in the helm release description and re-verified every run

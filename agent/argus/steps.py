@@ -107,10 +107,16 @@ class HelmInstall:
         if code != 0:
             return None  # not installed
         try:
-            description = json.loads(out).get("info", {}).get("description", "")
+            info = json.loads(out).get("info", {})
         except json.JSONDecodeError, AttributeError:
             return None  # unreadable state -> re-apply (idempotent)
-        if description == self.fingerprint(ctx):
+        if info.get("status") != "deployed":
+            # A prior --wait timeout (or any interrupted install/upgrade) leaves the
+            # release "failed"/"pending-*" even though --description already stamped
+            # the fingerprint on it. Matching description alone would wrongly mark this
+            # step done; only a release that actually reached "deployed" counts.
+            return None  # stuck/failed release -> re-apply (idempotent)
+        if info.get("description", "") == self.fingerprint(ctx):
             return f"helmrelease/argus-{self.component}"
         return None  # installed but drifted -> upgrade
 
