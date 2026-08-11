@@ -169,7 +169,7 @@ index 5c1c73c..3680bcb 100644
 +
 +
  def get_handler() -> Handler:
-     """limenal entry-point factory (inert until limenal is installed)."""
+     """liminal entry-point factory (inert until liminal is installed)."""
      return MetricsHandler()
 diff --git a/tests/test_handlers.py b/tests/test_handlers.py
 index c907293..dfdaec0 100644

@@ -51,8 +51,8 @@ all-pass.
 
 **Family integration mechanisms to USE, not reinvent** (verified 2026-07-12): techne v0.9
 deposit-and-drain for the ledger-to-memory migration; requirements-sources.txt git-tag pinning
-when depending on techne/limenal; daedalus's published canonical bundle schema for the agent
-shell; limenal capability-card scope maps for the future argus handler.
+when depending on techne/liminal; daedalus's published canonical bundle schema for the agent
+shell; liminal capability-card scope maps for the future argus handler.
 
 **To start:** run `gh issue list`, confirm the state above matches, and continue with the highest
 item the user names (default order: #52 if Shaz has replied -> #57 -> #53).

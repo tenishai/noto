@@ -57,7 +57,7 @@ exactly why we pin exact versions and back them with the contract-test layer
 
 ## Agent runtime (Python)
 
-The Argus agent is built in **Python** for consistency with the sibling repos (gojira, techne, limenal,
+The Argus agent is built in **Python** for consistency with the sibling repos (gojira, techne, liminal,
 cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 [docs/design.md](design.md).
 

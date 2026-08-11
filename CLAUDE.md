@@ -14,13 +14,13 @@ repos meant to be merged into one GitHub org. Each owns one concern; Argus owns 
 |---|---|---|
 | [gojira](https://github.com/tenishai/gojira) | Opinionated deploy platform (identity, CI/CD, manifests, sizing) | **Parent.** Argus continues gojira's lifecycle; reads its contract/state; maps its workload class to an observability profile. |
 | [techne](https://github.com/tenishai/techne) | Agentic memory (sessions, knowledge, identity; SQLite) | Argus's SQLite ledger migrates into techne later, so the agent's deploy history becomes its memory. |
-| [limenal](https://github.com/tenishai/limenal) | MCP gateway (one connection point dispatching to many tool handlers) | Argus reaches its tools through limenal once integrated; Argus operations can be exposed as a limenal handler. |
+| [liminal](https://github.com/tenishai/liminal) | MCP gateway (one connection point dispatching to many tool handlers) | Argus reaches its tools through liminal once integrated; Argus operations can be exposed as a liminal handler. |
 | [cabal](https://github.com/tenishai/cabal) | Agent orchestration / A2A broker (LLM personas) | Argus registers as the observability persona later (requires a cabal `PERSONA_REGISTRY` PR; the daedalus bundle's cabal peer surface is the nearer path). |
 | [daedalus](https://github.com/tenishai/daedalus) | Agent construction kit ("an agent is a directory": card + persona + wiring) | The Argus agent's shell is a daedalus bundle; Argus keeps a thin CLI fallback while daedalus is v0.1. |
 | [ladon](https://github.com/tenishai/ladon) | Secrets / vault management on OpenBao + External Secrets | Argus onboards as a ladon "team"; ESO syncs OpenBao values into plain K8s Secrets that collectors/backends mount. |
 
 Build Argus to run **self-contained today** (own runtime, step engine, SQLite ledger) but **compose
-with these later** (register into cabal, reach tools via limenal, persist memory into techne). Do not
+with these later** (register into cabal, reach tools via liminal, persist memory into techne). Do not
 duplicate what a sibling owns; integrate with it.
 
 ## Hard conventions
@@ -28,7 +28,7 @@ duplicate what a sibling owns; integrate with it.
 - **No em dashes** in prose, docs, README, UI copy, or commit messages. Use a spaced hyphen ` - `,
   a comma, or parentheses. (Code and generated config are exempt.)
 - **100% open source.** No vendor backend, no proprietary dependency, no phone-home. Licensed
-  **AGPL-3.0-or-later**, matching the tenishai family (gojira, techne, limenal, cabal, daedalus); this
+  **AGPL-3.0-or-later**, matching the tenishai family (gojira, techne, liminal, cabal, daedalus); this
   permits library-level embedding of the siblings without a license boundary.
 - **Agent-first, no web UI** as a core surface. The agent is the interface.
 - **gojira-native.** gojira's contract and state are the source of truth; do not duplicate them.

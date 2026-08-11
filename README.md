@@ -44,7 +44,7 @@ concern and are built to compose. Argus owns observability:
   sizing). Argus's parent: it continues gojira's lifecycle and maps workload class to observability.
 - **[techne](https://github.com/tenishai/techne)** - agentic memory. Argus's ledger migrates here, so
   its deploy history becomes durable memory.
-- **[limenal](https://github.com/tenishai/limenal)** - the MCP gateway. Argus reaches its tools
+- **[liminal](https://github.com/tenishai/liminal)** - the MCP gateway. Argus reaches its tools
   through it, and can expose its own operations as a handler.
 - **[cabal](https://github.com/tenishai/cabal)** - agent orchestration. Argus's agent registers here
   as the observability persona.
@@ -101,4 +101,4 @@ operations. Code scaffolding is in progress.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, limenal, cabal, daedalus).
+[AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).

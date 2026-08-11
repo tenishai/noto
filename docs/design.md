@@ -7,7 +7,7 @@
 > **License:** AGPL-3.0-or-later (the tenishai family license)
 > **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
 > **Home:** [tenishai/argus](https://github.com/tenishai/argus) (transferred into the org
-> 2026-07-11), alongside gojira / techne / limenal / cabal / daedalus / ladon.
+> 2026-07-11), alongside gojira / techne / liminal / cabal / daedalus / ladon.
 
 ---
 
@@ -59,7 +59,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
   topology and the "integrations that just work" north star (`argus-integrations`).
 - **OpenTelemetry + Mimir/Loki/Tempo (storage) + Perses (visualization)** - the open-source substrate
   (details below).
-- **cabal / limenal / techne** - the agent runtime, tools, and memory Argus can later plug into.
+- **cabal / liminal / techne** - the agent runtime, tools, and memory Argus can later plug into.
 
 ---
 
@@ -91,14 +91,14 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Log shipper | **A seam: OTel `filelog` default; Fluent Bit supported alternative** (FB tails -> OTLP -> same local gateway; downstream identical). Both rendered from the profile schema's log-collection section, both contract-tested. Chosen per deployment by benchmark on real node profiles, not by opinion. FB implementation is post-Phase-1 | Scale-flexible without giving up the one-config-guarantee: at very high per-node log rates FB's footprint/throughput wins; at typical rates one substrate wins. The bypassed GKE logging agent is itself Fluent Bit, so the pattern is native to the platform |
 | Scale posture | **Design for arbitrary scale; size each deployment from its measurements.** Every component is horizontally scalable (Mimir/Loki/Tempo shard on object storage, the queue partitions, collectors HPA, the ingest tier is a stateless consumer group); scale numbers are *inputs* (profile budgets, Helm sizing tiers, topic retention), never constants baked into rendered config | Argus targets many teams and many companies, small and massive. One deployment's volume ([target-fleet.md](target-fleet.md)) is an instance parameter, not the design envelope. Decisions justified "because our volume is small" are reasoning bugs - flexibility across scales is the requirement |
 | Tenancy | **Tenant per cluster**, stamped as `X-Scope-OrgID` by the ingest tier (`solo`: by the gateway) | Mimir/Loki/Tempo are natively multi-tenant; cluster is the finest useful isolation and cost-attribution unit and aggregates upward in Perses; per-team usage attribution falls out of tenant + namespace labels |
-| License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/limenal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
-| Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Argus CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and limenal wiring; Argus keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
+| License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/liminal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
+| Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Argus CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and liminal wiring; Argus keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
 | Ledger / state | **SQLite now**, techne-backed later | Proven in gojira; migrate the agent's deploy history into techne when ready |
 | Agent home | **Self-contained in the `argus` repo** | Ships its own minimal runtime; portable, can register into cabal later |
 | First cloud target | **GKE / GCP** | Matches gojira and existing infra; cloud-agnostic is a later phase |
 | Object storage | **GCS** (S3/Azure later) | Backs Mimir/Loki/Tempo; one bucket-set per cluster |
 | Interface | **Agent + Skills**, no web UI | Agent-first; the repo is the substrate |
-| Language | **Python** (CPython 3.14, `uv`, `ruff`) | All sibling repos (gojira/techne/limenal/cabal) are Python; first-class Anthropic SDK; Jinja2 rendering + stdlib SQLite + shell-out fit Argus's "render YAML, apply via CLI" shape |
+| Language | **Python** (CPython 3.14, `uv`, `ruff`) | All sibling repos (gojira/techne/liminal/cabal) are Python; first-class Anthropic SDK; Jinja2 rendering + stdlib SQLite + shell-out fit Argus's "render YAML, apply via CLI" shape |
 
 Rejected / deferred: a third-party GitOps controller (ArgoCD/Flux) - Argus applies directly. Hosted
 SaaS backends (Datadog, Grafana Cloud, and similar) - Argus is the open-source answer. A standalone
@@ -415,7 +415,7 @@ metric/trace completes a full round-trip.
 
 The Argus agent's **shell is a daedalus bundle** (decision, 2026-07-08): a directory with
 `agent-card.json`, `persona.md`, and `agent.yaml`, run by the daedalus runtime, which already provides
-the transports (CLI, A2A, Slack), the cabal peer surface, and limenal tool wiring the original design
+the transports (CLI, A2A, Slack), the cabal peer surface, and liminal tool wiring the original design
 planned to hand-build. What Argus keeps in this repo is what it genuinely owns: the idempotent step
 engine and SQLite ledger, the gojira-reader, the renderers, the profiles, and the Agent Skills - all
 exposed as the tools the bundle wires in. Because daedalus is v0.1-in-progress, Argus also keeps a
@@ -424,8 +424,8 @@ target shape, the CLI is the escape hatch.
 
 Sibling integration specifics (verified against the repos, 2026-07-08):
 
-- **limenal** - register a native `Handler` via the `limenal.handlers` Python entry-point group
-  (in-process), or run an Argus MCP server behind limenal's `mcp_proxy` / declarative targets.
+- **liminal** - register a native `Handler` via the `liminal.handlers` Python entry-point group
+  (in-process), or run an Argus MCP server behind liminal's `mcp_proxy` / declarative targets.
 - **techne** - embed the stable Python API; map step-engine run IDs onto techne sessions with
   `init_session_for_external_id`. Ledger migration is a one-time script through the public API
   (there is no generic foreign-SQLite importer).
@@ -433,7 +433,7 @@ Sibling integration specifics (verified against the repos, 2026-07-08):
   dict, no plugin loading); the daedalus bundle's cabal peer surface is the nearer-term path.
 - **ladon** - Argus onboards as a ladon "team"; the External Secrets Operator syncs OpenBao values
   into plain Kubernetes Secrets that collectors/backends mount. Argus never calls OpenBao at runtime.
-- Now that Argus is AGPL like the family, library-level embedding (techne, limenal) carries no
+- Now that Argus is AGPL like the family, library-level embedding (techne, liminal) carries no
   license boundary.
 
 Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hyphenated dir = `name`;
@@ -558,7 +558,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
    less battle-tested than Grafana; we pin its chart/version like everything else and revisit if a
    capability gap blocks a profile. This retires the "LGTM" label (the G was Grafana); we name the
    substrate explicitly as Mimir/Loki/Tempo + Perses.
-8. **Language** → **Python.** All four sibling repos (gojira, techne, limenal, cabal) are Python, and
+8. **Language** → **Python.** All four sibling repos (gojira, techne, liminal, cabal) are Python, and
    Argus is meant to merge into the same org and compose with them; a different language would put a
    seam through the ecosystem. On the merits, gojira is the same shape of program (Python + Jinja +
    shelling to gcloud/kubectl), the Anthropic SDK is first-class in Python, SQLite is stdlib, and
@@ -569,7 +569,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 
 ## Resolved questions (2026-07-08, family alignment)
 
-9. **License** → **AGPL-3.0-or-later.** The whole family (gojira, techne, limenal, cabal, daedalus,
+9. **License** → **AGPL-3.0-or-later.** The whole family (gojira, techne, liminal, cabal, daedalus,
    agents) relicensed from Apache-2.0/MIT to AGPL on 2026-07-08; Argus moves with it. This keeps
    library-level embedding of the siblings clean; the alternative (stay Apache, integrate only over
    protocols) was rejected as a permanent seam through the ecosystem. Only ladon remains Apache-2.0.

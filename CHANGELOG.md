@@ -341,7 +341,7 @@ All notable changes to Argus are documented here. The format is based on
   fallback now that AGPL is license-clean for us.
 
 - **Relicensed Apache-2.0 -> AGPL-3.0-or-later**, moving with the tenishai family (gojira, techne,
-  limenal, cabal, daedalus all relicensed 2026-07-08). Permits library-level embedding of the
+  liminal, cabal, daedalus all relicensed 2026-07-08). Permits library-level embedding of the
   siblings without a license boundary. LICENSE, README, CLAUDE.md, design.md, and the skills-format
   convention updated.
 - **Backend hosting revised: per-cluster collection, per-region storage**, with a durable
@@ -358,7 +358,7 @@ All notable changes to Argus are documented here. The format is based on
   engine, renderers, profiles, and skills as Argus-owned tools, with a thin CLI fallback while
   daedalus is v0.1.
 - Sibling links updated from personal repos to the [tenishai](https://github.com/tenishai) org;
-  ecosystem tables gained daedalus and ladon with concrete integration paths (limenal entry-point
+  ecosystem tables gained daedalus and ladon with concrete integration paths (liminal entry-point
   handler, techne `init_session_for_external_id`, cabal registry PR, ladon team onboarding via ESO).
 - Step 7 of the order of operations now **supersedes gojira's generated Google Managed Prometheus
   CRDs** (`PodMonitoring`/`Rules`) so Argus-managed clusters are not double-scraped; proposing a
@@ -373,7 +373,7 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
-- README "Part of a larger platform" section naming the sibling projects (gojira, techne, limenal,
+- README "Part of a larger platform" section naming the sibling projects (gojira, techne, liminal,
   cabal) and Argus's relationship to each.
 - Top-level [ROADMAP.md](ROADMAP.md): the phased plan (Observe -> Curate -> Guard -> Reason -> Later)
   at a glance, linked from the README, with design.md as the source of truth.

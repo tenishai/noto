@@ -65,7 +65,7 @@ to Phase 1/2 content rendering, not Phase 4:
 ## Remediation guardrails (requirements for the observer agent, recorded now)
 
 Self-healing is deliberately **not** Argus scope: Argus detects and diagnoses; acting is the
-observer persona (see the north star in [design.md](design.md)) using limenal-gated tools under
+observer persona (see the north star in [design.md](design.md)) using liminal-gated tools under
 cabal's guardrails (doom-loop detection, fail-closed validators). The original fleet roadmap's
 guardrail thinking is preserved here as requirements for that future work, because it is exactly
 right:
