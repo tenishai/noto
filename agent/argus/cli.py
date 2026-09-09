@@ -30,6 +30,7 @@ from argus.rendering.alerts import render_alert_rules
 from argus.rendering.collectors import (
     render_agent,
     render_gateway,
+    render_priorityclass,
     render_targetallocator,
     render_targetallocator_rbac,
 )
@@ -77,6 +78,7 @@ def _resolved(class_name: str, override: dict | None):
 def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
     families: dict[str, list[dict]] = {
         "collectors": [
+            render_priorityclass(),
             *render_targetallocator_rbac(ctx),
             render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),

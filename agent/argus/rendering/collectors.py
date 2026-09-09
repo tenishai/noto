@@ -237,9 +237,44 @@ def render_agent(
         # k8sattributes node scoping reads this (crashes without it - smoke-found).
         "env": [
             {"name": "KUBE_NODE_NAME", "valueFrom": {"fieldRef": {"fieldPath": "spec.nodeName"}}}
-        ]
+        ],
+        # The per-node collector is infrastructure: without a priority class it loses
+        # its node to ordinary app pods whenever the node sits at its pod cap
+        # ("Too many pods", no preemption victims), and that node goes dark - found
+        # live on a pod-packed cluster. Preempted app pods reschedule (and can
+        # trigger autoscale); a node with no collector cannot.
+        "priorityClassName": PRIORITY_CLASS_NAME,
     }
+    if "logs" in p.signals:
+        # filelog reads the node's pod logs, so the host path must actually be
+        # mounted - without it the glob matches nothing and fails silently (zero
+        # files is not an error). Found live on GKE: the kind smoke's log
+        # assertion rides the sample app's OTLP push, so it never caught this.
+        spec_extra["volumes"] = [
+            {"name": "varlogpods", "hostPath": {"path": "/var/log/pods"}}
+        ]
+        spec_extra["volumeMounts"] = [
+            {"name": "varlogpods", "mountPath": "/var/log/pods", "readOnly": True}
+        ]
     return _crd("agent", "daemonset", ctx, config, spec_extra)
+
+
+PRIORITY_CLASS_NAME = "argus-node-critical"
+
+
+def render_priorityclass() -> dict:
+    """The agent DaemonSet's PriorityClass (system-node-critical is kube-system-only)."""
+    return {
+        "apiVersion": "scheduling.k8s.io/v1",
+        "kind": "PriorityClass",
+        "metadata": {"name": PRIORITY_CLASS_NAME},
+        "value": 1000000,
+        "globalDefault": False,
+        "description": (
+            "Argus per-node collector - preempts app pods on pod-capped nodes so no "
+            "node goes unobserved; evicted pods reschedule, unobserved nodes cannot."
+        ),
+    }
 
 
 def render_gateway(p: ResolvedProfile, ctx: Context) -> dict:

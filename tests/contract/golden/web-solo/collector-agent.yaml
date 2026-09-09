@@ -34,7 +34,7 @@ spec:
         logs:
           log_record:
           - IsMatch(attributes["url.path"], "^(/health|/healthz|/ready|/livez)")
-          - severity_number < SEVERITY_NUMBER_INFO
+          - severity_number != SEVERITY_NUMBER_UNSPECIFIED and severity_number < SEVERITY_NUMBER_INFO
         traces:
           span:
           - IsMatch(attributes["url.path"], "^(/health|/healthz|/ready|/livez)")
@@ -136,3 +136,12 @@ spec:
       fieldRef:
         fieldPath: spec.nodeName
   mode: daemonset
+  priorityClassName: argus-node-critical
+  volumeMounts:
+  - mountPath: /var/log/pods
+    name: varlogpods
+    readOnly: true
+  volumes:
+  - hostPath:
+      path: /var/log/pods
+    name: varlogpods
