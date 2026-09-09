@@ -32,7 +32,7 @@ from argus.rendering.slo import render_sloth  # noqa: E402
 
 GOLDEN = REPO / "tests" / "contract" / "golden"
 PROFILES = REPO / "profiles"
-CLASSES = ["web", "worker", "cron", "heavy", "gpu"]
+CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 # Goldens are the HUMAN-review artifact: one representative class, both topologies.
 # All-class coverage lives in the contract invariants (cheap, no churn).
 GOLDEN_CLASSES = ["web"]

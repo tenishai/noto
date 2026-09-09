@@ -9,7 +9,7 @@ from argus.profiles.resolve import resolve
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
-CLASSES = ["web", "worker", "cron", "heavy", "gpu"]
+CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 
 
 @pytest.mark.parametrize("class_name", CLASSES)

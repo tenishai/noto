@@ -1,0 +1,8 @@
+# agent -> runtime health: long-running autonomous workers with no /metrics contract, so
+# kubeletstats + kube-state-metrics and logs carry the signal. Alert-based like cron - an
+# objective over metrics the app does not emit is an SLO that can never fire.
+class: agent
+signals: [metrics, logs]
+dashboards:
+  - name: agent-health
+    panels: ["metric:memory-working-set", "metric:pod-restarts", "logs:errors"]

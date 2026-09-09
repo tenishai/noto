@@ -30,6 +30,13 @@ _METRIC_QUERIES = {
         "sum by (k8s_pod_name) (k8s_pod_memory_working_set"
         '{k8s_namespace_name="%(namespace)s", k8s_pod_name=~"%(app)s-.*"})'
     ),
+    # kube-state-metrics keeps Prometheus names/labels through the TargetAllocator scrape.
+    # Namespace-scoped, not pod-regex: gojira gives every app its own namespace, and the
+    # cluster-level baseline context has no app to regex on.
+    "pod-restarts": (
+        "sum(increase(kube_pod_container_status_restarts_total"
+        '{namespace="%(namespace)s"}[1h]))'
+    ),
 }
 
 

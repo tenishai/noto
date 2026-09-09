@@ -145,7 +145,7 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: up{job="sample-web"}
+                  query: sum(increase(kube_pod_container_status_restarts_total{namespace="sample"}[1h]))
 - kind: Dashboard
   metadata:
     name: web-red

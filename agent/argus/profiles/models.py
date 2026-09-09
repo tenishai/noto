@@ -69,7 +69,9 @@ class BaselineProfile(_Frozen):
 
 
 class ClassProfile(_Frozen):
-    class_name: Literal["web", "worker", "cron", "heavy", "gpu"] = Field(alias="class")
+    class_name: Literal["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"] = Field(
+        alias="class"
+    )
     signals: list[Signal]
     slos: list[SLO] = []
     dashboards: list[Dashboard] = []
