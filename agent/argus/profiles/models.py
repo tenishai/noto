@@ -53,6 +53,9 @@ class SLO(_Frozen):
 class Dashboard(_Frozen):
     name: str
     panels: list[str]
+    # "app" dashboards render per app (name-prefixed, queries app-scoped); "cluster"
+    # dashboards render once, app-less, with cluster-wide queries.
+    scope: Literal["app", "cluster"] = "app"
     enabled: bool = True
 
 

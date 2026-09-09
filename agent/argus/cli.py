@@ -101,7 +101,7 @@ def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
     p = _resolved(spec.class_name, spec.observability)
     ctx = Context(
         topology="solo",
-        cluster=env.cluster,
+        cluster=getattr(args, "cluster", None) or env.cluster,
         environment=args.env,
         app=spec.app,
         namespace=env.namespace,
@@ -285,6 +285,12 @@ def main(argv: list[str] | None = None) -> int:
         if needs_app:
             p.add_argument("--gojira", required=True, help="path to the app's gojira.yaml")
             p.add_argument("--env", required=True, choices=["dev", "qa", "prod"])
+            # The observability identity (Perses project, tenant, gateway exporter
+            # headers) must be ONE value per cluster. gojira.yaml cluster strings
+            # drift across apps (live-found: 'acme-dev' vs the GKE cluster name),
+            # and each observe re-renders the shared collector tier - last writer
+            # wins. Pin it here; the per-app file stays the fallback.
+            p.add_argument("--cluster", default=None, help="canonical cluster/tenant name override")
 
     p_render = sub.add_parser("render", help="render artifacts, touch nothing")
     common(p_render, needs_app=True)

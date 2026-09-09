@@ -12,8 +12,7 @@ def test_log_level_below() -> None:
     # UNSPECIFIED-severity lines (plain stdout) must survive the floor - a bare
     # `< INFO` silently drops every unparsed log line (found live on GKE).
     assert out.logs == [
-        "severity_number != SEVERITY_NUMBER_UNSPECIFIED and "
-        "severity_number < SEVERITY_NUMBER_INFO"
+        "severity_number != SEVERITY_NUMBER_UNSPECIFIED and severity_number < SEVERITY_NUMBER_INFO"
     ]
     assert out.metrics == [] and out.traces == []
 

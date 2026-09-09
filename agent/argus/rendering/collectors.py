@@ -250,9 +250,7 @@ def render_agent(
         # mounted - without it the glob matches nothing and fails silently (zero
         # files is not an error). Found live on GKE: the kind smoke's log
         # assertion rides the sample app's OTLP push, so it never caught this.
-        spec_extra["volumes"] = [
-            {"name": "varlogpods", "hostPath": {"path": "/var/log/pods"}}
-        ]
+        spec_extra["volumes"] = [{"name": "varlogpods", "hostPath": {"path": "/var/log/pods"}}]
         spec_extra["volumeMounts"] = [
             {"name": "varlogpods", "mountPath": "/var/log/pods", "readOnly": True}
         ]
