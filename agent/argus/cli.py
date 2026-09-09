@@ -82,10 +82,11 @@ def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
         ],
-        "scrape": [render_servicemonitor(p, ctx), render_podmonitor(p, ctx)],
         "alerts": [render_alert_rules(p, ctx)],
         "perses": render_perses(p, ctx),
     }
+    if p.app_scrape:
+        families["scrape"] = [render_servicemonitor(p, ctx), render_podmonitor(p, ctx)]
     sloth = render_sloth(p, ctx)
     if sloth is not None:
         families["slo"] = [sloth]
@@ -181,7 +182,7 @@ def cmd_observe(args: argparse.Namespace) -> int:
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
-    steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts")]
+    steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts") if f in rendered]
     if "slo" in rendered:
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)

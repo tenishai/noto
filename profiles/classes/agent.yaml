@@ -3,6 +3,7 @@
 # objective over metrics the app does not emit is an SLO that can never fire.
 class: agent
 signals: [metrics, logs]
+app_scrape: false
 dashboards:
   - name: agent-health
     panels: ["metric:memory-working-set", "metric:pod-restarts", "logs:errors"]

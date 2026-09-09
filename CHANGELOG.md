@@ -16,6 +16,12 @@ All notable changes to Argus are documented here. The format is based on
   real KSM query (namespace-scoped - gojira gives every app its own namespace); the
   cluster-level baseline context still renders it empty for want of a namespace, unchanged
   from its placeholder days.
+- **`app_scrape: false`** (class profile knob, default true): both new classes set it - their
+  workload contract serves /healthz, not /metrics - which suppresses the per-app
+  ServiceMonitor/PodMonitor *and* the ArgusScrapeDown alert group, applying the
+  can-never-fire principle to scrapes and alerts alike. Flip it (or grow a /metrics
+  endpoint) and the whole scrape lane returns. Live-checked against a real agent-class
+  gojira.yaml: rendered families are collectors/alerts/perses only.
 
 - **Exemplar click-through: verified, answered, and permanently asserted** (issue #47, the
   oldest open thread - carried from the Perses spike): a pinned OTel Python SDK sample app

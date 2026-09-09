@@ -73,6 +73,11 @@ class ClassProfile(_Frozen):
         alias="class"
     )
     signals: list[Signal]
+    # False for classes whose workload contract has no /metrics endpoint (agent, and
+    # gateway until it grows one): suppresses the per-app ServiceMonitor/PodMonitor so
+    # the platform never alerts on a scrape the app was never going to answer. The
+    # metrics signal stays on - kubeletstats and kube-state-metrics are app-agnostic.
+    app_scrape: bool = True
     slos: list[SLO] = []
     dashboards: list[Dashboard] = []
     drop: list[DropRule] = []
@@ -105,6 +110,7 @@ class Override(BaseModel):
 class ResolvedProfile(_Frozen):
     class_name: str
     signals: list[Signal]
+    app_scrape: bool
     budgets: Budgets
     slos: list[SLO]
     dashboards: list[Dashboard]

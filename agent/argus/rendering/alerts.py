@@ -70,6 +70,29 @@ def _cardinality_rules(p: ResolvedProfile, ctx: Context) -> list[dict]:
 def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
     if not ctx.app or not ctx.namespace:
         raise ValueError("alert packs are per-app: Context.app and Context.namespace are required")
+    groups = [
+        {"name": "argus-collector-health", "rules": list(_COLLECTOR_HEALTH_RULES)},
+        {"name": "argus-cardinality", "rules": _cardinality_rules(p, ctx)},
+    ]
+    # No scrape, no scrape-down: with the app's monitors suppressed the up{} series never
+    # exists, and an alert over a series that cannot exist is an alert that can never fire.
+    if p.app_scrape:
+        groups.append(
+            {
+                "name": f"argus-app-{ctx.app}",
+                "rules": [
+                    {
+                        "alert": "ArgusScrapeDown",
+                        "expr": f'up{{job="{ctx.app}"}} == 0',
+                        "for": "5m",
+                        "labels": {"severity": "page"},
+                        "annotations": {
+                            "summary": f"{ctx.app} scrape target down (no /metrics for 5m)"
+                        },
+                    }
+                ],
+            }
+        )
     return {
         "apiVersion": "monitoring.coreos.com/v1",
         "kind": "PrometheusRule",
@@ -78,24 +101,5 @@ def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
             "namespace": ctx.namespace,
             "labels": {"argus.dev/managed": "true", "argus.dev/class": p.class_name},
         },
-        "spec": {
-            "groups": [
-                {"name": "argus-collector-health", "rules": list(_COLLECTOR_HEALTH_RULES)},
-                {"name": "argus-cardinality", "rules": _cardinality_rules(p, ctx)},
-                {
-                    "name": f"argus-app-{ctx.app}",
-                    "rules": [
-                        {
-                            "alert": "ArgusScrapeDown",
-                            "expr": f'up{{job="{ctx.app}"}} == 0',
-                            "for": "5m",
-                            "labels": {"severity": "page"},
-                            "annotations": {
-                                "summary": f"{ctx.app} scrape target down (no /metrics for 5m)"
-                            },
-                        }
-                    ],
-                },
-            ]
-        },
+        "spec": {"groups": groups},
     }

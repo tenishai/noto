@@ -40,3 +40,16 @@ def test_collector_health_alerts_present() -> None:
     health = doc["spec"]["groups"][0]
     alerts = {r["alert"] for r in health["rules"]}
     assert {"ArgusCollectorMemoryHigh", "ArgusCollectorRefusing", "ArgusExporterFailing"} <= alerts
+
+
+def test_no_scrape_class_ships_no_scrape_down_group() -> None:
+    REAL = Path(__file__).parents[3] / "profiles"
+    p = resolve(
+        load_baseline(REAL / "baseline.yaml"),
+        load_class(REAL / "classes" / "agent.yaml"),
+        load_override(None),
+    )
+    ctx = Context(topology="solo", cluster="c1", environment="dev", app="hello", namespace="hello")
+    doc = render_alert_rules(p, ctx)
+    names = [g["name"] for g in doc["spec"]["groups"]]
+    assert names == ["argus-collector-health", "argus-cardinality"]
