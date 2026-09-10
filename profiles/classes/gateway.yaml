@@ -6,4 +6,4 @@ signals: [metrics, logs]
 app_scrape: false
 dashboards:
   - name: gateway-red
-    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "metric:memory-working-set", "metric:pod-restarts", "logs:errors"]
+    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "metric:memory-working-set", "metric:pod-restarts", "logs:errors", "logs:recent"]

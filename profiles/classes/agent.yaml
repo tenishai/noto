@@ -6,4 +6,4 @@ signals: [metrics, logs]
 app_scrape: false
 dashboards:
   - name: agent-health
-    panels: ["metric:memory-working-set", "metric:pod-restarts", "logs:errors"]
+    panels: ["metric:memory-working-set", "metric:pod-restarts", "logs:errors", "logs:recent"]

@@ -15,6 +15,22 @@ machines.
 from argus.profiles.models import Dashboard, ResolvedProfile
 from argus.rendering.context import Context
 
+# The one dashboard each class ships; anything beyond these (a per-app
+# override extra) keeps its own name in the display.
+_CLASS_PRIMARY_DASHBOARDS = frozenset(
+    {"agent-health", "gateway-red", "web-red", "worker-throughput", "cron-health"}
+)
+
+_KIND_LABELS = {
+    "web": "Web",
+    "worker": "Worker",
+    "cron": "Cron",
+    "heavy": "Heavy",
+    "gpu": "GPU",
+    "agent": "Agent",
+    "gateway": "Gateway",
+}
+
 _PANEL_PLUGINS = {
     "metric": ("TimeSeriesChart", "TimeSeriesQuery", "PrometheusTimeSeriesQuery", "up"),
     "logs": ("LogsTable", "LogQuery", "LokiLogQuery", '{k8s_namespace_name="%(namespace)s"}'),
@@ -67,6 +83,10 @@ _CLUSTER_LOG_QUERIES = {
 
 _LOG_QUERIES = {
     "errors": '{k8s_namespace_name="%(namespace)s"} ' + _ERROR_FILTER,
+    # Unfiltered, beside the error panel: an empty error panel on a healthy app
+    # is indistinguishable from a broken log pipeline - this panel is the
+    # pipeline's visible heartbeat (first-operator-hour lesson).
+    "recent": '{k8s_namespace_name="%(namespace)s"}',
 }
 
 
@@ -175,12 +195,20 @@ def _dashboard(dash: Dashboard, project: str, ctx: Context, p: ResolvedProfile) 
         }
         for i, key in enumerate(panels)
     ]
-    pretty = dash.name.removeprefix("cluster-").replace("-", " ").title()
+    # Kind-first display names so the project's flat, alphabetically sorted
+    # dashboard list groups itself by kind (Agent · ..., Cluster · ...,
+    # Gateway · ..., Web · ...) - Perses has no folders and this version
+    # strips tags, so the name IS the taxonomy.
+    kind = _KIND_LABELS.get(p.class_name, p.class_name.capitalize())
     if ctx.app:
         name = f"{ctx.app}-{dash.name}"
-        display = f"{ctx.app.capitalize()} · {pretty}"
+        display = f"{kind} · {ctx.app.capitalize()}"
+        if dash.name not in _CLASS_PRIMARY_DASHBOARDS:
+            pretty = dash.name.replace("-", " ").title()
+            display = f"{display} · {pretty}"
     else:
         name = dash.name
+        pretty = dash.name.removeprefix("cluster-").replace("-", " ").title()
         display = f"Cluster · {pretty}"
     return {
         "kind": "Dashboard",

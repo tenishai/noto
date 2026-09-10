@@ -154,7 +154,7 @@
     project: golden-cluster
   spec:
     display:
-      name: "Sample-web \xB7 Web Red"
+      name: "Web \xB7 Sample-web"
     duration: 1h
     layouts:
     - kind: Grid
@@ -196,6 +196,12 @@
           width: 12
           x: 12
           y: 16
+        - content:
+            $ref: '#/spec/panels/logs-recent'
+          height: 8
+          width: 12
+          x: 0
+          y: 24
     panels:
       logs-errors:
         kind: Panel
@@ -212,6 +218,21 @@
                 kind: LokiLogQuery
                 spec:
                   query: '{k8s_namespace_name="sample"} |~ "(?i)(error|exception|traceback|fatal|panic)"'
+      logs-recent:
+        kind: Panel
+        spec:
+          display:
+            name: Recent (Logs)
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{k8s_namespace_name="sample"}'
       metric-error-rate:
         kind: Panel
         spec:
