@@ -311,6 +311,30 @@ def test_job_mode_applies_only_to_observe_platform_stays_untouched(monkeypatch, 
     assert "ARGUS_SUMMARY" not in out
 
 
+def test_job_mode_applied_documents_carry_the_observed_contract_annotation(monkeypatch, capsys):
+    """Every object argus applies in job mode must record which contract was
+    observed (issue: born-observed), so the cluster can answer 'has the app
+    changed since argus looked' on its own."""
+    import yaml
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    sha = contract_fingerprint(gojira_text)
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    applies = [(c, s) for c, s in runner.calls if "apply" in c]
+    assert applies
+    for _cmd, stdin_text in applies:
+        for doc in yaml.safe_load_all(stdin_text):
+            assert doc["metadata"]["annotations"]["argus.dev/contract-sha256"] == sha
+
+
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
     """GojiraApp.environment() raises a bare KeyError, whose str() wraps the message
     in quotes; the summary must read the message plainly instead."""

@@ -150,6 +150,94 @@ def test_dry_run_threads_through(tmp_path: Path) -> None:
     assert "--dry-run=server" in cmd
 
 
+def test_apply_rendered_with_empty_annotations_is_byte_identical_to_today(
+    tmp_path: Path,
+) -> None:
+    """StepContext.annotations defaults to {}; job mode is the only caller that ever
+    sets it. Operator mode (and the golden-file suite) must see the exact same
+    stdin manifest as before this field existed."""
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [
+        {"kind": "ServiceMonitor", "metadata": {"name": "x"}},
+        {"kind": "PodMonitor", "metadata": {"name": "y", "annotations": {"keep": "me"}}},
+    ]
+    rendered = {"scrape": docs}
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger, "wire@x", _ctx(runner, rendered=rendered)
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    assert stdin_text == yaml.safe_dump_all(docs)
+
+
+def test_apply_rendered_annotates_documents_with_the_observed_contract(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [{"kind": "ServiceMonitor", "metadata": {"name": "x"}}]
+    rendered = {"scrape": docs}
+    sha = "a" * 64
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    applied = list(yaml.safe_load_all(stdin_text))
+    assert applied[0]["metadata"]["annotations"] == {"argus.dev/contract-sha256": sha}
+
+
+def test_apply_rendered_annotation_survives_alongside_unrelated_annotations(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [
+        {
+            "kind": "ServiceMonitor",
+            "metadata": {
+                "name": "x",
+                "annotations": {
+                    "unrelated/keep": "yes",
+                    "argus.dev/contract-sha256": "stale" * 12 + "0000",
+                },
+            },
+        }
+    ]
+    rendered = {"scrape": docs}
+    sha = "b" * 64
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    applied = list(yaml.safe_load_all(stdin_text))
+    annotations = applied[0]["metadata"]["annotations"]
+    assert annotations["unrelated/keep"] == "yes"
+    assert annotations["argus.dev/contract-sha256"] == sha
+
+
+def test_apply_rendered_never_mutates_the_callers_rendered_documents(
+    tmp_path: Path,
+) -> None:
+    """Rendered families are reused across steps/runs - apply() must copy, not touch,
+    the caller's objects, even for a document that starts with no metadata at all."""
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    original_doc = {"kind": "ServiceMonitor"}
+    docs = [original_doc]
+    rendered = {"scrape": docs}
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": "c" * 64}),
+    )
+    assert original_doc == {"kind": "ServiceMonitor"}
+    assert "metadata" not in original_doc
+
+
 def test_cli_render_writes_all_families(tmp_path: Path) -> None:
     out = tmp_path / "rendered"
     code = cli.main(
@@ -194,6 +282,33 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     assert code == 0
     applies = [c for c, _ in runner.calls if "apply" in c]
     assert len(applies) == 4  # collectors, scrape, alerts, slo
+
+
+def test_cli_observe_operator_mode_applies_no_contract_annotation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Operator mode has no contract to record - it must set no annotation at all."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    applies = [(c, s) for c, s in runner.calls if "apply" in c]
+    assert applies
+    for _cmd, stdin_text in applies:
+        for doc in yaml.safe_load_all(stdin_text):
+            assert "argus.dev/contract-sha256" not in doc.get("metadata", {}).get("annotations", {})
 
 
 def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(

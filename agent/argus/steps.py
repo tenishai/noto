@@ -7,6 +7,7 @@ apply path; the solo topology needs none (in-cluster storage for dev, GCS via th
 example root when a deployment brings a project).
 """
 
+import copy
 import hashlib
 import json
 from collections.abc import Callable
@@ -28,6 +29,10 @@ class StepContext:
     repo_root: Path = Path(".")
     rendered: dict[str, list[dict]] = field(default_factory=dict)  # renderer output by family
     dry_run: bool = False
+    # Job mode's fingerprint of the contract argus is observing (empty in operator
+    # mode). ApplyRendered stamps these onto every document it applies, so the
+    # cluster itself can answer "has the app changed since argus looked".
+    annotations: dict[str, str] = field(default_factory=dict)
 
     def kubectl(self, *args: str) -> list[str]:
         cmd = ["kubectl"]
@@ -173,7 +178,8 @@ class ApplyRendered:
         docs = ctx.rendered.get(self.family)
         if not docs:
             raise RuntimeError(f"nothing rendered for family {self.family!r}")
-        manifest = yaml.safe_dump_all(docs)
+        to_apply = [_annotated(doc, ctx.annotations) for doc in docs]
+        manifest = yaml.safe_dump_all(to_apply)
         cmd = ctx.kubectl("apply", "--server-side", "--field-manager", "argus", "-f", "-")
         if ctx.dry_run:
             cmd.append("--dry-run=server")
@@ -181,6 +187,23 @@ class ApplyRendered:
         if code != 0:
             raise RuntimeError(f"apply {self.family} failed: {out[-2000:]}")
         return f"applied/{self.family}({len(docs)})"
+
+
+def _annotated(doc: dict, annotations: dict[str, str]) -> dict:
+    """A copy of doc with annotations merged into metadata.annotations.
+
+    Never mutates doc - rendered families are reused across steps and runs. With no
+    annotations to add, the copy is returned untouched, so the YAML this produces
+    stays byte-identical to a document that was never passed through here at all.
+    Our keys always win on conflict; every other existing annotation survives.
+    """
+    doc = copy.deepcopy(doc)
+    if not annotations:
+        return doc
+    metadata = doc.setdefault("metadata", {})
+    existing = metadata.get("annotations") or {}
+    metadata["annotations"] = {**existing, **annotations}
+    return doc
 
 
 @dataclass

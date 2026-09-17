@@ -50,6 +50,11 @@ from argus.steps import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Every object argus applies in job mode carries this annotation with the verified
+# contract fingerprint, so the cluster itself can answer "has the app changed since
+# argus looked". Operator mode sets no annotation at all (there is no job contract).
+CONTRACT_SHA_ANNOTATION = "argus.dev/contract-sha256"
+
 # Dependency-ordered platform components (helm/pins.yaml holds the pins).
 PLATFORM_ORDER = [
     "cert-manager",
@@ -121,7 +126,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def _step_context(args: argparse.Namespace, rendered: dict | None = None) -> StepContext:
+def _step_context(
+    args: argparse.Namespace,
+    rendered: dict | None = None,
+    annotations: dict[str, str] | None = None,
+) -> StepContext:
     pins = yaml.safe_load((REPO_ROOT / "helm" / "pins.yaml").read_text())
     return StepContext(
         runner=real_runner,
@@ -130,6 +139,7 @@ def _step_context(args: argparse.Namespace, rendered: dict | None = None) -> Ste
         repo_root=REPO_ROOT,
         rendered=rendered or {},
         dry_run=args.dry_run,
+        annotations=annotations or {},
     )
 
 
@@ -182,7 +192,9 @@ def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
     return docs
 
 
-def _run_observe(args: argparse.Namespace) -> tuple[RunResult, Context]:
+def _run_observe(
+    args: argparse.Namespace, annotations: dict[str, str] | None = None
+) -> tuple[RunResult, Context]:
     """The one observe step sequence, shared by the operator command and job mode."""
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
@@ -192,7 +204,9 @@ def _run_observe(args: argparse.Namespace) -> tuple[RunResult, Context]:
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
         steps.append(ApplyRendered(family="slo"))
-    result = ProvisionEngine(steps).run(ledger, f"wire@{ctx.app}", _step_context(args, rendered))
+    result = ProvisionEngine(steps).run(
+        ledger, f"wire@{ctx.app}", _step_context(args, rendered, annotations)
+    )
     return result, ctx
 
 
@@ -214,7 +228,9 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
     args.ledger = str(tmpdir / "argus.db")
 
     try:
-        result, ctx = _run_observe(args)
+        result, ctx = _run_observe(
+            args, annotations={CONTRACT_SHA_ANNOTATION: inputs.contract_sha256}
+        )
     except Exception as exc:  # job mode must always end with a summary line, not a traceback
         print(failure_summary(None, _exception_reason(exc)), flush=True)
         return 1
