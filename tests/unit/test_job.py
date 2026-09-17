@@ -188,9 +188,7 @@ def test_job_mode_failing_step_ends_with_failure_summary_naming_the_step(
     assert code == 1
     out = capsys.readouterr().out.strip().splitlines()
     assert out[-1].startswith("ARGUS_SUMMARY observe failed: ")
-    assert (
-        "apply" in out[-1] or "collectors" in out[-1] or "scrape" in out[-1] or "alerts" in out[-1]
-    )
+    assert "apply" in out[-1] or "scrape" in out[-1] or "alerts" in out[-1]
 
 
 def test_job_mode_fingerprint_mismatch_applies_nothing(monkeypatch, capsys):
@@ -333,6 +331,32 @@ def test_job_mode_applied_documents_carry_the_observed_contract_annotation(monke
     for _cmd, stdin_text in applies:
         for doc in yaml.safe_load_all(stdin_text):
             assert doc["metadata"]["annotations"]["argus.dev/contract-sha256"] == sha
+            assert doc["kind"] != "OpenTelemetryCollector"
+
+
+def test_job_mode_stdout_still_ends_with_summary_when_drop_warning_fires(monkeypatch, capsys):
+    """A drop-rule warning goes to stderr (job.py: never pollute stdout); the launcher
+    still reads exactly one stdout line, the ARGUS_SUMMARY line, last."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+        "observability:\n  drop:\n    - name: extra-noise\n      stage: gateway\n"
+        "      metric_names: ['foo_.*']\n"
+    )
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    out_lines = captured.out.strip().splitlines()
+    assert out_lines == [out_lines[-1]]
+    assert out_lines[-1].startswith("ARGUS_SUMMARY observed ")
+    assert "warning: drop rules are platform-owned now" in captured.err
 
 
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):

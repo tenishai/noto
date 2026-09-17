@@ -21,6 +21,11 @@ All notable changes to Argus are documented here. The format is based on
   longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping
   in the shared gateway is a registered follow-up.
 
+  **Upgrading an existing cluster:** re-run `argus platform --cluster <name> --env <env>` once
+  after upgrading - `observe` no longer applies the collector tier, so an existing cluster keeps
+  its old gateway (missing traces pipeline included) until `platform` re-applies it. The apply
+  itself is clean: same field manager, same object names, a superset manifest.
+
 ### Added
 
 - **Profiles for gojira's `agent` and `gateway` workload classes**: agent -> runtime health
@@ -36,7 +41,7 @@ All notable changes to Argus are documented here. The format is based on
   ServiceMonitor/PodMonitor *and* the ArgusScrapeDown alert group, applying the
   can-never-fire principle to scrapes and alerts alike. Flip it (or grow a /metrics
   endpoint) and the whole scrape lane returns. Live-checked against a real agent-class
-  gojira.yaml: rendered families are collectors/alerts/perses only.
+  gojira.yaml: rendered families are alerts/perses only.
 
 - **Exemplar click-through: verified, answered, and permanently asserted** (issue #47, the
   oldest open thread - carried from the Perses spike): a pinned OTel Python SDK sample app

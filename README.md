@@ -69,12 +69,24 @@ Argus stands the platform up once per cluster, then wires each gojira-managed ap
 workload class, applying everything directly through cloud CLI / SDK / Helm and OpenTelemetry Operator
 CRDs - no third-party GitOps controller in the path.
 
+### The collector tier
+
 The collector tier (agent DaemonSet, gateway, target allocator) is part of the platform, not part of
 wiring an app: `argus platform --cluster <name> --env <dev|qa|prod>` stands it up once, with all three
 signals on, and `argus observe --gojira <path> --env <env>` only adds that app's scrape wiring,
 dashboards, SLOs and alerts. One consequence, stated plainly: per-class and per-app shaping rules no
-longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping in the
-shared gateway is a registered follow-up.
+longer reach the shared gateway - the baseline rules apply to everyone (a `drop:` rule added, changed,
+or disabled by an app's class or `observability:` override is a no-op; `observe`/`render` warn about it
+on stderr, naming the ignored rules), and per-app shaping in the shared gateway is a registered
+follow-up.
+
+**The write tenant and the read tenant must be the same value.** The gateway writes with the tenant
+`argus platform --cluster` was given. `observe`, `render`, `rules-sync` and `cardinality` each read or
+write with their OWN `--cluster`/`--tenant` (falling back to the app's gojira.yaml cluster string when
+no override is given) - a per-app command, not the platform. If that value ever differs from the
+cluster `platform` was run with, dashboards, rules and cardinality reports query a tenant nothing
+writes to: empty panels, no error. Until a later task makes `platform` record its tenant and these
+commands read it back, keeping them in sync is on the operator.
 
 ## The stack
 

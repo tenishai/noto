@@ -263,6 +263,42 @@ def test_cli_render_writes_the_per_app_families(tmp_path: Path) -> None:
             assert doc["kind"] != "OpenTelemetryCollector", path.name
 
 
+def test_cli_render_defaults_out_dir_per_mode(tmp_path: Path, monkeypatch) -> None:
+    """--out is shared by both render modes but one default cannot fit both: a
+    per-app render and a --platform render must not collide on the same directory
+    when neither passes --out."""
+    monkeypatch.chdir(tmp_path)
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l1.db"),
+        ]
+    )
+    assert code == 0
+    assert (tmp_path / ".argus" / "rendered-app" / "alerts.yaml").exists()
+
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l2.db"),
+        ]
+    )
+    assert code == 0
+    assert (tmp_path / ".argus" / "rendered-platform" / "collectors.yaml").exists()
+    assert not (tmp_path / ".argus" / "rendered-app" / "collectors.yaml").exists()
+
+
 def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
     out = tmp_path / "rendered"
     code = cli.main(
@@ -362,6 +398,106 @@ def test_cli_platform_requires_an_environment(tmp_path: Path) -> None:
     with _pytest.raises(SystemExit) as exc_info:
         cli.main(["platform", "--cluster", "c1", "--ledger", str(tmp_path / "l.db")])
     assert exc_info.value.code == 2
+
+
+def test_ignored_drop_rule_names_covers_added_changed_and_disabled() -> None:
+    from argus.profiles.models import DropRule
+
+    platform = [
+        DropRule(name="health-endpoints", stage="agent", path_matches=["/healthz"]),
+        DropRule(name="ksm-churn", stage="gateway", metric_names=["a"]),
+    ]
+    app = [
+        DropRule(name="ksm-churn", stage="gateway", metric_names=["b"]),  # changed
+        DropRule(name="app-only", stage="gateway", metric_names=["c"]),  # added
+        # "health-endpoints" is simply absent: disabled by the app's class/override
+    ]
+    ignored = cli._ignored_drop_rule_names(app, platform)
+    assert ignored == ["app-only", "health-endpoints", "ksm-churn"]
+
+
+def test_ignored_drop_rule_names_empty_when_identical() -> None:
+    from argus.profiles.models import DropRule
+
+    rules = [DropRule(name="x", stage="agent", path_matches=["/y"])]
+    assert cli._ignored_drop_rule_names(list(rules), list(rules)) == []
+
+
+def test_no_drop_deltas_warns_nothing(tmp_path: Path, capsys) -> None:
+    """The stock web fixture carries no observability.drop override, so its resolved
+    drop rules are exactly the platform's (baseline-only) - nothing to warn about."""
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert "platform-owned" not in capsys.readouterr().err
+
+
+def test_drop_override_adding_a_rule_warns_and_names_it(tmp_path: Path, capsys) -> None:
+    gojira = tmp_path / "gojira.yaml"
+    gojira.write_text(
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+        "observability:\n  drop:\n    - name: extra-noise\n      stage: gateway\n"
+        "      metric_names: ['foo_.*']\n"
+    )
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(gojira),
+            "--env",
+            "dev",
+            "--out",
+            str(tmp_path / "rendered"),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "warning: drop rules are platform-owned now" in err
+    assert "ignored for demo" in err
+    assert "extra-noise" in err
+    assert "\n" not in err.strip()  # one line
+
+
+def test_drop_override_disabling_a_baseline_rule_warns_and_names_it(tmp_path: Path, capsys) -> None:
+    gojira = tmp_path / "gojira.yaml"
+    gojira.write_text(
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+        "observability:\n  drop:\n    - name: health-endpoints\n      stage: agent\n"
+        "      enabled: false\n"
+    )
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(gojira),
+            "--env",
+            "dev",
+            "--out",
+            str(tmp_path / "rendered"),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "warning: drop rules are platform-owned now" in err
+    assert "health-endpoints" in err
 
 
 def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:

@@ -29,7 +29,7 @@ from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
 from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
 from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.models import ClassProfile, ResolvedProfile
+from argus.profiles.models import ClassProfile, DropRule, ResolvedProfile
 from argus.profiles.resolve import resolve
 from argus.rendering.alerts import render_alert_rules
 from argus.rendering.collectors import (
@@ -145,10 +145,43 @@ def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
     return families
 
 
+def _ignored_drop_rule_names(app_drop: list[DropRule], platform_drop: list[DropRule]) -> list[str]:
+    """Names of drop rules that differ between an app's resolved profile and the
+    platform profile's - added by a class/override, changed, or disabled (an
+    `enabled: false` baseline override drops the rule from the resolved list
+    entirely). `p.drop` is consumed only by the collector renderers, and those now
+    render from the platform profile alone (see `_platform_profile`), so any of
+    these differences is now a silent no-op - this makes it loud instead. Sorted,
+    for a warning whose wording never depends on dict iteration order."""
+    by_name_app = {r.name: r for r in app_drop}
+    by_name_platform = {r.name: r for r in platform_drop}
+    ignored = {
+        name
+        for name in {*by_name_app, *by_name_platform}
+        if by_name_app.get(name) != by_name_platform.get(name)
+    }
+    return sorted(ignored)
+
+
+def _warn_if_drop_rules_ignored(p: ResolvedProfile, app: str | None) -> None:
+    """Never raises, never touches stdout (job mode's last stdout line is a
+    machine-read summary) - a comparison against the profile the platform actually
+    renders from, printed as one stderr line when it finds a difference."""
+    ignored = _ignored_drop_rule_names(p.drop, _platform_profile().drop)
+    if not ignored:
+        return
+    print(
+        f"warning: drop rules are platform-owned now; ignored for {app}: "
+        f'{", ".join(ignored)} (see README, "The collector tier")',
+        file=sys.stderr,
+    )
+
+
 def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
     p = _resolved(spec.class_name, spec.observability)
+    _warn_if_drop_rules_ignored(p, spec.app)
     ctx = Context(
         topology="solo",
         cluster=getattr(args, "cluster", None) or env.cluster,
@@ -167,7 +200,12 @@ def _platform_context(args: argparse.Namespace) -> Context:
 
 
 def cmd_render(args: argparse.Namespace) -> int:
-    out = Path(args.out)
+    # --out has no single sane default across two very different outputs, so a
+    # missing --out picks the right default per mode instead of one dir for both.
+    if args.out:
+        out = Path(args.out)
+    else:
+        out = Path(".argus/rendered-platform" if args.platform else ".argus/rendered-app")
     out.mkdir(parents=True, exist_ok=True)
     if args.platform:
         ctx = _platform_context(args)
@@ -442,13 +480,27 @@ def main(argv: list[str] | None = None) -> int:
             # drift across apps (live-found: one deployment's short name vs the real
             # cluster name), which would scatter one cluster's apps across tenants.
             # Pin it here; the per-app file stays the fallback.
-            p.add_argument("--cluster", default=None, help="canonical cluster/tenant name override")
+            #
+            # WARNING: the gateway that actually WRITES metrics/logs/traces gets its
+            # tenant from `argus platform --cluster` (task 3, born-observed); this
+            # flag only selects which tenant THIS command READS/writes rule groups
+            # for. The two must be given the same value, or dashboards, rules-sync
+            # and cardinality query a tenant nothing writes to: empty panels, no
+            # error. A later task makes `platform` record its tenant and `observe`
+            # read it back, closing this gap; until then it is on the operator.
+            p.add_argument(
+                "--cluster",
+                default=None,
+                help="canonical cluster/tenant name override - MUST match the cluster "
+                "`argus platform` was run with, or this reads/writes an empty tenant",
+            )
 
     p_render = sub.add_parser("render", help="render artifacts, touch nothing")
     # --platform renders the shared tier instead of one app, and needs no gojira.yaml:
     # relax the parser and enforce the right set below, per mode.
     common(p_render, needs_app=True, app_required=False)
-    p_render.add_argument("--out", default=".argus/rendered-app")
+    # No single default fits both modes (see cmd_render): None here, resolved per mode.
+    p_render.add_argument("--out", default=None)
     p_render.add_argument(
         "--platform",
         action="store_true",

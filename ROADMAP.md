@@ -36,6 +36,12 @@ Make new kinds of workloads light up automatically.
   per-app `drop:` rule renders nowhere. Give per-app shaping a safe path into the shared tier
   (namespace-scoped rules composed from every observed app, or a per-app collector for apps that
   earn one) so one app's rule can never rewrite another app's pipelines.
+- **Platform records its tenant; `observe` reads it and fails loudly on mismatch.** The gateway
+  writes with the tenant `argus platform --cluster` was given; `observe`/`render`/`rules-sync`/
+  `cardinality` each still take their own `--cluster`/`--tenant` (README, "The collector tier"). A
+  silent divergence between the two reads as empty dashboards, not an error. Have `platform` record
+  its cluster/env, and have the per-app commands read it back and refuse to proceed on a mismatch
+  instead of relying on the operator to keep both values in sync by hand.
 
 **Done when:** a new gojira workload type auto-wires its integration, cardinality budgets are
 enforced (soft), and a gojira app gets a rightsizing PR from Argus evidence.

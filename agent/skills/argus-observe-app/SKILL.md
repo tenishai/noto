@@ -14,8 +14,14 @@ step engine. Zero hand-written YAML - the class decides what "observed" means.
 
 ```
 uv run argus observe --gojira <path/to/gojira.yaml> --env <dev|qa|prod> \
-    [--kube-context <ctx>] [--dry-run]
+    [--cluster <name>] [--kube-context <ctx>] [--dry-run]
 ```
+
+`--cluster` overrides which tenant this app's dashboards, SLOs and alerts read/write with (default:
+the app's gojira.yaml cluster string). **It MUST equal the cluster `argus platform` was run with** -
+the gateway that actually writes the app's telemetry gets its tenant from `argus platform --cluster`,
+a separate value. A mismatch means dashboards query a tenant nothing writes to: empty panels, no
+error. See README, "The collector tier".
 
 Preview without touching the cluster:
 
