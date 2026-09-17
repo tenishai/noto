@@ -13,6 +13,7 @@ construction. `--dry-run` threads through to helm/kubectl server-side dry runs.
 
 import argparse
 import datetime
+import os
 import subprocess
 import sys
 import tempfile
@@ -20,10 +21,11 @@ from pathlib import Path
 
 import yaml
 
-from argus.engine.engine import ProvisionEngine
+from argus.engine.engine import ProvisionEngine, RunResult
 from argus.engine.ledger import Ledger
 from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
+from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
 from argus.profiles.loader import load_baseline, load_class, load_override
 from argus.profiles.resolve import resolve
 from argus.rendering.alerts import render_alert_rules
@@ -180,7 +182,8 @@ def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
     return docs
 
 
-def cmd_observe(args: argparse.Namespace) -> int:
+def _run_observe(args: argparse.Namespace) -> tuple[RunResult, Context]:
+    """The one observe step sequence, shared by the operator command and job mode."""
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
@@ -190,8 +193,47 @@ def cmd_observe(args: argparse.Namespace) -> int:
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
         steps.append(ApplyRendered(family="slo"))
     result = ProvisionEngine(steps).run(ledger, f"wire@{ctx.app}", _step_context(args, rendered))
+    return result, ctx
+
+
+def cmd_observe(args: argparse.Namespace) -> int:
+    result, _ctx = _run_observe(args)
     _report(result)
     return 0 if result.completed else 1
+
+
+def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
+    """The job entry path: env-driven inputs, a throwaway ledger, and one
+    ARGUS_SUMMARY line on stdout no matter how it ends."""
+    tmpdir = Path(tempfile.mkdtemp(prefix="argus-job-"))
+    gojira_path = tmpdir / "gojira.yaml"
+    gojira_path.write_text(inputs.contract_yaml)
+    args.gojira = str(gojira_path)
+    args.env = inputs.env
+    args.cluster = inputs.cluster or args.cluster
+    args.ledger = str(tmpdir / "argus.db")
+
+    try:
+        result, ctx = _run_observe(args)
+    except Exception as exc:  # job mode must always end with a summary line, not a traceback
+        print(failure_summary(None, str(exc)), flush=True)
+        return 1
+
+    _report(result)
+    if result.completed:
+        print(
+            success_summary(
+                ctx.app or "unknown",
+                inputs.env,
+                len(result.steps_run),
+                len(result.steps_skipped),
+                inputs.contract_sha256,
+            ),
+            flush=True,
+        )
+        return 0
+    print(failure_summary(result.failed_step, result.error or "unknown error"), flush=True)
+    return 1
 
 
 def cmd_feedback(args: argparse.Namespace) -> int:
@@ -264,12 +306,14 @@ def cmd_cardinality(args: argparse.Namespace) -> int:
 
 
 def _report(result) -> None:
+    """Human-readable progress, always on stderr - stdout is reserved for the job
+    mode ARGUS_SUMMARY line (design decision, task 1)."""
     for name in result.steps_skipped:
-        print(f"  skipped  {name}")
+        print(f"  skipped  {name}", file=sys.stderr)
     for name in result.steps_run:
-        print(f"  applied  {name}")
+        print(f"  applied  {name}", file=sys.stderr)
     if result.completed:
-        print("done")
+        print("done", file=sys.stderr)
     else:
         print(f"FAILED at {result.failed_step}: {result.error}", file=sys.stderr)
 
@@ -278,13 +322,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="argus", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    def common(p: argparse.ArgumentParser, needs_app: bool) -> None:
+    def common(p: argparse.ArgumentParser, needs_app: bool, app_required: bool = True) -> None:
         p.add_argument("--ledger", default=".argus/argus.db")
         p.add_argument("--kube-context", default=None)
         p.add_argument("--dry-run", action="store_true")
         if needs_app:
-            p.add_argument("--gojira", required=True, help="path to the app's gojira.yaml")
-            p.add_argument("--env", required=True, choices=["dev", "qa", "prod"])
+            p.add_argument("--gojira", required=app_required, help="path to the app's gojira.yaml")
+            p.add_argument("--env", required=app_required, choices=["dev", "qa", "prod"])
             # The observability identity (Perses project, tenant, gateway exporter
             # headers) must be ONE value per cluster. gojira.yaml cluster strings
             # drift across apps (live-found: 'acme-dev' vs the GKE cluster name),
@@ -304,7 +348,10 @@ def main(argv: list[str] | None = None) -> int:
     p_platform.set_defaults(func=cmd_platform)
 
     p_observe = sub.add_parser("observe", help="wire a gojira app into the platform")
-    common(p_observe, needs_app=True)
+    # Job mode (GOJIRA_CONTRACT_YAML present) supplies --gojira/--env from the
+    # environment instead - relax the parser and enforce them ourselves below so
+    # operator mode keeps its exact today's-behavior error text.
+    common(p_observe, needs_app=True, app_required=False)
     p_observe.set_defaults(func=cmd_observe)
 
     p_rules = sub.add_parser("rules-sync", help="push rendered rule groups into Mimir's ruler")
@@ -334,6 +381,21 @@ def main(argv: list[str] | None = None) -> int:
     p_feedback.set_defaults(func=cmd_feedback)
 
     args = parser.parse_args(argv)
+
+    if args.command == "observe":
+        try:
+            inputs = job_inputs(os.environ)
+        except JobInputError as exc:
+            print(failure_summary(None, str(exc)), flush=True)
+            return 1
+        if inputs is not None:
+            return _observe_job(inputs, args)
+        if args.gojira is None or args.env is None:
+            # No job-mode env vars and no operator flags either: keep operator
+            # mode's exact today's-behavior (exit 2, argparse-style error on
+            # stderr, no summary line - there are no job inputs to report on).
+            p_observe.error("the following arguments are required: --gojira, --env")
+
     Path(args.ledger).parent.mkdir(parents=True, exist_ok=True)
     return args.func(args)
 
