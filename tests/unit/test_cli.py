@@ -196,6 +196,35 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     assert len(applies) == 4  # collectors, scrape, alerts, slo
 
 
+def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Operator mode must behave exactly as before job mode existed: progress lines
+    (skipped/applied/done) go to stdout, and there is never an ARGUS_SUMMARY line -
+    that line belongs to job mode only."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "applied" in captured.out
+    assert "done" in captured.out
+    assert "ARGUS_SUMMARY" not in captured.out
+    assert "ARGUS_SUMMARY" not in captured.err
+
+
 import pytest  # noqa: E402
 
 

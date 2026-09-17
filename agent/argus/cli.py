@@ -216,10 +216,10 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
     try:
         result, ctx = _run_observe(args)
     except Exception as exc:  # job mode must always end with a summary line, not a traceback
-        print(failure_summary(None, str(exc)), flush=True)
+        print(failure_summary(None, _exception_reason(exc)), flush=True)
         return 1
 
-    _report(result)
+    _report(result, progress_stream=sys.stderr)
     if result.completed:
         print(
             success_summary(
@@ -305,17 +305,34 @@ def cmd_cardinality(args: argparse.Namespace) -> int:
     return 0
 
 
-def _report(result) -> None:
-    """Human-readable progress, always on stderr - stdout is reserved for the job
-    mode ARGUS_SUMMARY line (design decision, task 1)."""
+def _report(result, *, progress_stream=None) -> None:
+    """Human-readable progress. Operator mode (the default, unchanged since before
+    job mode existed) prints skipped/applied/done to stdout and only the FAILED
+    line to stderr. Job mode passes progress_stream=sys.stderr so stdout carries
+    nothing but the ARGUS_SUMMARY line (design decision, task 1).
+
+    progress_stream defaults to sys.stdout looked up at CALL time, not def time -
+    a bare `=sys.stdout` default would bind the stream object module import
+    captures, which stays stale under test fixtures (capsys) that swap sys.stdout
+    per test."""
+    if progress_stream is None:
+        progress_stream = sys.stdout
     for name in result.steps_skipped:
-        print(f"  skipped  {name}", file=sys.stderr)
+        print(f"  skipped  {name}", file=progress_stream)
     for name in result.steps_run:
-        print(f"  applied  {name}", file=sys.stderr)
+        print(f"  applied  {name}", file=progress_stream)
     if result.completed:
-        print("done", file=sys.stderr)
+        print("done", file=progress_stream)
     else:
         print(f"FAILED at {result.failed_step}: {result.error}", file=sys.stderr)
+
+
+def _exception_reason(exc: BaseException) -> str:
+    """str(KeyError) quotes its message ('no environment ...' becomes a
+    double-quoted string) - unwrap that so job-mode summaries stay legible."""
+    if isinstance(exc, KeyError) and exc.args and isinstance(exc.args[0], str):
+        return exc.args[0]
+    return str(exc)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -380,13 +397,44 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_feedback.set_defaults(func=cmd_feedback)
 
+    # Job mode applies only to `observe`, and only when the launcher's env vars are
+    # present - decide that BEFORE parsing, so a parse failure (an unknown flag, a
+    # bad choice) can still end with the summary line the launcher requires. Every
+    # other subcommand (platform included) is untouched, parse failures included.
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    job_mode = bool(raw_argv) and raw_argv[0] == "observe" and "GOJIRA_CONTRACT_YAML" in os.environ
+
+    if job_mode:
+        try:
+            args = parser.parse_args(argv)
+            inputs = job_inputs(os.environ)
+            if inputs is None:
+                # GOJIRA_CONTRACT_YAML vanished between the check above and here
+                # (a racy environ mutation) - fall back to operator's own error.
+                if args.gojira is None or args.env is None:
+                    p_observe.error("the following arguments are required: --gojira, --env")
+                Path(args.ledger).parent.mkdir(parents=True, exist_ok=True)
+                return args.func(args)
+            return _observe_job(inputs, args)
+        except SystemExit as exc:
+            if exc.code:  # argparse error (or p_observe.error above): code 2
+                print(
+                    failure_summary(None, "bad invocation: argument parsing failed (see stderr)"),
+                    flush=True,
+                )
+                return 1
+            raise  # --help exits 0 - not job mode's to report on, let it through
+        except Exception as exc:  # KeyboardInterrupt is not caught here; it propagates
+            print(failure_summary(None, _exception_reason(exc)), flush=True)
+            return 1
+
     args = parser.parse_args(argv)
 
     if args.command == "observe":
         try:
             inputs = job_inputs(os.environ)
         except JobInputError as exc:
-            print(failure_summary(None, str(exc)), flush=True)
+            print(failure_summary(None, _exception_reason(exc)), flush=True)
             return 1
         if inputs is not None:
             return _observe_job(inputs, args)

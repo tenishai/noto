@@ -244,3 +244,87 @@ def test_operator_mode_still_requires_gojira_and_env(monkeypatch, capsys):
     assert "--gojira" in err or "--env" in err or "required" in err
     out = capsys.readouterr().out
     assert "ARGUS_SUMMARY" not in out
+
+
+def test_job_mode_progress_lines_go_to_stderr_summary_is_last_stdout_line(monkeypatch, capsys):
+    """Job mode must NOT pollute stdout with progress - the launcher reads exactly
+    one stdout line. Progress (skipped/applied/done) still needs to show up
+    somewhere for a human reading the pod log, so it goes to stderr instead."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    out_lines = captured.out.strip().splitlines()
+    assert out_lines == [out_lines[-1]]  # nothing but the summary on stdout
+    assert out_lines[-1].startswith("ARGUS_SUMMARY observed ")
+    assert "applied" in captured.err
+    assert "done" in captured.err
+
+
+def test_job_mode_bad_flag_still_ends_stdout_with_summary(monkeypatch, capsys):
+    """An argparse failure (parse_args runs before job-mode dispatch today) must not
+    escape as a bare SystemExit with no summary line - the launcher always needs the
+    last stdout line to be ARGUS_SUMMARY."""
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe", "--this-flag-does-not-exist"])
+
+    assert code == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[-1].startswith("ARGUS_SUMMARY observe failed: bad invocation")
+
+
+def test_job_mode_help_passes_through_untouched(monkeypatch, capsys):
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["observe", "--help"])
+    assert exc_info.value.code == 0
+    out = capsys.readouterr().out
+    assert "ARGUS_SUMMARY" not in out
+
+
+def test_job_mode_applies_only_to_observe_platform_stays_untouched(monkeypatch, capsys):
+    """GOJIRA_CONTRACT_YAML being set must not change `argus platform` at all - job
+    mode is an `observe`-only concept."""
+    monkeypatch.setenv("GOJIRA_CONTRACT_YAML", "app: demo\nclass: web\nenvironments: []\n")
+    monkeypatch.setenv("GOJIRA_CONTRACT_SHA256", "0" * 64)
+    monkeypatch.setenv("ARGUS_ENV", "dev")
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["platform"])  # missing required --cluster: today's argparse error
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "--cluster" in err or "required" in err
+    out = capsys.readouterr().out
+    assert "ARGUS_SUMMARY" not in out
+
+
+def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
+    """GojiraApp.environment() raises a bare KeyError, whose str() wraps the message
+    in quotes; the summary must read the message plainly instead."""
+    dev_only = (
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+    )
+    env = _job_env(dev_only, ARGUS_ENV="qa")
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert "no environment 'qa'" in out[-1]
+    assert 'observe failed: "' not in out[-1]
