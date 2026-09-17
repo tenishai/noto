@@ -33,7 +33,7 @@ _SIGNAL_EXPORTER = {
 def _meta(role: str, ctx: Context) -> dict:
     return {
         "name": f"argus-{role}",
-        "namespace": "argus",
+        "namespace": ctx.platform_namespace,
         "labels": {
             "argus.dev/managed": "true",
             "argus.dev/role": role,
@@ -501,9 +501,21 @@ def render_targetallocator_rbac(ctx: Context) -> list[dict]:
             },
             "subjects": [
                 # Operator-created collector SAs (<collector-name>-collector).
-                {"kind": "ServiceAccount", "name": "argus-gateway-collector", "namespace": "argus"},
-                {"kind": "ServiceAccount", "name": "argus-agent-collector", "namespace": "argus"},
-                {"kind": "ServiceAccount", "name": "argus-ingest-collector", "namespace": "argus"},
+                {
+                    "kind": "ServiceAccount",
+                    "name": "argus-gateway-collector",
+                    "namespace": ctx.platform_namespace,
+                },
+                {
+                    "kind": "ServiceAccount",
+                    "name": "argus-agent-collector",
+                    "namespace": ctx.platform_namespace,
+                },
+                {
+                    "kind": "ServiceAccount",
+                    "name": "argus-ingest-collector",
+                    "namespace": ctx.platform_namespace,
+                },
             ],
         },
     ]
@@ -512,7 +524,7 @@ def render_targetallocator_rbac(ctx: Context) -> list[dict]:
         {
             "apiVersion": "v1",
             "kind": "ServiceAccount",
-            "metadata": {"name": name, "namespace": "argus"},
+            "metadata": {"name": name, "namespace": ctx.platform_namespace},
         },
         {
             "apiVersion": "rbac.authorization.k8s.io/v1",
@@ -560,6 +572,8 @@ def render_targetallocator_rbac(ctx: Context) -> list[dict]:
                 "kind": "ClusterRole",
                 "name": name,
             },
-            "subjects": [{"kind": "ServiceAccount", "name": name, "namespace": "argus"}],
+            "subjects": [
+                {"kind": "ServiceAccount", "name": name, "namespace": ctx.platform_namespace}
+            ],
         },
     ]
