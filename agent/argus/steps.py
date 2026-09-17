@@ -10,11 +10,17 @@ example root when a deployment brings a project).
 import copy
 import hashlib
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+# Injectable clock/sleep (module-level, monkeypatched in tests) so WaitForCollectors
+# is testable without ever really sleeping.
+_sleep = time.sleep
+_now = time.monotonic
 
 Runner = Callable[[list[str], str | None], tuple[int, str]]
 """Run argv (with optional stdin text), return (exit_code, stdout+stderr)."""
@@ -204,6 +210,111 @@ def _annotated(doc: dict, annotations: dict[str, str]) -> dict:
     existing = metadata.get("annotations") or {}
     metadata["annotations"] = {**existing, **annotations}
     return doc
+
+
+_OPERATOR_MODE_KIND = {
+    "daemonset": "DaemonSet",
+    "deployment": "Deployment",
+    "statefulset": "StatefulSet",
+}
+
+
+def collector_workloads(docs: list[dict]) -> list[tuple[str, str, str]]:
+    """The k8s workloads the OpenTelemetry operator creates for a set of rendered
+    documents - derived from the documents themselves, never hardcoded, so a renamed
+    or added collector role is picked up automatically.
+
+    Verified against a live cluster: an OpenTelemetryCollector named X with
+    spec.mode: daemonset becomes DaemonSet X-collector; mode: deployment (the
+    operator's own default when mode is absent) becomes Deployment X-collector;
+    mode: statefulset becomes StatefulSet X-collector. When the CR turns on
+    spec.targetAllocator.enabled, the operator additionally creates a Deployment
+    named X-targetallocator (this repo renders the target allocator this way, inside
+    the "scraper" collector CR, rather than as a separate TargetAllocator CR).
+
+    Returns (kind, name, namespace) tuples, in document order.
+    """
+    workloads: list[tuple[str, str, str]] = []
+    for doc in docs:
+        if doc.get("kind") != "OpenTelemetryCollector":
+            continue
+        name = doc["metadata"]["name"]
+        namespace = doc["metadata"].get("namespace", "argus")
+        spec = doc.get("spec") or {}
+        mode = spec.get("mode", "deployment")
+        kind = _OPERATOR_MODE_KIND.get(mode, "Deployment")
+        workloads.append((kind, f"{name}-collector", namespace))
+        if (spec.get("targetAllocator") or {}).get("enabled"):
+            workloads.append(("Deployment", f"{name}-targetallocator", namespace))
+    return workloads
+
+
+def _collapse(text: str) -> str:
+    """Last 500 characters of `text`, collapsed to one line (a raised RuntimeError
+    should never carry an embedded newline into the step engine's error field)."""
+    return " ".join(text[-500:].split())
+
+
+@dataclass
+class WaitForCollectors:
+    """Between applying the collector tier and ValidateRoundTrip: the collector CRs
+    are applied with a bare `kubectl apply --server-side` (no --wait, unlike
+    HelmInstall), so the moment they land the OpenTelemetry operator still has to
+    turn them into workloads and pull images. ValidateRoundTrip fails on ANY pod in
+    the namespace that isn't Running/Succeeded, so without this step a fresh install
+    (or an upgrade that rolls the DaemonSet) fails its first run on ordinary
+    Pending/ContainerCreating - not a real problem, just a race.
+
+    The workloads to wait for come from the rendered "collectors" family itself
+    (collector_workloads), never a hardcoded list.
+    """
+
+    name: str = "wait_collectors"
+    tooling: str = "cli"
+    ephemeral: bool = True
+    timeout: float = 300.0  # overall deadline for the whole step, all workloads
+
+    def check(self, ctx: StepContext) -> str | None:
+        return None  # always re-decided; a re-run must re-wait for a rolling upgrade
+
+    def apply(self, ctx: StepContext) -> str:
+        workloads = collector_workloads(ctx.rendered.get("collectors", []))
+        if ctx.dry_run:
+            named = ", ".join(f"{kind}/{name}" for kind, name, _ns in workloads)
+            return f"would wait for {len(workloads)} workloads: {named}"
+        deadline = _now() + self.timeout
+        for kind, name, namespace in workloads:
+            self._wait_one(ctx, kind, name, namespace, deadline)
+        return f"collectors ready: {len(workloads)} workloads"
+
+    def _wait_one(
+        self, ctx: StepContext, kind: str, name: str, namespace: str, deadline: float
+    ) -> None:
+        workload = f"{kind}/{name}"
+        last_out = ""
+        while True:
+            remaining = deadline - _now()
+            if remaining <= 0:
+                raise RuntimeError(
+                    f"timed out waiting for {workload} in {namespace}: {_collapse(last_out)}"
+                )
+            cmd = ctx.kubectl(
+                "rollout",
+                "status",
+                workload,
+                "-n",
+                namespace,
+                "--timeout",
+                f"{max(1, int(remaining))}s",
+            )
+            code, out = ctx.runner(cmd, None)
+            if code == 0:
+                return
+            last_out = out
+            if "NotFound" in out or "not found" in out:
+                _sleep(3)
+                continue
+            raise RuntimeError(f"waiting for {workload} in {namespace} failed: {_collapse(out)}")
 
 
 @dataclass

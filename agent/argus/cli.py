@@ -49,6 +49,7 @@ from argus.steps import (
     HelmInstall,
     StepContext,
     ValidateRoundTrip,
+    WaitForCollectors,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -225,6 +226,12 @@ def cmd_platform(args: argparse.Namespace) -> int:
         # admission webhook that accept them arrive with `opentelemetry-operator` in
         # PLATFORM_ORDER. Keep that ordering.
         ApplyRendered(family="collectors"),
+        # The apply above has no --wait (unlike HelmInstall): the OpenTelemetry
+        # operator still has to turn the CRs into workloads and pull images, so a
+        # fresh install (or an upgrade rolling the DaemonSet) sees ordinary
+        # Pending/ContainerCreating right after. ValidateRoundTrip fails on any pod
+        # that isn't Running/Succeeded, so it MUST come after this wait, not before.
+        WaitForCollectors(),
         ValidateRoundTrip(),
     ]
     result = ProvisionEngine(steps).run(

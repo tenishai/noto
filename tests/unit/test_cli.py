@@ -328,6 +328,32 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
     assert "OpenTelemetryCollector" in kinds
 
 
+def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
+    """collectors apply -> wait_collectors -> validate, in that order: the collector
+    apply has no --wait, so validate must not race the operator standing up pods."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: list[list[str]] = []
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    code = cli.main(
+        ["platform", "--cluster", "c1", "--env", "dev", "--ledger", str(tmp_path / "l.db")]
+    )
+    assert code == 0
+    assert captured
+    names = captured[0]
+    assert (
+        names.index("apply_collectors") < names.index("wait_collectors") < names.index("validate")
+    )
+
+
 def test_cli_platform_requires_an_environment(tmp_path: Path) -> None:
     """The gateway stamps `environment` on everything it forwards; a silent default
     would mislabel a whole cluster's telemetry."""
