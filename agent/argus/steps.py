@@ -39,6 +39,10 @@ class StepContext:
     # mode). ApplyRendered stamps these onto every document it applies, so the
     # cluster itself can answer "has the app changed since argus looked".
     annotations: dict[str, str] = field(default_factory=dict)
+    # The Perses API base `observe` was given (or derived from `namespace`); no step
+    # reads it yet (dashboards land in a later task) - carried here so that step only
+    # has to consume it, not thread it through the CLI itself.
+    perses_url: str | None = None
 
     def kubectl(self, *args: str) -> list[str]:
         cmd = ["kubectl"]

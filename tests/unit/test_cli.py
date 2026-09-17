@@ -579,6 +579,265 @@ def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
 
 import pytest  # noqa: E402
 
+# --- in-cluster endpoint derivation: --namespace / ARGUS_NAMESPACE feed --mimir-url
+# and --perses-url unless the flag is given explicitly ---
+
+
+def test_cardinality_mimir_url_derives_from_default_namespace(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return [("foo", 5)]
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_cardinality_explicit_mimir_url_wins_over_derived_default(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(
+        ["cardinality", "--tenant", "t1", "--mimir-url", "http://localhost:9009/prometheus"]
+    )
+    assert code == 0
+    assert captured["mimir_base"] == "http://localhost:9009/prometheus"
+
+
+def test_cardinality_namespace_flag_changes_the_derived_default(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1", "--namespace", "obs"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.obs.svc:80/prometheus"
+
+
+def test_cardinality_argus_namespace_env_feeds_the_derived_default(monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_NAMESPACE", "envns")
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.envns.svc:80/prometheus"
+
+
+def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path) -> None:
+    captured: dict = {}
+
+    def fake_sync_rules(mimir_url, tenant, namespace, docs):
+        captured["mimir_url"] = mimir_url
+        return 0
+
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    code = cli.main(
+        [
+            "rules-sync",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured["mimir_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None:
+    captured: dict = {}
+
+    def fake_sync_rules(mimir_url, tenant, namespace, docs):
+        captured["mimir_url"] = mimir_url
+        return 0
+
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    code = cli.main(
+        [
+            "rules-sync",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--mimir-url",
+            "http://localhost:9009/prometheus",
+        ]
+    )
+    assert code == 0
+    assert captured["mimir_url"] == "http://localhost:9009/prometheus"
+
+
+def test_feedback_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path, capsys) -> None:
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["base_url"] = client.base_url
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert captured["base_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_feedback_explicit_mimir_url_wins(monkeypatch, tmp_path: Path, capsys) -> None:
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["base_url"] = client.base_url
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+            "--mimir-url",
+            "http://localhost:9009/prometheus",
+        ]
+    )
+    assert code == 0
+    assert captured["base_url"] == "http://localhost:9009/prometheus"
+
+
+def test_observe_perses_url_flag_reaches_the_step_context(tmp_path: Path, monkeypatch) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--perses-url",
+            "http://localhost:8080",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://localhost:8080"
+
+
+def test_observe_perses_url_derives_from_namespace_when_not_given(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--namespace",
+            "obs",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://argus-perses.obs.svc:8080"
+
+
+def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monkeypatch) -> None:
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--namespace",
+            "obs",
+        ]
+    )
+    assert code == 0
+    ns_cmds = [c for c, _ in runner.calls if "namespace" in c]
+    assert any("obs" in c for c in ns_cmds)
+
 
 @pytest.mark.skipif(
     not (REPO / ".argus" / "tools" / "sloth-0.16.0").exists(),

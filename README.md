@@ -88,6 +88,22 @@ cluster `platform` was run with, dashboards, rules and cardinality reports query
 writes to: empty panels, no error. Until a later task makes `platform` record its tenant and these
 commands read it back, keeping them in sync is on the operator.
 
+### Endpoints: in-cluster by default, port-forward on request
+
+Argus was always run by an operator through port-forwards, so `--mimir-url` used to default to
+`localhost`. Running `observe` as a one-shot in-cluster Job changes that: the right default is the
+platform's own Service DNS names in the platform's own namespace, not `localhost` (there is no
+port-forward inside the cluster). `--mimir-url` (on `rules-sync`, `cardinality`, and `feedback`) and
+`--perses-url` (on `observe`) now derive from `--namespace` (env `ARGUS_NAMESPACE`, default `argus`)
+unless given explicitly - an explicit flag always wins.
+
+An operator's port-forward habit keeps working exactly as before; just say so explicitly:
+
+```
+kubectl -n argus port-forward svc/argus-mimir-gateway 9009:80
+argus rules-sync --gojira app/gojira.yaml --env dev --mimir-url http://localhost:9009/prometheus
+```
+
 ## The stack
 
 | Layer | Tool |

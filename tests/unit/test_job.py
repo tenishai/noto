@@ -359,6 +359,43 @@ def test_job_mode_stdout_still_ends_with_summary_when_drop_warning_fires(monkeyp
     assert "warning: drop rules are platform-owned now" in captured.err
 
 
+def test_job_mode_namespace_from_job_inputs_reaches_the_step_context(monkeypatch, capsys):
+    """`ARGUS_NAMESPACE` (carried in JobInputs.namespace) must drive the same
+    in-cluster namespace job mode applies against - mocking job_inputs (rather than
+    relying on both sides reading the same env var) proves the value is actually
+    threaded through, not just coincidentally identical."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+    from argus.job import JobInputs
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    fake_inputs = JobInputs(
+        contract_yaml=gojira_text,
+        contract_sha256="0" * 64,
+        env="dev",
+        cluster=None,
+        namespace="mocked-ns",
+    )
+    monkeypatch.setenv("GOJIRA_CONTRACT_YAML", gojira_text)
+    monkeypatch.setattr(cli, "job_inputs", lambda environ: fake_inputs)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    assert captured["step_ctx"].namespace == "mocked-ns"
+    assert captured["step_ctx"].perses_url == "http://argus-perses.mocked-ns.svc:8080"
+
+
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
     """GojiraApp.environment() raises a bare KeyError, whose str() wraps the message
     in quotes; the summary must read the message plainly instead."""

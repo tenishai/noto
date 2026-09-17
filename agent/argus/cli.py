@@ -39,7 +39,7 @@ from argus.rendering.collectors import (
     render_targetallocator,
     render_targetallocator_rbac,
 )
-from argus.rendering.context import Context
+from argus.rendering.context import Context, solo_endpoints
 from argus.rendering.perses import render_perses
 from argus.rendering.scrape import render_podmonitor, render_servicemonitor
 from argus.rendering.slo import render_sloth
@@ -188,6 +188,7 @@ def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
         environment=args.env,
         app=spec.app,
         namespace=env.namespace,
+        platform_namespace=args.namespace,
     )
     return p, ctx
 
@@ -196,7 +197,12 @@ def _platform_context(args: argparse.Namespace) -> Context:
     """The Context the shared tier renders against: cluster and environment (the gateway
     stamps `environment` as a resource attribute on everything it forwards), and no app
     or namespace at all."""
-    return Context(topology="solo", cluster=args.cluster, environment=args.env)
+    return Context(
+        topology="solo",
+        cluster=args.cluster,
+        environment=args.env,
+        platform_namespace=args.namespace,
+    )
 
 
 def cmd_render(args: argparse.Namespace) -> int:
@@ -221,20 +227,44 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def _add_namespace_flag(p: argparse.ArgumentParser) -> None:
+    """The platform's own namespace (argus-mimir, argus-loki, ... live here) - NOT an
+    app's namespace. Feeds the in-cluster endpoint derivation (`solo_endpoints`) for
+    `--mimir-url`/`--perses-url` and is where `argus platform` installs the stack.
+    `ARGUS_NAMESPACE` matches job mode's own env input (agent/argus/job.py) so an
+    operator invocation and a launched Job agree on the default without either side
+    hardcoding the other's convention."""
+    p.add_argument(
+        "--namespace",
+        default=os.environ.get("ARGUS_NAMESPACE", "argus"),
+        help="the observability platform's own namespace (env ARGUS_NAMESPACE, default argus)",
+    )
+
+
+def _resolve_mimir_url(args: argparse.Namespace) -> str:
+    """An explicit --mimir-url always wins; otherwise the in-cluster query endpoint
+    is derived from --namespace. For an operator's port-forward habit, that is
+    `--mimir-url http://localhost:9009/prometheus` (see README)."""
+    return args.mimir_url or solo_endpoints(args.namespace)["mimir_query_url"]
+
+
 def _step_context(
     args: argparse.Namespace,
     rendered: dict | None = None,
     annotations: dict[str, str] | None = None,
 ) -> StepContext:
     pins = yaml.safe_load((REPO_ROOT / "helm" / "pins.yaml").read_text())
+    perses_url = getattr(args, "perses_url", None) or solo_endpoints(args.namespace)["perses_url"]
     return StepContext(
         runner=real_runner,
         kube_context=args.kube_context,
+        namespace=args.namespace,
         pins=pins,
         repo_root=REPO_ROOT,
         rendered=rendered or {},
         dry_run=args.dry_run,
         annotations=annotations or {},
+        perses_url=perses_url,
     )
 
 
@@ -338,6 +368,7 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
     args.gojira = str(gojira_path)
     args.env = inputs.env
     args.cluster = inputs.cluster or args.cluster
+    args.namespace = inputs.namespace
     args.ledger = str(tmpdir / "argus.db")
 
     try:
@@ -381,7 +412,7 @@ def cmd_feedback(args: argparse.Namespace) -> int:
 
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
-    client = MimirClient(base_url=args.mimir_url, tenant=env.cluster)
+    client = MimirClient(base_url=_resolve_mimir_url(args), tenant=env.cluster)
     raw = collect(client, spec.app, env.namespace, args.window_days)
 
     profile = UsageProfile(
@@ -415,7 +446,7 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
     sloth_doc = render_sloth(p, ctx)
     if sloth_doc is not None:
         docs.extend(_generate_slo_rules(sloth_doc, ctx.namespace or "default"))
-    count = sync_rules(args.mimir_url, ctx.tenant, ctx.app or "argus", docs)
+    count = sync_rules(_resolve_mimir_url(args), ctx.tenant, ctx.app or "argus", docs)
     print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
     return 0
 
@@ -423,7 +454,7 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
 def cmd_cardinality(args: argparse.Namespace) -> int:
     from argus.feedback.cardinality import top_metric_names
 
-    rows = top_metric_names(args.mimir_url, args.tenant, args.limit)
+    rows = top_metric_names(_resolve_mimir_url(args), args.tenant, args.limit)
     if not rows:
         print("no series (or cardinality API empty)")
         return 0
@@ -472,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--ledger", default=".argus/argus.db")
         p.add_argument("--kube-context", default=None)
         p.add_argument("--dry-run", action="store_true")
+        _add_namespace_flag(p)
         if needs_app:
             p.add_argument("--gojira", required=app_required, help="path to the app's gojira.yaml")
             p.add_argument("--env", required=app_required, choices=["dev", "qa", "prod"])
@@ -523,16 +555,34 @@ def main(argv: list[str] | None = None) -> int:
     # environment instead - relax the parser and enforce them ourselves below so
     # operator mode keeps its exact today's-behavior error text.
     common(p_observe, needs_app=True, app_required=False)
+    p_observe.add_argument(
+        "--perses-url",
+        default=None,
+        help="Perses API base; derived from --namespace unless given (not yet read by "
+        "`observe` itself - carried for the dashboards step). Port-forward form: "
+        "--perses-url http://localhost:8080",
+    )
     p_observe.set_defaults(func=cmd_observe)
 
     p_rules = sub.add_parser("rules-sync", help="push rendered rule groups into Mimir's ruler")
     common(p_rules, needs_app=True)
-    p_rules.add_argument("--mimir-url", default="http://localhost:9009/prometheus")
+    p_rules.add_argument(
+        "--mimir-url",
+        default=None,
+        help="Mimir Prometheus API base; derived from --namespace unless given. "
+        "Port-forward form: --mimir-url http://localhost:9009/prometheus",
+    )
     p_rules.set_defaults(func=cmd_rules_sync)
 
     p_card = sub.add_parser("cardinality", help="top metric names by series count, per tenant")
     p_card.add_argument("--ledger", default=".argus/argus.db")
-    p_card.add_argument("--mimir-url", default="http://localhost:9009/prometheus")
+    _add_namespace_flag(p_card)
+    p_card.add_argument(
+        "--mimir-url",
+        default=None,
+        help="Mimir Prometheus API base; derived from --namespace unless given. "
+        "Port-forward form: --mimir-url http://localhost:9009/prometheus",
+    )
     p_card.add_argument("--tenant", required=True)
     p_card.add_argument("--limit", type=int, default=15)
     p_card.set_defaults(func=cmd_cardinality)
@@ -546,8 +596,9 @@ def main(argv: list[str] | None = None) -> int:
     p_feedback.add_argument("--window-days", type=int, default=14)
     p_feedback.add_argument(
         "--mimir-url",
-        default="http://localhost:9009/prometheus",
-        help="Mimir Prometheus API base (port-forward the gateway in solo)",
+        default=None,
+        help="Mimir Prometheus API base; derived from --namespace unless given. "
+        "Port-forward form: --mimir-url http://localhost:9009/prometheus",
     )
     p_feedback.set_defaults(func=cmd_feedback)
 
