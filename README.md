@@ -69,6 +69,13 @@ Argus stands the platform up once per cluster, then wires each gojira-managed ap
 workload class, applying everything directly through cloud CLI / SDK / Helm and OpenTelemetry Operator
 CRDs - no third-party GitOps controller in the path.
 
+The collector tier (agent DaemonSet, gateway, target allocator) is part of the platform, not part of
+wiring an app: `argus platform --cluster <name> --env <dev|qa|prod>` stands it up once, with all three
+signals on, and `argus observe --gojira <path> --env <env>` only adds that app's scrape wiring,
+dashboards, SLOs and alerts. One consequence, stated plainly: per-class and per-app shaping rules no
+longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping in the
+shared gateway is a registered follow-up.
+
 ## The stack
 
 | Layer | Tool |

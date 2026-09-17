@@ -13,10 +13,13 @@ engine - re-running is always safe, failures resume where they stopped.
 ## Run it
 
 ```
-uv run argus platform --cluster <cluster-name> [--kube-context <ctx>] [--dry-run]
+uv run argus platform --cluster <cluster-name> --env <dev|qa|prod> \
+    [--kube-context <ctx>] [--dry-run]
 ```
 
 - `--cluster` names the ledger scope (`platform@<cluster>`); use the real cluster name.
+- `--env` is required: the gateway stamps it as the `environment` resource attribute on
+  every signal the cluster sends, so a wrong value mislabels the whole cluster.
 - Always run `--dry-run` first on a cluster you did not create; read the report before
   the real run.
 - The ledger (`.argus/argus.db`) records every step; a second run skips what is done.
@@ -27,7 +30,19 @@ uv run argus platform --cluster <cluster-name> [--kube-context <ctx>] [--dry-run
 2. `helm_cert-manager` through `helm_perses` - installs every solo component from
    helm/pins.yaml at its pinned version with the committed values. Dependency order:
    cert-manager -> operators -> scrape sources -> backends -> Perses.
-3. `validate` - asserts every pod in the namespace is Running/Succeeded.
+3. `apply_collectors` - applies the shared OTel collector tier (PriorityClass,
+   target-allocator RBAC, agent DaemonSet, gateway, target allocator). It runs after the
+   helm steps because these are OpenTelemetryCollector custom resources and the
+   opentelemetry-operator install brings their CRDs. The tier is rendered from the
+   platform profile (the baseline with metrics, logs and traces all on), never from an
+   app: it is shared by every app in the cluster, so no single app may shape it.
+4. `validate` - asserts every pod in the namespace is Running/Succeeded.
+
+Preview the tier without touching the cluster:
+
+```
+uv run argus render --platform --cluster <cluster-name> --env <dev|qa|prod> --out .argus/preview
+```
 
 ## When something fails
 

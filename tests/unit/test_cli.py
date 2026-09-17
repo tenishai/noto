@@ -238,7 +238,8 @@ def test_apply_rendered_never_mutates_the_callers_rendered_documents(
     assert "metadata" not in original_doc
 
 
-def test_cli_render_writes_all_families(tmp_path: Path) -> None:
+def test_cli_render_writes_the_per_app_families(tmp_path: Path) -> None:
+    """Per-app render is per-app only: the shared collector tier is the platform's."""
     out = tmp_path / "rendered"
     code = cli.main(
         [
@@ -255,12 +256,86 @@ def test_cli_render_writes_all_families(tmp_path: Path) -> None:
     )
     assert code == 0
     names = {p.name for p in out.glob("*.yaml")}
-    assert {"collectors.yaml", "scrape.yaml", "alerts.yaml", "perses.yaml", "slo.yaml"} <= names
+    assert {"scrape.yaml", "alerts.yaml", "perses.yaml", "slo.yaml"} <= names
+    assert "collectors.yaml" not in names
+    for path in out.glob("*.yaml"):
+        for doc in yaml.safe_load_all(path.read_text()):
+            assert doc["kind"] != "OpenTelemetryCollector", path.name
+
+
+def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert {p.name for p in out.glob("*.yaml")} == {"collectors.yaml"}
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
     names = {d["metadata"]["name"] for d in docs}
     assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
     kinds = {d["kind"] for d in docs}
-    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding"} <= kinds
+    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding", "PriorityClass"} <= kinds
+    gateway = next(d for d in docs if d["metadata"]["name"] == "argus-gateway")
+    assert set(gateway["spec"]["config"]["service"]["pipelines"]) == {
+        "metrics",
+        "logs",
+        "traces",
+        "metrics/self",
+    }
+
+
+def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The collector CRs need the operator's CRDs and webhook, which arrive with the
+    opentelemetry-operator helm step - so the apply must land after every helm step."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    verbs = [
+        (c[0], c[1])
+        for c, _ in runner.calls
+        if (c[0] == "helm" and c[1] == "upgrade") or "apply" in c
+    ]
+    applies = [i for i, v in enumerate(verbs) if v[0] == "kubectl"]
+    helms = [i for i, v in enumerate(verbs) if v[0] == "helm"]
+    assert len(applies) == 1
+    assert applies[0] > max(helms)
+    _cmd, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    kinds = {d["kind"] for d in yaml.safe_load_all(stdin_text)}
+    assert "OpenTelemetryCollector" in kinds
+
+
+def test_cli_platform_requires_an_environment(tmp_path: Path) -> None:
+    """The gateway stamps `environment` on everything it forwards; a silent default
+    would mislabel a whole cluster's telemetry."""
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit) as exc_info:
+        cli.main(["platform", "--cluster", "c1", "--ledger", str(tmp_path / "l.db")])
+    assert exc_info.value.code == 2
 
 
 def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
@@ -281,7 +356,7 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     )
     assert code == 0
     applies = [c for c, _ in runner.calls if "apply" in c]
-    assert len(applies) == 4  # collectors, scrape, alerts, slo
+    assert len(applies) == 3  # scrape, alerts, slo - never the shared collector tier
 
 
 def test_cli_observe_operator_mode_applies_no_contract_annotation(

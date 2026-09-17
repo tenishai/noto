@@ -49,7 +49,9 @@ name/label-only rules run at `gateway`; anything needing app context runs at `ag
 2. Edit the profile YAML at the narrowest layer.
 3. `make test`; `make regen-golden` if goldens changed; `make validate` (the real
    collector binary judges the rendered OTTL).
-4. Re-apply: `uv run argus observe` for app/class rules, `argus platform` for baseline.
+4. Re-apply: `uv run argus platform --cluster <name> --env <env>` - every gateway and
+   agent shaping rule lives in the baseline and reaches the cluster through the shared
+   collector tier, which only `platform` applies.
 5. Re-measure: run the report again; the series count moving down is the acceptance.
    An unchanged count means the rule matched nothing - wrong name, wrong stage, or the
    series predate the rule (Mimir counts active series; wait one head-compaction).

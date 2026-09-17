@@ -61,7 +61,8 @@ silently drift.
 
 The layer self-referential tests cannot provide: rendered artifacts are judged by the **real
 consumers' own validators**, not by our expectations of them. `make validate` renders the
-representative pair (web-solo, web-regional) and runs:
+representative per-app pair (web-solo, web-regional) plus the shared collector tier
+(platform-solo, platform-regional) and runs:
 
 - `otelcol-contrib validate` over every collector config (the big one: invalid keys, config-schema
   drift on version bumps, unexpanded env syntax).
@@ -105,8 +106,9 @@ Tests accrete; value does not automatically accrete with them. Rules of thumb, e
 - **A behavior is asserted in exactly one layer.** If a contract invariant covers it, the unit
   test restating it is deleted, not kept "for safety."
 - **Golden files are a human-review artifact, not coverage.** One representative class x both
-  topologies; breadth belongs to the invariants. If reviewers start rubber-stamping golden diffs,
-  shrink the goldens further.
+  topologies, plus the platform case (the shared collector tier, which has exactly one profile
+  and so exactly one rendering); breadth belongs to the invariants. If reviewers start
+  rubber-stamping golden diffs, shrink the goldens further.
 
 ## What we deliberately do not do
 

@@ -25,20 +25,18 @@ _spec.loader.exec_module(regen_golden)
 pytestmark = pytest.mark.contract
 
 CASES = [
-    (class_name, topology)
-    for class_name in regen_golden.GOLDEN_CLASSES
-    for topology in regen_golden.TOPOLOGIES
+    (case, topology) for case in regen_golden.GOLDEN_CASES for topology in regen_golden.TOPOLOGIES
 ]
 
 
-@pytest.mark.parametrize(("class_name", "topology"), CASES)
-def test_rendered_output_matches_golden(class_name: str, topology: str) -> None:
-    outdir = GOLDEN / f"{class_name}-{topology}"
+@pytest.mark.parametrize(("case", "topology"), CASES)
+def test_rendered_output_matches_golden(case: str, topology: str) -> None:
+    outdir = GOLDEN / f"{case}-{topology}"
     assert outdir.is_dir(), (
         f"missing golden dir {outdir}; run `make regen-golden` and review the diff"
     )
 
-    artifacts = regen_golden.render_everything(class_name, topology)
+    artifacts = regen_golden.render_case(case, topology)
     rendered_names = {f"{name}.yaml" for name in artifacts}
     on_disk = {p.name for p in outdir.glob("*.yaml")}
     assert rendered_names == on_disk, "artifact set drifted; run `make regen-golden`"
@@ -47,6 +45,6 @@ def test_rendered_output_matches_golden(class_name: str, topology: str) -> None:
         expected = (outdir / f"{name}.yaml").read_text()
         actual = yaml.safe_dump(doc, sort_keys=True, default_flow_style=False)
         assert actual == expected, (
-            f"{class_name}-{topology}/{name}.yaml drifted from golden; "
+            f"{case}-{topology}/{name}.yaml drifted from golden; "
             "if intentional, run `make regen-golden` and review the diff in your PR"
         )

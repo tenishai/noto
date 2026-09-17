@@ -1,6 +1,6 @@
 ---
 name: argus-observe-app
-description: Wire a gojira app into the Argus platform by its workload class - collectors, scrape wiring, dashboards, SLOs, alerts, all rendered from its profile. Use when asked to "observe this app", "add dashboards/SLOs for this service", or after gojira deploys a new app.
+description: Wire a gojira app into the Argus platform by its workload class - scrape wiring, dashboards, SLOs, alerts, all rendered from its profile. Use when asked to "observe this app", "add dashboards/SLOs for this service", or after gojira deploys a new app.
 license: AGPL-3.0-or-later
 ---
 
@@ -24,7 +24,14 @@ uv run argus render --gojira <path/to/gojira.yaml> --env dev --out .argus/previe
 ```
 
 Read the preview when the user asks "what would this app get?" - the YAML is the answer
-(collectors, ServiceMonitor/PodMonitor, Sloth SLOs, Perses dashboards, alert packs).
+(ServiceMonitor/PodMonitor, Sloth SLOs, Perses dashboards, alert packs).
+
+The shared collector tier is NOT here: the agent DaemonSet, gateway and target allocator
+are one set of objects per cluster, applied by `argus platform` (use argus-platform). An
+app is wired into that tier, it never re-renders it. A consequence to be honest about:
+per-class and per-app shaping rules no longer reach the shared gateway - the baseline
+rules apply to everyone, and per-app shaping in the shared gateway is a registered
+follow-up.
 
 ## The contract
 
@@ -32,7 +39,9 @@ Read the preview when the user asks "what would this app get?" - the YAML is the
   worker -> throughput, cron -> job health, heavy/gpu -> USE, agent -> runtime health,
   gateway -> edge RED).
 - The optional `observability:` block overrides per app (enable traces, retention,
-  extra SLOs, disable an inherited rule by name with `enabled: false`).
+  extra SLOs, disable an inherited rule by name with `enabled: false`). A `drop:` rule
+  here renders nowhere: shaping rules only ever reached the shared collector tier, and
+  that tier is platform-owned now (see the note above).
 - Overrides that raise budgets require a `justification:` - refuse to add one without it.
 
 ## GMP supersession (GKE clusters)

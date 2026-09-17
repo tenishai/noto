@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Render artifacts for real-tool validation (testing.md layer "validate-rendered").
 
-Renders the representative pair (web-solo, web-regional) and writes artifacts grouped
-by the tool that judges them:
+Renders the representative per-app pair (web-solo, web-regional) plus the shared,
+platform-owned collector tier (platform-solo, platform-regional) and writes artifacts
+grouped by the tool that judges them:
 
   <out>/otelcol/<case>-<role>.yaml   standalone collector configs (spec.config extracted)
   <out>/k8s/<case>-<name>.yaml       CRDs for kubeconform (ServiceMonitor/PodMonitor/
@@ -28,16 +29,18 @@ regen_golden = importlib.util.module_from_spec(_spec)
 sys.modules["regen_golden"] = regen_golden
 _spec.loader.exec_module(regen_golden)
 
-CASES = [("web", "solo"), ("web", "regional")]
+# The representative per-app pair, plus the shared collector tier (platform-owned): the
+# collector configs the real otelcol validator judges live in the platform case now.
+CASES = [("web", "solo"), ("web", "regional"), ("platform", "solo"), ("platform", "regional")]
 
 
 def main(out: Path) -> None:
     for sub in ("otelcol", "k8s", "sloth", "perses"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
-    for class_name, topology in CASES:
-        case = f"{class_name}-{topology}"
-        artifacts = regen_golden.render_everything(class_name, topology)
+    for case_name, topology in CASES:
+        case = f"{case_name}-{topology}"
+        artifacts = regen_golden.render_case(case_name, topology)
         for name, doc in artifacts.items():
             if name.startswith("collector-"):
                 role = name.removeprefix("collector-")

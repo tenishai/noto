@@ -38,18 +38,23 @@ SLO SLIs, and alert packs all read metrics by name; `grep` the profiles and
 
 ## Propose as profile diffs
 
-Rules use the argus-pipeline schema (`drop:` entries; one matcher each) at the
-narrowest layer: baseline is everyone, class is one workload shape, the app's
-`observability:` block is one app. Drop at the earliest stage the rule's inputs allow -
-name/label-only rules run at `gateway`; anything needing app context runs at `agent`.
+Rules use the argus-pipeline schema (`drop:` entries; one matcher each). Today the only
+layer that reaches the cluster is `profiles/baseline.yaml`: the collector tier is shared
+and platform-owned, rendered from the baseline with no class deltas, so a `drop:` rule in
+a class profile or an app's `observability:` block renders nowhere. Say that plainly
+instead of proposing a rule that cannot apply (per-app shaping in the shared gateway is a
+registered follow-up, ROADMAP Phase 2). Drop at the earliest stage the rule's inputs allow
+- name/label-only rules run at `gateway`; anything needing app context runs at `agent`.
 
 ## Workflow (non-negotiable)
 
 1. Report first (above). Note the offenders and the budget headroom.
-2. Edit the profile YAML at the narrowest layer.
+2. Edit `profiles/baseline.yaml` (the only layer the shared tier reads today).
 3. `make test`; `make regen-golden` if goldens changed; `make validate` (the real
    collector binary judges the rendered OTTL).
-4. Re-apply: `uv run argus observe` for app/class rules, `argus platform` for baseline.
+4. Re-apply: `uv run argus platform --cluster <name> --env <env>` - every gateway and
+   agent shaping rule lives in the baseline and reaches the cluster through the shared
+   collector tier, which only `platform` applies.
 5. Re-measure: run the report again; the series count moving down is the acceptance.
    An unchanged count means the rule matched nothing - wrong name, wrong stage, or the
    series predate the rule (Mimir counts active series; wait one head-compaction).

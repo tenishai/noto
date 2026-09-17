@@ -20,7 +20,7 @@ kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || kind create cluster --nam
 
 step "argus platform (step engine; resumable)"
 rm -f "$LEDGER"
-uv run argus platform --cluster "$CLUSTER" --kube-context "$CTX" --ledger "$LEDGER"
+uv run argus platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER"
 
 step "sample apps (podinfo + traffic; exemplar-demo for the #47 exemplar assertion)"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/sample-app.yaml"

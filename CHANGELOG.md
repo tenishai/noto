@@ -6,6 +6,21 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The collector tier is platform-owned; observing one app can no longer reconfigure the
+  gateway for all.** The shared tier (PriorityClass, target-allocator RBAC, agent DaemonSet,
+  gateway, target allocator) used to be re-rendered from the profile of whichever single app
+  was being observed and then server-side applied: last writer wins, so observing an app whose
+  class has no traces signal deleted the traces pipeline out from under every other app in the
+  cluster. `argus platform` now renders the tier from a platform profile (the baseline, all
+  three signals, no class deltas) and applies it after the helm installs, and `argus observe`
+  applies per-app families only (scrape, alerts, SLOs). `argus platform` gains a required
+  `--env` (the gateway stamps `environment` on everything it forwards) and `argus render`
+  gains `--platform`. Consequence, stated plainly: per-class and per-app shaping rules no
+  longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping
+  in the shared gateway is a registered follow-up.
+
 ### Added
 
 - **Profiles for gojira's `agent` and `gateway` workload classes**: agent -> runtime health

@@ -1,9 +1,11 @@
 """The thin Argus CLI - the daedalus-bundle fallback surface (design decision).
 
 Flows:
-  argus render    profile + gojira.yaml -> artifacts on disk (no cluster touched)
-  argus platform  stand up the solo platform on the current kube context
-  argus observe   wire one gojira app into the platform
+  argus render    profile + gojira.yaml -> artifacts on disk (no cluster touched);
+                  --platform renders the shared collector tier instead
+  argus platform  stand up the solo platform on the current kube context, including the
+                  shared collector tier (one agent/gateway/allocator per cluster)
+  argus observe   wire one gojira app into the platform (per-app artifacts only)
   argus feedback  distill usage evidence from Mimir, print it (diagnostic only -
                   gojira-sizing-agent is the production evidence producer, issue #52)
 
@@ -27,6 +29,7 @@ from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
 from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
 from argus.profiles.loader import load_baseline, load_class, load_override
+from argus.profiles.models import ClassProfile, ResolvedProfile
 from argus.profiles.resolve import resolve
 from argus.rendering.alerts import render_alert_rules
 from argus.rendering.collectors import (
@@ -82,15 +85,54 @@ def _resolved(class_name: str, override: dict | None):
     )
 
 
-def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
-    families: dict[str, list[dict]] = {
+ALL_SIGNALS = ["metrics", "logs", "traces"]
+
+
+def _platform_profile() -> ResolvedProfile:
+    """The profile the SHARED collector tier is rendered from: the baseline, no class
+    deltas, every signal on.
+
+    The tier (agent DaemonSet, gateway, target allocator) is one set of objects per
+    cluster serving every app, so it can never be rendered from one app's profile -
+    doing that meant observing an app whose class has no traces signal re-rendered the
+    shared gateway without a traces pipeline and applied it over everyone else's. Every
+    signal is on because the tier has to carry whatever the next app turns on, and the
+    tier cannot know which apps will exist.
+
+    ClassProfile's class name is a Literal over the shipped classes, so the empty class
+    has to borrow one of the names; nothing of it survives - its signals, slos,
+    dashboards and drop rules are all empty, and class_name is replaced below. We do NOT
+    ship a fake class file for this: the platform tier is not a workload class.
+    """
+    empty_class = ClassProfile.model_validate({"class": "web", "signals": []})
+    p = resolve(
+        load_baseline(REPO_ROOT / "profiles" / "baseline.yaml"),
+        empty_class,
+        load_override(None),
+    )
+    return p.model_copy(update={"class_name": "platform", "signals": list(ALL_SIGNALS)})
+
+
+def _render_platform_families(ctx: Context) -> dict[str, list[dict]]:
+    """The platform-owned families. `ctx` carries no app and no namespace: nothing in
+    the shared tier may depend on one app (the collector CRDs live in the argus
+    namespace and are named by role, never by app)."""
+    p = _platform_profile()
+    return {
         "collectors": [
             render_priorityclass(),
             *render_targetallocator_rbac(ctx),
             render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
-        ],
+        ]
+    }
+
+
+def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
+    """Per-app families only. The collector tier is NOT here by design: see
+    `_render_platform_families`."""
+    families: dict[str, list[dict]] = {
         "alerts": [render_alert_rules(p, ctx)],
         "perses": render_perses(p, ctx),
     }
@@ -116,13 +158,27 @@ def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
     return p, ctx
 
 
+def _platform_context(args: argparse.Namespace) -> Context:
+    """The Context the shared tier renders against: cluster and environment (the gateway
+    stamps `environment` as a resource attribute on everything it forwards), and no app
+    or namespace at all."""
+    return Context(topology="solo", cluster=args.cluster, environment=args.env)
+
+
 def cmd_render(args: argparse.Namespace) -> int:
-    p, ctx = _app_context(args)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    for family, docs in _render_families(p, ctx).items():
+    if args.platform:
+        ctx = _platform_context(args)
+        families = _render_platform_families(ctx)
+        label = f"platform tier for {ctx.cluster} ({ctx.environment})"
+    else:
+        p, ctx = _app_context(args)
+        families = _render_families(p, ctx)
+        label = f"{ctx.app} ({p.class_name})"
+    for family, docs in families.items():
         (out / f"{family}.yaml").write_text(yaml.safe_dump_all(docs))
-    print(f"rendered {ctx.app} ({p.class_name}) into {out}")
+    print(f"rendered {label} into {out}")
     return 0
 
 
@@ -147,6 +203,7 @@ def cmd_platform(args: argparse.Namespace) -> int:
     ledger = Ledger(Path(args.ledger))
     baseline = load_baseline(REPO_ROOT / "profiles" / "baseline.yaml")
     budget = baseline.budgets.cardinality[args.env]
+    rendered = _render_platform_families(_platform_context(args))
     steps = [
         EnsureNamespace(),
         *[
@@ -162,9 +219,17 @@ def cmd_platform(args: argparse.Namespace) -> int:
             )
             for c in PLATFORM_ORDER
         ],
+        # The collector tier is platform-owned (one shared agent/gateway/allocator per
+        # cluster), so it is applied here and never by `observe`. It MUST come after the
+        # helm steps: these are OpenTelemetryCollector custom resources, and the CRDs and
+        # admission webhook that accept them arrive with `opentelemetry-operator` in
+        # PLATFORM_ORDER. Keep that ordering.
+        ApplyRendered(family="collectors"),
         ValidateRoundTrip(),
     ]
-    result = ProvisionEngine(steps).run(ledger, f"platform@{args.cluster}", _step_context(args))
+    result = ProvisionEngine(steps).run(
+        ledger, f"platform@{args.cluster}", _step_context(args, rendered)
+    )
     _report(result)
     return 0 if result.completed else 1
 
@@ -199,7 +264,10 @@ def _run_observe(
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
-    steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts") if f in rendered]
+    # Per-app families only. The shared collector tier belongs to `argus platform`:
+    # rendering it from one app's profile let one observe reconfigure the gateway for
+    # the whole cluster.
+    steps = [ApplyRendered(family=f) for f in ("scrape", "alerts") if f in rendered]
     if "slo" in rendered:
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
@@ -364,20 +432,31 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--env", required=app_required, choices=["dev", "qa", "prod"])
             # The observability identity (Perses project, tenant, gateway exporter
             # headers) must be ONE value per cluster. gojira.yaml cluster strings
-            # drift across apps (live-found: 'acme-dev' vs the GKE cluster name),
-            # and each observe re-renders the shared collector tier - last writer
-            # wins. Pin it here; the per-app file stays the fallback.
+            # drift across apps (live-found: one deployment's short name vs the real
+            # cluster name), which would scatter one cluster's apps across tenants.
+            # Pin it here; the per-app file stays the fallback.
             p.add_argument("--cluster", default=None, help="canonical cluster/tenant name override")
 
     p_render = sub.add_parser("render", help="render artifacts, touch nothing")
-    common(p_render, needs_app=True)
+    # --platform renders the shared tier instead of one app, and needs no gojira.yaml:
+    # relax the parser and enforce the right set below, per mode.
+    common(p_render, needs_app=True, app_required=False)
     p_render.add_argument("--out", default=".argus/rendered-app")
+    p_render.add_argument(
+        "--platform",
+        action="store_true",
+        help="render the shared platform collector tier (needs --cluster and --env) "
+        "instead of one app's artifacts",
+    )
     p_render.set_defaults(func=cmd_render)
 
     p_platform = sub.add_parser("platform", help="stand up the solo platform")
     common(p_platform, needs_app=False)
     p_platform.add_argument("--cluster", required=True)
-    p_platform.add_argument("--env", default="dev", choices=["dev", "qa", "prod"])
+    # Required, not defaulted: the platform now applies the collector tier, whose gateway
+    # stamps `environment` on every signal it forwards. A silent default of dev would
+    # mislabel a whole prod cluster's telemetry.
+    p_platform.add_argument("--env", required=True, choices=["dev", "qa", "prod"])
     p_platform.set_defaults(func=cmd_platform)
 
     p_observe = sub.add_parser("observe", help="wire a gojira app into the platform")
@@ -445,6 +524,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     args = parser.parse_args(argv)
+
+    if args.command == "render":
+        if args.platform:
+            if args.cluster is None or args.env is None:
+                p_render.error("--platform requires --cluster and --env")
+        elif args.gojira is None or args.env is None:
+            p_render.error("the following arguments are required: --gojira, --env")
 
     if args.command == "observe":
         try:

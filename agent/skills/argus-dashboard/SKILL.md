@@ -50,7 +50,7 @@ PR, or the panel ships showing `up`.
 2. `make test`; `make regen-golden` if goldens changed (the golden diff IS the review);
    `make validate` - percli, the real Perses validator, judges the rendered dashboards.
 3. Re-apply: `uv run argus observe --gojira <path> --env <env>` (class dashboards) or
-   `uv run argus platform --cluster <name>` (cluster-baseline).
+   `uv run argus platform --cluster <name> --env <env>` (cluster-baseline).
 4. Verify through the Perses proxy: the dashboard renders and each panel's query
    returns series (a panel stuck on `up` means step "Real queries" above was skipped).
 

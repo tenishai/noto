@@ -1,8 +1,15 @@
-"""Contract invariants: every pipeline opinion, asserted over every class x topology.
+"""Contract invariants: every pipeline opinion, asserted over the output that actually
+ships, in every topology.
 
 This suite is how "non-negotiable defaults" (design.md) become enforceable. It renders
 the REAL shipped profiles (profiles/) - not fixtures - so drift in either the renderers
 or the YAML opinions fails here.
+
+The collector tier is platform-owned: one agent DaemonSet, one gateway and one target
+allocator per cluster, rendered from the platform profile and never from an app. So the
+pipeline invariants are asserted over the PLATFORM output (topology-parameterized), and
+the per-class parameterization now guards the other half of that contract: no class, in
+any topology, can put a collector into one app's output.
 """
 
 from pathlib import Path
@@ -10,7 +17,9 @@ from pathlib import Path
 import pytest
 from tests.support.otel import config_of, iter_pipelines
 
+from argus import cli
 from argus.profiles.loader import load_baseline, load_class, load_override
+from argus.profiles.models import ResolvedProfile
 from argus.profiles.resolve import resolve
 from argus.rendering.collectors import (
     render_agent,
@@ -56,9 +65,98 @@ def _ctx(topology: str, class_name: str) -> Context:
     return Context(**kw)
 
 
-def _all_crds(class_name: str, topology: str) -> list[dict]:
-    p = _profile(class_name)
-    ctx = _ctx(topology, class_name)
+def _platform_ctx(topology: str) -> Context:
+    """The collector tier is platform-owned, so its Context carries no app and no
+    namespace: nothing in the shared tier is allowed to depend on one app."""
+    kw: dict = dict(topology=topology, cluster="golden-cluster", environment="prod")
+    if topology == "regional":
+        kw["region"] = "us-east4"
+        kw["endpoints"] = {
+            "mimir_otlp_http": "http://mimir.us-east4.argus.internal:9009/otlp",
+            "loki_otlp_http": "http://loki.us-east4.argus.internal:3100/otlp",
+            "tempo_otlp_grpc": "tempo.us-east4.argus.internal:4317",
+            "kafka_bootstrap": "redpanda.us-east4.argus.internal:9092",
+        }
+    return Context(**kw)
+
+
+def _role(docs: list[dict], role: str) -> dict:
+    def _labels(doc: dict) -> dict:
+        return doc.get("metadata", {}).get("labels", {})
+
+    return next(d for d in docs if _labels(d).get("argus.dev/role") == role)
+
+
+def test_observing_an_app_without_traces_does_not_change_the_gateway() -> None:
+    """The bug this invariant exists to keep dead. The collector tier is SHARED - one
+    gateway, one agent DaemonSet, one target allocator per cluster - and it used to be
+    re-rendered from the profile of whichever single app was being observed, then
+    server-side applied: last writer wins. Observing an app whose class has no traces
+    signal therefore DELETED the traces pipeline out from under every other app in the
+    cluster. The tier is platform-owned now: per-app output carries no collector at all,
+    and the platform gateway always carries all three signals."""
+    p = _profile("web")
+    assert "traces" not in p.signals, "fixture drift: this test needs a traces-less class"
+
+    app_families = cli._render_families(p, _ctx("solo", "web"))
+    assert "collectors" not in app_families
+    for family, docs in app_families.items():
+        for doc in docs:
+            assert doc.get("kind") != "OpenTelemetryCollector", family
+
+    platform = cli._render_platform_families(_platform_ctx("solo"))
+    pipelines = dict(iter_pipelines(_role(platform["collectors"], "gateway")))
+    assert {"metrics", "logs", "traces", "metrics/self"} <= set(pipelines)
+
+
+@pytest.mark.parametrize("class_name", CLASSES)
+def test_per_app_output_carries_no_collector_for_any_class(class_name: str) -> None:
+    families = cli._render_families(_profile(class_name), _ctx("solo", class_name))
+    for family, docs in families.items():
+        assert family != "collectors"
+        for doc in docs:
+            assert doc.get("kind") != "OpenTelemetryCollector", (class_name, family)
+
+
+def test_platform_profile_has_all_signals_and_only_baseline_rules(monkeypatch) -> None:
+    """The platform profile is the baseline with every signal on and no class delta -
+    and it is built without reading a single class file, so no class can ever shape the
+    shared tier by accident."""
+    baseline = load_baseline(PROFILES / "baseline.yaml")
+    p = cli._platform_profile()
+    assert set(p.signals) == {"metrics", "logs", "traces"}
+    assert [r.name for r in p.drop] == [r.name for r in baseline.drop if r.enabled]
+    assert p.slos == []
+
+    ctx = _platform_ctx("solo")
+    expected = ResolvedProfile(
+        class_name="platform",
+        signals=["metrics", "logs", "traces"],
+        app_scrape=True,  # unused by the collector tier; carried for shape only
+        budgets=baseline.budgets,
+        slos=[],
+        dashboards=[d for d in baseline.dashboards if d.enabled],
+        drop=[r for r in baseline.drop if r.enabled],
+        log_collection=baseline.log_collection,
+    )
+    first = cli._render_platform_families(ctx)
+    assert _role(first["collectors"], "gateway") == render_gateway(expected, ctx)
+
+    def _no_class_files(*_args, **_kwargs):
+        raise AssertionError("the platform collector tier must not read a class profile")
+
+    monkeypatch.setattr(cli, "load_class", _no_class_files)
+    assert cli._render_platform_families(ctx) == first
+
+
+def _tier_profile():
+    """The one profile the shared collector tier is ever rendered from."""
+    return cli._platform_profile()
+
+
+def _all_crds(topology: str) -> list[dict]:
+    p = _tier_profile()
+    ctx = _platform_ctx(topology)
     crds = [
         render_agent(p, ctx),
         render_gateway(p, ctx),
@@ -70,27 +168,32 @@ def _all_crds(class_name: str, topology: str) -> list[dict]:
 
 
 @pytest.mark.parametrize("topology", TOPOLOGIES)
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_memory_limiter_first_batch_last(class_name: str, topology: str) -> None:
-    for crd in _all_crds(class_name, topology):
+def test_platform_gateway_carries_every_signal(topology: str) -> None:
+    """The shared gateway carries all three signals plus its own self-scrape, always.
+    No app and no class can take one away - that removal was the outage lever."""
+    pipelines = dict(iter_pipelines(render_gateway(_tier_profile(), _platform_ctx(topology))))
+    assert set(pipelines) == {"metrics", "logs", "traces", "metrics/self"}
+
+
+@pytest.mark.parametrize("topology", TOPOLOGIES)
+def test_memory_limiter_first_batch_last(topology: str) -> None:
+    for crd in _all_crds(topology):
         for name, pipeline in iter_pipelines(crd):
             procs = pipeline["processors"]
             assert procs[0] == "memory_limiter", (crd["metadata"]["name"], name)
             assert procs[-1] == "batch", (crd["metadata"]["name"], name)
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_k8sattributes_split(class_name: str) -> None:
-    p, ctx = _profile(class_name), _ctx("solo", class_name)
+def test_k8sattributes_split() -> None:
+    p, ctx = _tier_profile(), _platform_ctx("solo")
     agent = render_agent(p, ctx)
     gateway = render_gateway(p, ctx)
     assert config_of(agent)["processors"]["k8sattributes"]["passthrough"] is True
     assert config_of(gateway)["processors"]["k8sattributes"].get("passthrough") is not True
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_resource_not_attributes_for_env_enrichment(class_name: str) -> None:
-    gateway = render_gateway(_profile(class_name), _ctx("solo", class_name))
+def test_resource_not_attributes_for_env_enrichment() -> None:
+    gateway = render_gateway(_tier_profile(), _platform_ctx("solo"))
     processors = config_of(gateway)["processors"]
     assert "resource/default" in processors
     assert not any(name.startswith("attributes") for name in processors)
@@ -98,17 +201,15 @@ def test_resource_not_attributes_for_env_enrichment(class_name: str) -> None:
     assert {"environment", "cluster"} <= keys
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_groupbyattrs_in_metrics_path(class_name: str) -> None:
-    gateway = render_gateway(_profile(class_name), _ctx("solo", class_name))
+def test_groupbyattrs_in_metrics_path() -> None:
+    gateway = render_gateway(_tier_profile(), _platform_ctx("solo"))
     pipelines = dict(iter_pipelines(gateway))
     assert "groupbyattrs" in pipelines["metrics"]["processors"]
 
 
 @pytest.mark.parametrize("topology", TOPOLOGIES)
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_backend_exporters_native_otlp_zstd(class_name: str, topology: str) -> None:
-    p, ctx = _profile(class_name), _ctx(topology, class_name)
+def test_backend_exporters_native_otlp_zstd(topology: str) -> None:
+    p, ctx = _tier_profile(), _platform_ctx(topology)
     stamping_crd = render_gateway(p, ctx) if topology == "solo" else render_ingest(p, ctx)
     exporters = config_of(stamping_crd)["exporters"]
     assert exporters["otlphttp/mimir"]["endpoint"].endswith("/otlp")
@@ -119,9 +220,8 @@ def test_backend_exporters_native_otlp_zstd(class_name: str, topology: str) -> N
     assert not any("prometheusremotewrite" in name for name in exporters)
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_solo_gateway_file_storage_queue(class_name: str) -> None:
-    gateway = render_gateway(_profile(class_name), _ctx("solo", class_name))
+def test_solo_gateway_file_storage_queue() -> None:
+    gateway = render_gateway(_tier_profile(), _platform_ctx("solo"))
     cfg = config_of(gateway)
     assert "file_storage" in cfg["extensions"]
     for name in ("otlphttp/mimir", "otlphttp/loki", "otlp/tempo"):
@@ -129,24 +229,21 @@ def test_solo_gateway_file_storage_queue(class_name: str) -> None:
 
 
 @pytest.mark.parametrize("topology", TOPOLOGIES)
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_tenancy_stamped_exactly_once(class_name: str, topology: str) -> None:
-    crds = _all_crds(class_name, topology)
+def test_tenancy_stamped_exactly_once(topology: str) -> None:
     stamps = 0
-    for crd in crds:
+    for crd in _all_crds(topology):
         for exporter in config_of(crd)["exporters"].values():
             if exporter.get("headers", {}).get("X-Scope-OrgID"):
                 stamps += 1
     # exactly one stamping component (3 backend exporters on it), never two components
     assert stamps == 3, (
-        f"{class_name}/{topology}: expected one stamping component, got {stamps} stamped exporters"
+        f"{topology}: expected one stamping component, got {stamps} stamped exporters"
     )
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_drop_rules_present_at_declared_stage_only(class_name: str) -> None:
-    p = _profile(class_name)
-    ctx = _ctx("regional", class_name)
+def test_drop_rules_present_at_declared_stage_only() -> None:
+    p = _tier_profile()
+    ctx = _platform_ctx("regional")
     agent = render_agent(p, ctx)
     gateway = render_gateway(p, ctx)
     ingest = render_ingest(p, ctx)
@@ -192,9 +289,8 @@ def test_drop_rules_present_at_declared_stage_only(class_name: str) -> None:
                         assert stmt not in flattened, (stage, other_stage, stmt)
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_labels_strip_renders_as_transform(class_name: str) -> None:
-    gateway = render_gateway(_profile(class_name), _ctx("solo", class_name))
+def test_labels_strip_renders_as_transform() -> None:
+    gateway = render_gateway(_tier_profile(), _platform_ctx("solo"))
     transform = config_of(gateway)["processors"]["transform/labels-strip"]
     statements = transform["metric_statements"][0]["statements"]
     assert 'delete_key(attributes, "pod_uid")' in statements
@@ -202,9 +298,8 @@ def test_labels_strip_renders_as_transform(class_name: str) -> None:
 
 
 @pytest.mark.parametrize("topology", TOPOLOGIES)
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_statsd_never_in_default_pipelines(class_name: str, topology: str) -> None:
-    for crd in _all_crds(class_name, topology):
+def test_statsd_never_in_default_pipelines(topology: str) -> None:
+    for crd in _all_crds(topology):
         receivers = config_of(crd)["receivers"]
         for _, pipeline in iter_pipelines(crd):
             assert "statsd" not in pipeline["receivers"]
@@ -212,11 +307,10 @@ def test_statsd_never_in_default_pipelines(class_name: str, topology: str) -> No
             assert "statsd" in receivers  # defined as the legacy affordance
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_regional_routing_matches_adr(class_name: str) -> None:
+def test_regional_routing_matches_adr() -> None:
     """The ADR routing table: metrics -> Mimir, logs -> Loki, traces -> Tempo."""
-    p = _profile(class_name)
-    ingest = render_ingest(p, _ctx("regional", class_name))
+    p = _tier_profile()
+    ingest = render_ingest(p, _platform_ctx("regional"))
     pipelines = dict(iter_pipelines(ingest))
     expected = {"metrics": "otlphttp/mimir", "logs": "otlphttp/loki", "traces": "otlp/tempo"}
     for signal in p.signals:
@@ -224,9 +318,8 @@ def test_regional_routing_matches_adr(class_name: str) -> None:
         assert pipelines[signal]["receivers"] == ["kafka"], signal
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_self_scrape_pipeline_on_gateway(class_name: str) -> None:
-    gateway = render_gateway(_profile(class_name), _ctx("solo", class_name))
+def test_self_scrape_pipeline_on_gateway() -> None:
+    gateway = render_gateway(_tier_profile(), _platform_ctx("solo"))
     pipelines = dict(iter_pipelines(gateway))
     assert "metrics/self" in pipelines
     assert pipelines["metrics/self"]["receivers"] == ["prometheus/self"]
@@ -235,15 +328,14 @@ def test_self_scrape_pipeline_on_gateway(class_name: str) -> None:
     assert "zpages" in ext and "pprof" in ext
 
 
-@pytest.mark.parametrize("class_name", CLASSES)
-def test_integrations_autodiscovery_wired(class_name: str) -> None:
-    """The shipped catalog renders into every agent: k8s_observer + receiver_creator
+def test_integrations_autodiscovery_wired() -> None:
+    """The shipped catalog renders into the agent: k8s_observer + receiver_creator
     in the metrics pipeline, with the exact contract rule strings."""
     from argus.integrations.catalog import load_catalog
     from argus.rendering.collectors import render_agent
 
     catalog = load_catalog(REPO / "integrations")
-    agent = render_agent(_profile(class_name), _ctx("solo", class_name), catalog=catalog)
+    agent = render_agent(_tier_profile(), _platform_ctx("solo"), catalog=catalog)
     cfg = config_of(agent)
     assert "k8s_observer" in cfg["extensions"]
     assert "k8s_observer" in cfg["service"]["extensions"]
