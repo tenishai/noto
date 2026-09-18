@@ -8,6 +8,15 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Fixed
 
+- **helm targets the same cluster as kubectl.** Every kubectl argv honored
+  `--kube-context`; the two helm calls (release probe and `upgrade --install`) did not,
+  so they used whatever context the kubeconfig had current. Found on the first
+  `platform --kube-context <dev> --dry-run` after the born-observed merge: kubectl
+  spoke to dev, helm reached for prod, and only an unreachable network stopped it.
+  `StepContext.helm()` now builds every helm argv beside `kubectl()`, with the same
+  context. Until this lands, run `platform` only with the intended cluster as your
+  CURRENT kube context.
+
 - **A ruler that rejects the platform's rules fails the run, and says so.** The rejection
   used to escape `argus platform` as an unhandled exception - a traceback at the end of a
   run whose cluster work all succeeded. It is now a `FAILED: ...` line on stderr and exit

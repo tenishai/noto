@@ -100,6 +100,34 @@ def test_helm_timed_out_release_reapplies_despite_matching_fingerprint(tmp_path:
     assert any(c[1] == "upgrade" for c, _ in runner.calls if c[0] == "helm")
 
 
+def test_helm_targets_the_same_context_as_kubectl(tmp_path: Path) -> None:
+    """Live-found on the first `platform --kube-context dev --dry-run` after the
+    born-observed merge: kubectl honored the flag, helm silently used the kubeconfig's
+    CURRENT context, which happened to be prod. Both the status probe and the
+    upgrade must carry --kube-context whenever the run has one."""
+    step = HelmInstall(component="mimir")
+    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    ledger = Ledger(tmp_path / "l.db")
+    result = ProvisionEngine([step]).run(
+        ledger, "platform@c1", _ctx(runner, kube_context="dev-ctx")
+    )
+    assert result.steps_run == ["helm_mimir"]
+    helm_calls = [c for c, _ in runner.calls if c[0] == "helm"]
+    assert len(helm_calls) == 2  # status probe, then upgrade --install
+    for cmd in helm_calls:
+        assert cmd[1:3] == ["--kube-context", "dev-ctx"], cmd
+    assert helm_calls[0][3] == "status" and helm_calls[1][3] == "upgrade"
+
+
+def test_helm_without_a_context_adds_no_flag(tmp_path: Path) -> None:
+    step = HelmInstall(component="mimir")
+    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    ProvisionEngine([step]).run(Ledger(tmp_path / "l.db"), "platform@c1", _ctx(runner))
+    for cmd, _ in runner.calls:
+        if cmd[0] == "helm":
+            assert "--kube-context" not in cmd
+
+
 def test_helm_drift_triggers_upgrade(tmp_path: Path) -> None:
     """Issue #46: an installed release with a stale fingerprint (values/pin/sets changed)
     re-applies instead of ledger-skipping - the gap that cost two manual upgrades live."""
