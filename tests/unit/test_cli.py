@@ -388,9 +388,9 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
         ]
     )
     assert code == 0
-    # Every apply, in order, judged by what it actually applies rather than by position:
-    # the platform's own record (a plain ConfigMap, no CRD to wait for) is applied before
-    # the helm steps on purpose, so a count would say nothing about the CRD dependency.
+    # Every apply, in order, judged by what it actually applies rather than by position.
+    # A count would say nothing about the CRD dependency, and the platform's own record is
+    # not an apply at all (it is created once and patched - see EnsurePlatformInfo).
     ordered = [
         (c, s) for c, s in runner.calls if (c[0] == "helm" and c[1] == "upgrade") or "apply" in c
     ]

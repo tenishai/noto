@@ -263,37 +263,85 @@ def utc_now_rfc3339() -> str:
     return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def read_platform_info(ctx: StepContext) -> dict[str, str]:
-    """The platform's own record of itself, or {} when it cannot be read.
+def _read_record(ctx: StepContext) -> tuple[bool, dict[str, str], str]:
+    """(readable, data, message) for one `kubectl get` of the record.
 
-    Never raises and never distinguishes the reasons: an older platform that predates the
-    record, a dry run with no cluster at all, a job whose RBAC has not been rolled out.
-    Every caller's answer to all three is the same fallback.
+    `readable` is False only when the read itself failed for a reason that is NOT the
+    record being absent. The two callers below differ on exactly one thing: what they do
+    with that distinction.
     """
     code, out = ctx.runner(
         ctx.kubectl("get", "configmap", PLATFORM_INFO_CONFIGMAP, "-n", ctx.namespace, "-o", "json"),
         None,
     )
     if code != 0:
-        return {}
+        absent = "NotFound" in out or "not found" in out
+        return absent, {}, out
     try:
         data = json.loads(out).get("data")
     except json.JSONDecodeError, AttributeError:
-        return {}
-    return {str(k): str(v) for k, v in (data or {}).items()}
+        return False, {}, out
+    return True, {str(k): str(v) for k, v in (data or {}).items()}, out
+
+
+def read_platform_info(ctx: StepContext) -> dict[str, str]:
+    """The platform's own record of itself, or {} when it cannot be read - the READ path.
+
+    Never raises and never distinguishes the reasons: an older platform that predates the
+    record, a dry run with no cluster at all, a job whose RBAC has not been rolled out.
+    Every caller's answer to all three is the same fallback, because every caller here is
+    only reading (`observe`, `rules-sync`, `render`): the worst case is a dashboard that
+    queries the wrong tenant, and a preview must never fail for want of a cluster.
+
+    The WRITE path must NOT use this - see `read_platform_info_strict`.
+    """
+    _readable, data, _out = _read_record(ctx)
+    return data
+
+
+class PlatformInfoUnreadable(RuntimeError):
+    """The record could not be read, and not because it is absent.
+
+    Raised only on the write path. Collapsing a Forbidden, an apiserver blip or a network
+    error into "unborn" would make the next write treat a living platform as a new one and
+    stamp `born` with now, which slides the retention alert's age gate forward and mutes
+    `ArgusRetentionWindowShort` for another whole window. Refusing is the safe answer:
+    nothing is lost by not writing, and the birth instant cannot be recovered once it is
+    overwritten.
+    """
+
+
+def read_platform_info_strict(ctx: StepContext) -> dict[str, str]:
+    """The record, {} when it is CLEARLY absent, and an exception for every other failure."""
+    readable, data, out = _read_record(ctx)
+    if not readable:
+        raise PlatformInfoUnreadable(
+            "refusing to rewrite the platform's birth instant: could not read the record: "
+            + _collapse(out)
+        )
+    return data
+
+
+PLATFORM_INFO_LABELS = {"argus.dev/managed": "true"}
 
 
 def platform_info_configmap(namespace: str, born: str, tenant: str, environment: str) -> dict:
-    """The record itself. `born` is the platform's birth instant (RFC 3339, UTC), `tenant`
-    the name the gateway writes telemetry with, `environment` what it stamps on every
-    signal it forwards."""
+    """The record itself, as one document. `born` is the platform's birth instant (RFC
+    3339, UTC), `tenant` the name the gateway writes telemetry with, `environment` what it
+    stamps on every signal it forwards.
+
+    This is the record's SHAPE, for previews and goldens. It is deliberately never
+    kubectl-applied: a full `data:` apply carries `born`, and an apply whose pre-read
+    failed would write a fresh one. `EnsurePlatformInfo` creates the `born` key once and
+    only ever patches `tenant`/`environment` afterwards.
+    """
     return {
         "apiVersion": "v1",
         "kind": "ConfigMap",
         "metadata": {
             "name": PLATFORM_INFO_CONFIGMAP,
             "namespace": namespace,
-            "labels": {"argus.dev/managed": "true"},
+            "labels": dict(PLATFORM_INFO_LABELS),
         },
         "data": {"born": born, "tenant": tenant, "environment": environment},
     }
@@ -303,12 +351,18 @@ def platform_info_configmap(namespace: str, born: str, tenant: str, environment:
 class EnsurePlatformInfo:
     """The platform writes down what it is, so nothing has to guess later.
 
-    `born` is the birth instant the retention alert's age gate counts from: written once,
-    NEVER overwritten (a re-run reads the recorded value back and writes that same value
-    again). `tenant` and `environment` describe the CURRENT platform, not its birth, so
-    re-running `argus platform` with different values updates them - that is the whole
-    point of the record: the tenant an app's dashboards READ with is resolved from the
-    tenant the gateway WRITES with, instead of the two drifting apart in silence.
+    `born` is the birth instant the retention alert's age gate counts from. It is written
+    by a CREATE, once, and never appears in any later write at all - not even as the value
+    that was just read back. That is structural rather than careful: `kubectl create`
+    cannot overwrite an existing object, so no failure mode of this step (an unreadable
+    pre-read, two runs racing, a hand-deleted ledger) can move the birth instant. An
+    `AlreadyExists` is success: somebody else already recorded it.
+
+    `tenant` and `environment` describe the CURRENT platform, not its birth, so re-running
+    `argus platform` with different values updates them - that is the whole point of the
+    record: the tenant an app's dashboards READ with is resolved from the tenant the
+    gateway WRITES with, instead of the two drifting apart in silence. They are reconciled
+    with a merge patch that carries those two keys and nothing else.
     """
 
     tenant: str = ""
@@ -319,6 +373,8 @@ class EnsurePlatformInfo:
     ephemeral: bool = True  # tenant/environment must reconcile every run, never ledger-skip
 
     def check(self, ctx: StepContext) -> str | None:
+        # The lenient read on purpose: an unreadable record is "not known to be done", and
+        # apply() is where refusing to write belongs.
         info = read_platform_info(ctx)
         recorded = (info.get("tenant"), info.get("environment"))
         if info.get("born") and recorded == (self.tenant, self.environment):
@@ -326,17 +382,61 @@ class EnsurePlatformInfo:
         return None
 
     def apply(self, ctx: StepContext) -> str:
-        # Re-read inside apply(): the birth instant this step was constructed with is only
-        # a candidate, and an already-born platform's own value always wins over it.
-        born = read_platform_info(ctx).get("born") or self.born
-        doc = platform_info_configmap(ctx.namespace, born, self.tenant, self.environment)
+        # The strict read: a pre-read that failed for any reason other than "absent" must
+        # stop the write, or an unreadable living platform is treated as a new one.
+        info = read_platform_info(ctx) if ctx.dry_run else read_platform_info_strict(ctx)
+        recorded_born = info.get("born")
+        born = recorded_born or self.born
         if ctx.dry_run:
             return f"would record tenant {self.tenant} ({self.environment}), born {born}"
-        cmd = ctx.kubectl("apply", "--server-side", "--field-manager", "argus", "-f", "-")
-        code, out = ctx.runner(cmd, yaml.safe_dump(doc))
-        if code != 0:
-            raise RuntimeError(f"recording the platform info failed: {out[-2000:]}")
+        if not recorded_born:
+            self._create_born(ctx, born)
+        self._patch_identity(ctx)
         return f"configmap/{PLATFORM_INFO_CONFIGMAP} (tenant {self.tenant}, born {born})"
+
+    def _create_born(self, ctx: StepContext, born: str) -> None:
+        """The one and only write that ever mentions `born`, and it cannot overwrite."""
+        code, out = ctx.runner(
+            ctx.kubectl(
+                "create",
+                "configmap",
+                PLATFORM_INFO_CONFIGMAP,
+                "-n",
+                ctx.namespace,
+                f"--from-literal=born={born}",
+            ),
+            None,
+        )
+        if code == 0 or "AlreadyExists" in out or "already exists" in out:
+            return
+        raise RuntimeError(f"recording the platform's birth instant failed: {out[-2000:]}")
+
+    def _patch_identity(self, ctx: StepContext) -> None:
+        """tenant and environment (plus the managed label, so the record looks the same
+        whichever run created it). No `born` key anywhere in this patch."""
+        patch = json.dumps(
+            {
+                "metadata": {"labels": dict(PLATFORM_INFO_LABELS)},
+                "data": {"tenant": self.tenant, "environment": self.environment},
+            },
+            sort_keys=True,
+        )
+        code, out = ctx.runner(
+            ctx.kubectl(
+                "patch",
+                "configmap",
+                PLATFORM_INFO_CONFIGMAP,
+                "-n",
+                ctx.namespace,
+                "--type",
+                "merge",
+                "-p",
+                patch,
+            ),
+            None,
+        )
+        if code != 0:
+            raise RuntimeError(f"recording the platform's tenant failed: {out[-2000:]}")
 
 
 @dataclass

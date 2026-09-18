@@ -17,7 +17,16 @@ CONTRACT_CLUSTER = "dev-cluster"
 RECORDED = {"born": "2026-01-01T00:00:00Z", "tenant": "real-name", "environment": "dev"}
 
 
+CONFIGMAP = "argus-platform-info"
+_NOT_FOUND = f'Error from server (NotFound): configmaps "{CONFIGMAP}" not found'
+_ALREADY_EXISTS = f'Error from server (AlreadyExists): configmaps "{CONFIGMAP}" already exists'
+
+
 class InfoRunner:
+    """Stateful about the record only: a `kubectl create`/`patch` of it lands in `info`,
+    so a test can run `platform` twice and ask what the second run did to the first run's
+    birth instant. Everything else answers the same way `FakeRunner` does."""
+
     def __init__(self, info: dict[str, str] | None = None, readable: bool = True) -> None:
         self.calls: list[tuple[list[str], str | None]] = []
         self.info = info
@@ -26,12 +35,26 @@ class InfoRunner:
     def __call__(self, cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
         self.calls.append((cmd, stdin_text))
         joined = " ".join(cmd)
-        if "get configmap argus-platform-info" in joined:
+        if f"get configmap {CONFIGMAP}" in joined:
             if not self.readable:
                 return 1, "Error from server (Forbidden)"
             if self.info is None:
-                return 1, 'Error from server (NotFound): configmaps "argus-platform-info" not found'
+                return 1, _NOT_FOUND
             return 0, json.dumps({"kind": "ConfigMap", "data": self.info})
+        if f"create configmap {CONFIGMAP}" in joined:
+            if self.info is not None:
+                return 1, _ALREADY_EXISTS
+            self.info = {}
+            for arg in cmd:
+                if arg.startswith("--from-literal="):
+                    key, _, value = arg.removeprefix("--from-literal=").partition("=")
+                    self.info[key] = value
+            return 0, f"configmap/{CONFIGMAP} created"
+        if f"patch configmap {CONFIGMAP}" in joined:
+            if self.info is None:
+                return 1, _NOT_FOUND
+            self.info.update(json.loads(cmd[cmd.index("-p") + 1]).get("data", {}))
+            return 0, f"configmap/{CONFIGMAP} patched"
         if " get namespace" in joined or "helm status" in joined:
             return 1, "not found"
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
@@ -39,6 +62,14 @@ class InfoRunner:
     @property
     def applies(self) -> list[tuple[list[str], str | None]]:
         return [(c, s) for c, s in self.calls if "apply" in c]
+
+    @property
+    def creates(self) -> list[list[str]]:
+        return [c for c, _s in self.calls if c[:3] == ["kubectl", "create", "configmap"]]
+
+    @property
+    def patches(self) -> list[list[str]]:
+        return [c for c, _s in self.calls if c[:3] == ["kubectl", "patch", "configmap"]]
 
     def applied_docs(self) -> list[dict]:
         docs: list[dict] = []

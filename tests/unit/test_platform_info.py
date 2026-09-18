@@ -14,7 +14,12 @@ from tests.support.fake_cluster import InfoRunner
 from argus import cli
 from argus.engine.engine import ProvisionEngine
 from argus.engine.ledger import Ledger
-from argus.steps import EnsurePlatformInfo, StepContext, read_platform_info
+from argus.steps import (
+    EnsurePlatformInfo,
+    StepContext,
+    read_platform_info,
+    read_platform_info_strict,
+)
 
 REPO = Path(__file__).parents[2]
 
@@ -24,13 +29,22 @@ def _step_ctx(runner: InfoRunner, **kw) -> StepContext:
     return StepContext(runner=runner, pins=pins, repo_root=REPO, **kw)
 
 
-def _platform(tmp_path: Path, monkeypatch, runner: InfoRunner, *extra: str) -> int:
+def _patched_data(runner: InfoRunner) -> dict:
+    """The `data` object of the last merge patch the runner was asked to make."""
+    import json
+
+    return json.loads(runner.patches[-1][runner.patches[-1].index("-p") + 1])["data"]
+
+
+def _platform(
+    tmp_path: Path, monkeypatch, runner: InfoRunner, *extra: str, cluster: str = "c1"
+) -> int:
     monkeypatch.setattr(cli, "real_runner", runner)
     return cli.main(
         [
             "platform",
             "--cluster",
-            "c1",
+            cluster,
             "--env",
             "dev",
             "--ledger",
@@ -58,6 +72,22 @@ def test_read_platform_info_is_empty_when_the_record_cannot_be_read() -> None:
     assert read_platform_info(_step_ctx(InfoRunner(readable=False))) == {}
 
 
+def test_the_strict_read_separates_an_absent_record_from_an_unreadable_one() -> None:
+    """The write path's read. Absent is a fact worth acting on; anything else is an
+    unknown, and an unknown must never be mistaken for an unborn platform."""
+    import pytest as _pytest
+
+    from argus.steps import PlatformInfoUnreadable
+
+    assert read_platform_info_strict(_step_ctx(InfoRunner(None))) == {}
+    with _pytest.raises(PlatformInfoUnreadable) as exc_info:
+        read_platform_info_strict(_step_ctx(InfoRunner(readable=False)))
+    assert str(exc_info.value).startswith(
+        "refusing to rewrite the platform's birth instant: could not read the record: "
+    )
+    assert "Forbidden" in str(exc_info.value)
+
+
 # --- writing the record ------------------------------------------------------
 
 
@@ -70,23 +100,74 @@ def test_born_is_preserved_while_tenant_and_environment_update(tmp_path: Path) -
         Ledger(tmp_path / "l.db"), "platform@new", _step_ctx(runner)
     )
     assert result.completed
-    doc = runner.applied_docs()[0]
-    assert doc["data"] == {
+    # An already-born platform is never created again, and the one write it does get
+    # carries no `born` key at all.
+    assert runner.creates == []
+    assert _patched_data(runner) == {"tenant": "new", "environment": "prod"}
+    assert runner.info == {
         "born": "2020-02-02T02:02:02Z",
         "tenant": "new",
         "environment": "prod",
     }
 
 
-def test_a_first_run_records_the_birth_instant_it_was_given(tmp_path: Path) -> None:
+def test_a_first_run_creates_the_birth_instant_and_then_patches_the_rest(tmp_path: Path) -> None:
+    """Create-then-patch, in that order: `kubectl create` cannot overwrite, so the birth
+    instant can only ever be written by a platform that had none."""
     runner = InfoRunner(None)
     step = EnsurePlatformInfo(tenant="c1", environment="dev", born="2026-09-17T12:00:00Z")
     ProvisionEngine([step]).run(Ledger(tmp_path / "l.db"), "platform@c1", _step_ctx(runner))
-    doc = runner.applied_docs()[0]
-    assert doc["kind"] == "ConfigMap"
-    assert doc["metadata"]["name"] == "argus-platform-info"
-    assert doc["metadata"]["namespace"] == "argus"
-    assert doc["data"]["born"] == "2026-09-17T12:00:00Z"
+    assert runner.applies == []
+    (create,) = runner.creates
+    assert create[1:3] == ["create", "configmap"]
+    assert create[3] == "argus-platform-info"
+    assert "-n" in create and create[create.index("-n") + 1] == "argus"
+    assert "--from-literal=born=2026-09-17T12:00:00Z" in create
+    # nothing but born rides along in the create call
+    assert [a for a in create if a.startswith("--from-literal=")] == [
+        "--from-literal=born=2026-09-17T12:00:00Z"
+    ]
+    (patch,) = runner.patches
+    assert "--type" in patch and patch[patch.index("--type") + 1] == "merge"
+    assert "born" not in patch[patch.index("-p") + 1]
+    assert runner.calls.index((create, None)) < runner.calls.index((patch, None))
+    assert runner.info == {
+        "born": "2026-09-17T12:00:00Z",
+        "tenant": "c1",
+        "environment": "dev",
+    }
+
+
+def test_a_create_that_lost_the_race_is_success_not_failure(tmp_path: Path) -> None:
+    """Two platform runs at once: the loser's create says AlreadyExists, which is exactly
+    the outcome wanted - somebody recorded the birth instant, and it was not overwritten."""
+
+    class RacingRunner(InfoRunner):
+        def __call__(self, cmd, stdin_text):
+            if cmd[:3] == ["kubectl", "create", "configmap"]:
+                self.calls.append((cmd, stdin_text))
+                self.info = {"born": "2020-01-01T00:00:00Z"}
+                return 1, 'Error from server (AlreadyExists): configmaps "x" already exists'
+            return super().__call__(cmd, stdin_text)
+
+    runner = RacingRunner(None)
+    step = EnsurePlatformInfo(tenant="c1", environment="dev", born="2099-09-09T09:09:09Z")
+    result = ProvisionEngine([step]).run(
+        Ledger(tmp_path / "l.db"), "platform@c1", _step_ctx(runner)
+    )
+    assert result.completed
+    assert runner.info["born"] == "2020-01-01T00:00:00Z"
+
+
+def test_the_step_refuses_to_write_when_the_record_cannot_be_read(tmp_path: Path) -> None:
+    runner = InfoRunner(readable=False)
+    step = EnsurePlatformInfo(tenant="c1", environment="dev")
+    result = ProvisionEngine([step]).run(
+        Ledger(tmp_path / "l.db"), "platform@c1", _step_ctx(runner)
+    )
+    assert not result.completed
+    assert "refusing to rewrite the platform's birth instant" in (result.error or "")
+    assert runner.creates == [] and runner.patches == [] and runner.applies == []
 
 
 def test_an_unchanged_record_is_skipped(tmp_path: Path) -> None:
@@ -106,7 +187,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
         Ledger(tmp_path / "l.db"), "platform@c1", _step_ctx(runner, dry_run=True)
     )
     assert result.completed
-    assert runner.applies == []
+    assert runner.applies == [] and runner.creates == [] and runner.patches == []
 
 
 def test_the_default_born_is_an_rfc3339_utc_instant() -> None:
@@ -150,9 +231,46 @@ def test_platform_records_the_cluster_it_was_given_as_the_tenant(
         ["platform", "--cluster", "c1", "--env", "qa", "--ledger", str(tmp_path / "l.db")]
     )
     assert code == 0
-    record = next(d for d in runner.applied_docs() if d.get("kind") == "ConfigMap")
-    assert record["data"]["tenant"] == "c1"
-    assert record["data"]["environment"] == "qa"
+    assert runner.info["tenant"] == "c1"
+    assert runner.info["environment"] == "qa"
+
+
+def test_two_runs_with_different_clusters_keep_born_and_update_the_tenant(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The regression this whole shape exists for: a second `platform` run (a renamed
+    cluster, a re-run after an outage) must move `tenant` and leave the birth instant
+    exactly where it was, or the retention alert goes quiet for another window."""
+    runner = InfoRunner(None)
+    assert _platform(tmp_path, monkeypatch, runner) == 0
+    born = runner.info["born"]
+    assert born
+
+    assert _platform(tmp_path, monkeypatch, runner, cluster="c2") == 0
+    assert runner.info["born"] == born
+    assert runner.info["tenant"] == "c2"
+    # exactly one create in two runs, and it belonged to the first
+    assert len(runner.creates) == 1
+    # and the second run's alert still counts its age gate from that first birth instant
+    import datetime as _dt
+
+    rules = [
+        d for d in runner.applied_docs() if d.get("metadata", {}).get("name") == "argus-platform"
+    ]
+    expected = int(_dt.datetime.fromisoformat(born).timestamp()) + 30 * 86400
+    assert f"vector(time()) > {expected}" in rules[-1]["spec"]["groups"][0]["rules"][0]["expr"]
+
+
+def test_an_unreadable_record_fails_the_platform_run_before_any_write(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A Forbidden or an apiserver blip is not an unborn platform. The run stops rather
+    than stamping a fresh birth instant over a living one."""
+    runner = InfoRunner(readable=False)
+    assert _platform(tmp_path, monkeypatch, runner) == 1
+    err = capsys.readouterr().err
+    assert "refusing to rewrite the platform's birth instant: could not read the record" in err
+    assert runner.creates == [] and runner.patches == [] and runner.applies == []
 
 
 def test_platform_applies_the_retention_promise_to_the_pinned_charts(

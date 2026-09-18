@@ -50,12 +50,14 @@ from argus.steps import (
     EnsureNamespace,
     EnsurePlatformInfo,
     HelmInstall,
+    PlatformInfoUnreadable,
     ProvisionPerses,
     StepContext,
     ValidateRoundTrip,
     WaitForCollectors,
     helm_set_values,
     read_platform_info,
+    read_platform_info_strict,
     retention_helm_sets,
     utc_now_rfc3339,
 )
@@ -377,16 +379,30 @@ def cmd_platform(args: argparse.Namespace) -> int:
     budget = baseline.budgets.cardinality[args.env]
     retention = dict(baseline.budgets.retention)
     retention_sets = retention_helm_sets(retention)
+    step_context = _step_context(args, {})
+    # The birth instant is needed BEFORE the engine runs: the platform rules are rendered
+    # (not generated at apply time), and EnsurePlatformInfo needs the same value, so the
+    # alert's age gate and the record can never disagree by a second.
+    #
+    # This is the WRITE path, so the read is the strict one: a record that cannot be read
+    # is NOT an unborn platform, and treating it as one would stamp a fresh `born` over a
+    # living one. Only a dry run (which writes nothing, and may have no cluster in reach at
+    # all) is allowed the lenient read.
+    try:
+        recorded = (
+            read_platform_info(step_context)
+            if args.dry_run
+            else read_platform_info_strict(step_context)
+        )
+    except PlatformInfoUnreadable as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
+    born = recorded.get("born") or utc_now_rfc3339()
     rendered = _render_platform_families(_platform_context(args))
-    step_context = _step_context(args, rendered)
-    # The platform rules need the birth instant BEFORE the engine runs (they are rendered,
-    # not generated at apply time), and EnsurePlatformInfo needs the same value so the
-    # alert's age gate and the record can never disagree by a second. An unborn platform
-    # (or an unreachable cluster in a dry run) reads back nothing and is born now.
-    born = read_platform_info(step_context).get("born") or utc_now_rfc3339()
     rendered["platform-rules"] = [
         render_platform_rules(retention, _born_epoch(born), namespace=args.namespace)
     ]
+    step_context.rendered = rendered
     steps = [
         EnsureNamespace(),
         # Before the platform rules, which count their age gate from the `born` it records,
