@@ -244,6 +244,10 @@ spec:
 mutable tag, and never bake a registry name into this repo. The image is a normal argument to
 the provisioner's own Job template, not something Argus renders.
 
+One thing the job applies is not a cluster object at all: Perses documents (the project, its
+datasources and the dashboards) are HTTP API objects, provisioned over HTTP, so they carry no
+`argus.dev/contract-sha256` annotation and no `kubectl get` will find them.
+
 The contract rides in an environment variable, and environment variables share the pod spec's
 own size budget (the API server rejects an object over roughly 1 MiB), so keep `gojira.yaml`
 small - well under that ceiling, since the spec carries everything else too.
@@ -252,6 +256,34 @@ The last line the job ever writes to stdout is always `ARGUS_SUMMARY <one line>`
 success and failure - the provisioner reads the Job's termination status for pass/fail and
 scans the tail of the log for that line; it never parses the rest. Exit code 0 means observe
 completed, 1 means it failed (the summary line names the failing step and reason).
+
+```
+ARGUS_SUMMARY observed demo/dev: 4 steps applied, 1 skipped, contract ab12cd34ef56
+ARGUS_SUMMARY observe failed: apply_alerts: kubectl: forbidden
+```
+
+The counts are **steps**, not objects: how many engine steps ran and how many were skipped.
+A success can carry one parenthetical note, and today there is exactly one:
+`(no platform record: tenant from contract)`, which means `observe` found no
+`argus-platform-info` record and fell back to the cluster string in the contract. The run is
+real and the app is wired, but the tenant it reads with was never confirmed against the one
+the gateway writes with - re-run `argus platform`. A record that exists and cannot be READ is
+not that case and does not fall back: in job mode it fails with
+`ARGUS_SUMMARY observe failed: platform record unreadable: ...`, because the likeliest reason
+is that the job's identity was never rolled out.
+
+**`observe` never deletes.** It renders what the app's class asks for and server-side applies
+it; nothing prunes. So a class change that drops the scrape family (or sets `app_scrape:
+false`), or an app rename, leaves the previous `ServiceMonitor`/`PodMonitor`/`PrometheusRule`
+live in the app's namespace, scraping and alerting, until somebody removes it by hand:
+
+```
+kubectl -n <app-ns> delete servicemonitors,podmonitors,prometheusrules -l argus.dev/managed=true
+```
+
+That is the deliberate trade: the job's identity carries no `delete` verb at all, so it cannot
+remove an object it did not create either. Label-selector pruning is on the roadmap and needs
+that identity widened first.
 
 `ARGUS_CLUSTER` is an explicit override and nothing more. The case it was invented for - gojira's
 record of a cluster disagreeing with the cluster's real name - is now answered by the platform's own
@@ -269,8 +301,19 @@ The `Dockerfile` at the repo root builds the image the Job above runs: `python:3
 upgraded (`apt-get -y upgrade`) so a stale cached base layer never ships known-fixed CVEs,
 running as the non-root numeric user `10001` with `HOME=/tmp`. `ENTRYPOINT` is
 `python -m argus.cli`; `CMD` is `observe`, so the Job manifest above only needs to pass
-`args: ["observe"]` (or override it entirely for `argus platform`/`render` from the same
-image).
+`args: ["observe"]`.
+
+**The image is for `observe` and `render`.** It carries the CLI, the profiles, the
+integrations catalog and `helm/pins.yaml` - not `helm/values/`, which `argus platform` reads
+for every chart it installs, so `platform` does not run from this image and is not meant to:
+standing up a cluster is an operator's run from a checkout, once, not a job.
+
+**The base tag floats on purpose.** `python:3.14-slim` is a moving tag, because the point of
+the `apt-get -y upgrade` above is to pick up whatever the base has fixed since the last build;
+pinning the base by digest would freeze exactly what that line exists to refresh. What is
+pinned is the OUTPUT: every build publishes `<image>@sha256:<digest>`, and that digest is what
+a provisioner's Job config points at. The floating input is rebuilt and re-published; the
+immutable output is what runs.
 
 **The layout law.** `REPO_ROOT` (`agent/argus/cli.py`) is `Path(__file__).resolve().parents[2]`
 - derived from the source file's own location, not an installed package - and `profiles/`,

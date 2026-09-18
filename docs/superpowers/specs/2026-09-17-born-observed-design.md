@@ -96,7 +96,8 @@ Behavior:
   was observed.
 - The final stdout line is always `ARGUS_SUMMARY <one line>`, on success and
   on failure:
-  - `ARGUS_SUMMARY observed <app>/<env>: <n> applied, <m> unchanged, contract <sha12>`
+  - `ARGUS_SUMMARY observed <app>/<env>: <n> steps applied, <m> skipped, contract <sha12>`
+    (plus ` (no platform record: tenant from contract)` when there was no record to read)
   - `ARGUS_SUMMARY observe failed: <step>: <reason>` (exit 1)
   The summary is one line, at most 300 characters, newlines collapsed.
   Gojira reads the termination status and scans the tail for the prefix. It

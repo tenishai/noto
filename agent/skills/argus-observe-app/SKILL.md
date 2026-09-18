@@ -14,14 +14,24 @@ step engine. Zero hand-written YAML - the class decides what "observed" means.
 
 ```
 uv run argus observe --gojira <path/to/gojira.yaml> --env <dev|qa|prod> \
-    [--cluster <name>] [--kube-context <ctx>] [--dry-run]
+    [--kube-context <ctx>] [--perses-url <url>] [--dry-run]
 ```
 
-`--cluster` overrides which tenant this app's dashboards, SLOs and alerts read/write with (default:
-the app's gojira.yaml cluster string). **It MUST equal the cluster `argus platform` was run with** -
-the gateway that actually writes the app's telemetry gets its tenant from `argus platform --cluster`,
-a separate value. A mismatch means dashboards query a tenant nothing writes to: empty panels, no
-error. See README, "The collector tier".
+**Do not pass `--cluster` unless you mean to assert a tenant.** The platform records the tenant
+its gateway writes with (the `argus-platform-info` ConfigMap), and `observe` reads that record:
+with no flag, the recorded tenant wins over a disagreeing gojira.yaml cluster string and one
+stderr line says so. `--cluster` is an explicit override that must EQUAL the recorded tenant, or
+the run fails before applying anything. A mismatch would mean dashboards querying a tenant
+nothing writes to: empty panels, no error. See README, "The platform's own record".
+
+`observe` also provisions the app's Perses dashboards over HTTP, not through kubectl - Perses
+documents are API objects, not cluster objects. The URL defaults to the platform's in-cluster
+Service; from a laptop, port-forward and say so:
+
+```
+kubectl -n argus port-forward svc/argus-perses 8080:8080
+uv run argus observe --gojira <path> --env dev --perses-url http://localhost:8080
+```
 
 Preview without touching the cluster:
 

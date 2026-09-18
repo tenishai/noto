@@ -8,6 +8,20 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Fixed
 
+- **A ruler that rejects the platform's rules fails the run, and says so.** The rejection
+  used to escape `argus platform` as an unhandled exception - a traceback at the end of a
+  run whose cluster work all succeeded. It is now a `FAILED: ...` line on stderr and exit
+  1, because a group that never reached the ruler is an alarm nobody armed and nothing
+  else in the run mentions it. A ruler that cannot be REACHED is still just a note.
+
+- **A platform record that cannot be read is no longer mistaken for one that is not
+  there - in job mode.** An absent record is a fact a job can act on (fall back to the
+  contract's cluster, and say so in the summary). A present one that returns Forbidden
+  almost always means the job's identity was never rolled out, which is exactly when the
+  fallback wires an app to a tenant nothing writes to; it now fails the job with
+  `platform record unreadable: ...`. Operator mode keeps its warning-and-fall-back - an
+  operator is standing there reading stderr - and `render` stays silent either way.
+
 - **`born` is written once and can no longer be rewritten by a failed read.** The platform's
   birth instant is what gates `ArgusRetentionWindowShort`, and the write path used the same
   lenient reader as the read path: NotFound, Forbidden, an apiserver blip and a network error
@@ -42,22 +56,102 @@ All notable changes to Argus are documented here. The format is based on
   longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping
   in the shared gateway is a registered follow-up.
 
-  **Upgrading an existing cluster:** re-run `argus platform --cluster <name> --env <env>` once
-  after upgrading - `observe` no longer applies the collector tier, so an existing cluster keeps
-  its old gateway (missing traces pipeline included) until `platform` re-applies it. The apply
-  itself is clean: same field manager, same object names, a superset manifest.
+  **Upgrading an existing cluster, in order.** Every step depends on the one before it, and
+  the first is the one that cannot be undone:
 
-  **That same run turns Loki's retention on, and it is irreversible.** Until now Loki's
-  compactor kept every log line it had, because nothing set a retention period and nothing
-  enabled the deletion loop. The first `argus platform` run after this merges sets both from
-  the profile's promise (`retention.logs`, `7d` by default), and on its next compaction loop
-  the compactor begins permanently deleting log data older than that window. This is the
-  intended behavior - a promise nobody enforces is a lie - but logs deleted this way are gone,
-  so decide the number BEFORE the run rather than after: override `retention.logs` in the
-  profile (and `retention.metrics` / `retention.traces`, which take effect in Mimir and Tempo
-  the same way) to whatever the cluster is actually meant to keep, then run `argus platform`.
+  1. **Decide `retention.*` in the profile first - Loki's deletion is irreversible.** Until
+     now Loki's compactor kept every log line it had, because nothing set a retention period
+     and nothing enabled the deletion loop. The first `argus platform` run after this merges
+     sets both from the profile's promise (`retention.logs`, `7d` by default), and on its next
+     compaction loop the compactor begins permanently deleting log data older than that
+     window. That is the intended behavior - a promise nobody enforces is a lie - but logs
+     deleted this way are gone. Override `retention.logs` (and `retention.metrics` /
+     `retention.traces`, which take effect in Mimir and Tempo the same way) to whatever the
+     cluster is actually meant to keep, BEFORE the run rather than after.
+  2. **Run `argus platform --cluster <name> --env <env>`.** One run does all of it: it creates
+     the `argus-observe` identity a provisioner's Job needs, writes the platform's own record
+     (`born`, `tenant`, `environment`), and re-applies the collector tier with all three
+     pipelines - `observe` no longer applies that tier, so an existing cluster keeps its old
+     gateway, missing traces pipeline included, until `platform` re-applies it. The apply
+     itself is clean: same field manager, same object names, a superset manifest.
+  3. **Verify the record says what you expect** before anything reads it:
+     `kubectl -n argus get configmap argus-platform-info -o jsonpath={.data.tenant}` must
+     print the tenant the gateway writes with. This is the value every app's dashboards,
+     rules and cardinality queries will read with from now on.
+  4. **Only then point a provisioner at the image.** A job launched before step 2 finds no
+     identity (it cannot read the record) and no record to resolve its tenant from; one
+     launched before step 3 may wire apps to a tenant nobody checked.
 
 ### Added
+
+- **`argus observe` runs as a one-shot Job, and the launcher reads one line.** A
+  provisioner (gojira) launches `observe` in the cluster instead of running the CLI:
+  the app's contract arrives in `GOJIRA_CONTRACT_YAML` with a `GOJIRA_CONTRACT_SHA256`
+  the job re-computes and verifies before anything is applied (same canonicalization on
+  both sides: parse the YAML, sorted keys, compact separators, sha256), `ARGUS_ENV`
+  names the environment and `ARGUS_NAMESPACE` the platform's namespace. The contract's
+  own strings are validated where they enter - `app` and each environment's `namespace`
+  must be Kubernetes names, `cluster` a cluster name - because downstream they become
+  object names, `-n` arguments and a tenant header. The ledger lives in a temp dir, by
+  design: a job with no ledger re-checks the real world every run.
+
+  **The contract with the launcher:** exit 0 means observed, exit 1 means failed, and
+  the LAST line on stdout is always `ARGUS_SUMMARY <one line>` - nothing else is ever
+  written to stdout, so progress goes to stderr and the launcher never parses a log.
+  `ARGUS_SUMMARY observed <app>/<env>: <n> steps applied, <m> skipped, contract <sha12>`
+  on success (the counts are STEPS, not objects: engine steps run and skipped), and
+  `ARGUS_SUMMARY observe failed: <step>: <reason>` on every failure, argument parsing
+  and an unreadable platform record included. A success can carry one note today,
+  `(no platform record: tenant from contract)`: the run is real, but the tenant it wired
+  the app to read with was never confirmed against the one the gateway writes with.
+
+- **Every object `observe` applies in job mode carries the contract it observed.**
+  `argus.dev/contract-sha256: <sha>` is stamped on each applied document, so the cluster
+  itself can answer "has the app changed since argus looked" without asking argus.
+  Operator mode sets no annotation at all - there is no job contract to record. Perses
+  documents carry none either, in either mode: they are HTTP API objects, not cluster
+  objects.
+
+- **The job's runtime is bounded.** Every kubectl argv argus builds carries
+  `--request-timeout`, so an apiserver that accepts a connection and never answers can no
+  longer hang a Job that has to end with a summary line (or a `render` on a laptop whose
+  kubeconfig points at a cluster that is gone). The polling step passes its own remaining
+  deadline instead, because that flag bounds the watch underneath `kubectl rollout
+  status` too. The README's Job manifest adds `activeDeadlineSeconds: 900` as the outer
+  bound on the summary line, plus a read-only root filesystem with the `/tmp` volume the
+  job actually writes to.
+
+- **Dashboards are an engine step.** Perses resources are provisioned by `ProvisionPerses`
+  through the Perses HTTP API (POST, falling back to PUT on 409, skipping documents whose
+  `spec` already matches), in the order the smoke script proved by hand: project, then
+  datasources, then dashboards. It runs LAST in `observe`, because a dashboard charts the
+  alerts and SLOs applied before it. `tests/smoke/provision_perses.py` retires. A dry run
+  opens no socket at all and says what it would upsert.
+
+- **In-cluster endpoints by default.** `--mimir-url` (`rules-sync`, `cardinality`,
+  `feedback`) and `--perses-url` (`observe`) now derive from `--namespace` (env
+  `ARGUS_NAMESPACE`) rather than defaulting to `localhost`: inside a Job there is no
+  port-forward. An explicit flag still wins, and the port-forward form is documented for
+  an operator's laptop. `feedback` also resolves its tenant from the platform's record
+  now, like every other reader.
+
+- **An image, published by digest.** The `Dockerfile` at the repo root builds the image
+  the Job runs: the repo layout copied verbatim (`REPO_ROOT` is derived from the source
+  file's own location, so nothing is pip-installed into site-packages), runtime
+  dependencies at exactly the versions `pyproject.toml` pins, and two hash-verified
+  binaries - `kubectl`, and the pinned `sloth` the SLO step shells out to. It runs as a
+  non-root numeric user. It is scoped to `observe` and `render`: `helm/values/` is not in
+  it, so `argus platform` is still an operator's run from a checkout. The base tag floats
+  on purpose (the `apt-get -y upgrade` exists to pick up what the base has fixed); the
+  published OUTPUT is what gets pinned, by digest, in a provisioner's Job config.
+
+  **Prerequisite, and how it fails:** publishing needs the image reference and the
+  build identity configured as repository or organization variables (`ARGUS_IMAGE`, plus
+  the workload-identity provider and build service account). Until `ARGUS_IMAGE` exists,
+  the publish job's `if` is false and the whole job is SKIPPED - which GitHub reports as
+  a green check on the run. A green CI is therefore not evidence that an image was
+  published; the run's job list is. No registry, project or account name is committed to
+  this repo, by rule.
 
 - **The platform arms its own alarm: `argus platform` pushes its rule group to Mimir's
   ruler.** A `PrometheusRule` is inert in this stack, so applying `argus-platform` and

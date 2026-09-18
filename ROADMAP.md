@@ -36,13 +36,6 @@ Make new kinds of workloads light up automatically.
   per-app `drop:` rule renders nowhere. Give per-app shaping a safe path into the shared tier
   (namespace-scoped rules composed from every observed app, or a per-app collector for apps that
   earn one) so one app's rule can never rewrite another app's pipelines.
-- **Platform records its tenant; `observe` reads it and fails loudly on mismatch.** The gateway
-  writes with the tenant `argus platform --cluster` was given; `observe`/`render`/`rules-sync`/
-  `cardinality` each still take their own `--cluster`/`--tenant` (README, "The collector tier"). A
-  silent divergence between the two reads as empty dashboards, not an error. Have `platform` record
-  its cluster/env, and have the per-app commands read it back and refuse to proceed on a mismatch
-  instead of relying on the operator to keep both values in sync by hand.
-
 **Done when:** a new gojira workload type auto-wires its integration, cardinality budgets are
 enforced (soft), and a gojira app gets a rightsizing PR from Argus evidence.
 
@@ -52,6 +45,12 @@ Keep the observability layer honest over time.
 
 - Policy enforcement (cardinality, retention, PII).
 - Drift detection on the observability layer.
+- **Label-selector pruning.** `observe` only ever applies, so a class change that drops the scrape
+  family, or an app rename, leaves the previous ServiceMonitor/PodMonitor/PrometheusRule live until
+  somebody deletes it by hand (README, "Running observe as a Job"). Pruning by
+  `argus.dev/managed=true` needs the `delete` verb, which widens an identity whose whole argument
+  is that it cannot delete anything anywhere - hence deferred to the phase that is about keeping
+  the layer honest rather than standing it up.
 - `argus adopt` for clusters not deployed by gojira.
 
 **Done when:** a rogue high-cardinality metric is rejected, and a non-gojira cluster can be adopted.
