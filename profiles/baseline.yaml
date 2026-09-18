@@ -34,4 +34,5 @@ drop:
     metric_names: ["system[._].+"]
 dashboards:
   - name: cluster-baseline
+    scope: cluster
     panels: ["metric:node-cpu", "metric:node-memory", "metric:pod-restarts", "logs:cluster-errors"]

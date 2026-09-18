@@ -53,6 +53,9 @@ class SLO(_Frozen):
 class Dashboard(_Frozen):
     name: str
     panels: list[str]
+    # "app" dashboards render per app (name-prefixed, queries app-scoped); "cluster"
+    # dashboards render once, app-less, with cluster-wide queries.
+    scope: Literal["app", "cluster"] = "app"
     enabled: bool = True
 
 
@@ -69,8 +72,15 @@ class BaselineProfile(_Frozen):
 
 
 class ClassProfile(_Frozen):
-    class_name: Literal["web", "worker", "cron", "heavy", "gpu"] = Field(alias="class")
+    class_name: Literal["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"] = Field(
+        alias="class"
+    )
     signals: list[Signal]
+    # False for classes whose workload contract has no /metrics endpoint (agent, and
+    # gateway until it grows one): suppresses the per-app ServiceMonitor/PodMonitor so
+    # the platform never alerts on a scrape the app was never going to answer. The
+    # metrics signal stays on - kubeletstats and kube-state-metrics are app-agnostic.
+    app_scrape: bool = True
     slos: list[SLO] = []
     dashboards: list[Dashboard] = []
     drop: list[DropRule] = []
@@ -103,6 +113,7 @@ class Override(BaseModel):
 class ResolvedProfile(_Frozen):
     class_name: str
     signals: list[Signal]
+    app_scrape: bool
     budgets: Budgets
     slos: list[SLO]
     dashboards: list[Dashboard]

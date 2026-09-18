@@ -9,7 +9,11 @@ from argus.rendering.ottl import CompiledFilter, UnsupportedRule, compile_rules
 def test_log_level_below() -> None:
     rules = [DropRule(name="debug-logs", stage="agent", log_level_below="info")]
     out = compile_rules(rules, "agent")
-    assert out.logs == ["severity_number < SEVERITY_NUMBER_INFO"]
+    # UNSPECIFIED-severity lines (plain stdout) must survive the floor - a bare
+    # `< INFO` silently drops every unparsed log line (found live on GKE).
+    assert out.logs == [
+        "severity_number != SEVERITY_NUMBER_UNSPECIFIED and severity_number < SEVERITY_NUMBER_INFO"
+    ]
     assert out.metrics == [] and out.traces == []
 
 

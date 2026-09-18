@@ -37,7 +37,14 @@ def compile_rules(rules: list[DropRule], stage: Stage) -> CompiledFilter:
                 "it renders as a transform-processor statement, not a filter"
             )
         if rule.log_level_below:
-            logs.append(f"severity_number < SEVERITY_NUMBER_{rule.log_level_below.upper()}")
+            # UNSPECIFIED (0) means the line carried no parseable severity - plain
+            # stdout, which is most real pod output. A bare `< INFO` drops all of it
+            # (found live: fleet-wide zero logs in Loki). Only drop lines whose
+            # severity is actually known to be below the floor.
+            logs.append(
+                "severity_number != SEVERITY_NUMBER_UNSPECIFIED and "
+                f"severity_number < SEVERITY_NUMBER_{rule.log_level_below.upper()}"
+            )
         if rule.path_matches:
             alternation = "|".join(rule.path_matches)
             stmt = f'IsMatch(attributes["url.path"], "^({alternation})")'

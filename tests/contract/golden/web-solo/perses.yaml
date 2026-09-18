@@ -3,7 +3,7 @@
     name: golden-cluster
   spec:
     display:
-      name: Argus - golden-cluster
+      name: "Argus \xB7 golden-cluster"
 - kind: Datasource
   metadata:
     name: mimir
@@ -55,7 +55,7 @@
     project: golden-cluster
   spec:
     display:
-      name: cluster-baseline
+      name: "Cluster \xB7 Baseline"
     duration: 1h
     layouts:
     - kind: Grid
@@ -90,7 +90,7 @@
         kind: Panel
         spec:
           display:
-            name: logs:cluster-errors
+            name: Cluster Errors (Logs)
           plugin:
             kind: LogsTable
             spec: {}
@@ -100,12 +100,12 @@
               plugin:
                 kind: LokiLogQuery
                 spec:
-                  query: '{service_name="sample-web"}'
+                  query: '{k8s_namespace_name=~".+"} |~ "(?i)(error|exception|traceback|fatal|panic)"'
       metric-node-cpu:
         kind: Panel
         spec:
           display:
-            name: metric:node-cpu
+            name: Node CPU
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -115,12 +115,12 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: up{job="sample-web"}
+                  query: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
       metric-node-memory:
         kind: Panel
         spec:
           display:
-            name: metric:node-memory
+            name: Node Memory
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -130,12 +130,13 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: up{job="sample-web"}
+                  query: 100 * (1 - sum by (instance) (node_memory_MemAvailable_bytes)
+                    / sum by (instance) (node_memory_MemTotal_bytes))
       metric-pod-restarts:
         kind: Panel
         spec:
           display:
-            name: metric:pod-restarts
+            name: Pod Restarts
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -145,14 +146,15 @@
               plugin:
                 kind: PrometheusTimeSeriesQuery
                 spec:
-                  query: up{job="sample-web"}
+                  query: sum by (namespace) (increase(kube_pod_container_status_restarts_total[1h]))
+                    > 0
 - kind: Dashboard
   metadata:
-    name: web-red
+    name: sample-web-web-red
     project: golden-cluster
   spec:
     display:
-      name: web-red
+      name: "Web \xB7 Sample-web"
     duration: 1h
     layouts:
     - kind: Grid
@@ -194,12 +196,18 @@
           width: 12
           x: 12
           y: 16
+        - content:
+            $ref: '#/spec/panels/logs-recent'
+          height: 8
+          width: 12
+          x: 0
+          y: 24
     panels:
       logs-errors:
         kind: Panel
         spec:
           display:
-            name: logs:errors
+            name: Errors (Logs)
           plugin:
             kind: LogsTable
             spec: {}
@@ -209,12 +217,27 @@
               plugin:
                 kind: LokiLogQuery
                 spec:
-                  query: '{service_name="sample-web"}'
+                  query: '{k8s_namespace_name="sample"} |~ "(?i)(error|exception|traceback|fatal|panic)"'
+      logs-recent:
+        kind: Panel
+        spec:
+          display:
+            name: Recent (Logs)
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{k8s_namespace_name="sample"}'
       metric-error-rate:
         kind: Panel
         spec:
           display:
-            name: metric:error-rate
+            name: Error Rate
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -229,7 +252,7 @@
         kind: Panel
         spec:
           display:
-            name: metric:latency-p99
+            name: Latency p99
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -245,7 +268,7 @@
         kind: Panel
         spec:
           display:
-            name: metric:memory-working-set
+            name: Memory Working Set
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -261,7 +284,7 @@
         kind: Panel
         spec:
           display:
-            name: metric:request-rate
+            name: Request Rate
           plugin:
             kind: TimeSeriesChart
             spec: {}
@@ -276,7 +299,7 @@
         kind: Panel
         spec:
           display:
-            name: traces:slow-requests
+            name: Slow Requests (Traces)
           plugin:
             kind: TraceTable
             spec: {}

@@ -30,6 +30,7 @@ from argus.rendering.alerts import render_alert_rules
 from argus.rendering.collectors import (
     render_agent,
     render_gateway,
+    render_priorityclass,
     render_targetallocator,
     render_targetallocator_rbac,
 )
@@ -77,15 +78,17 @@ def _resolved(class_name: str, override: dict | None):
 def _render_families(p, ctx: Context) -> dict[str, list[dict]]:
     families: dict[str, list[dict]] = {
         "collectors": [
+            render_priorityclass(),
             *render_targetallocator_rbac(ctx),
             render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
         ],
-        "scrape": [render_servicemonitor(p, ctx), render_podmonitor(p, ctx)],
         "alerts": [render_alert_rules(p, ctx)],
         "perses": render_perses(p, ctx),
     }
+    if p.app_scrape:
+        families["scrape"] = [render_servicemonitor(p, ctx), render_podmonitor(p, ctx)]
     sloth = render_sloth(p, ctx)
     if sloth is not None:
         families["slo"] = [sloth]
@@ -98,7 +101,7 @@ def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
     p = _resolved(spec.class_name, spec.observability)
     ctx = Context(
         topology="solo",
-        cluster=env.cluster,
+        cluster=getattr(args, "cluster", None) or env.cluster,
         environment=args.env,
         app=spec.app,
         namespace=env.namespace,
@@ -181,7 +184,7 @@ def cmd_observe(args: argparse.Namespace) -> int:
     p, ctx = _app_context(args)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
-    steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts")]
+    steps = [ApplyRendered(family=f) for f in ("collectors", "scrape", "alerts") if f in rendered]
     if "slo" in rendered:
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
@@ -282,6 +285,12 @@ def main(argv: list[str] | None = None) -> int:
         if needs_app:
             p.add_argument("--gojira", required=True, help="path to the app's gojira.yaml")
             p.add_argument("--env", required=True, choices=["dev", "qa", "prod"])
+            # The observability identity (Perses project, tenant, gateway exporter
+            # headers) must be ONE value per cluster. gojira.yaml cluster strings
+            # drift across apps (live-found: 'acme-dev' vs the GKE cluster name),
+            # and each observe re-renders the shared collector tier - last writer
+            # wins. Pin it here; the per-app file stays the fallback.
+            p.add_argument("--cluster", default=None, help="canonical cluster/tenant name override")
 
     p_render = sub.add_parser("render", help="render artifacts, touch nothing")
     common(p_render, needs_app=True)

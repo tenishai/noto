@@ -4,16 +4,40 @@ Shapes verified hands-on in the capability spike (docs/spikes/perses/RESULTS.md)
 Panel names are prefixed by signal: metric:* / logs:* / traces:* - correlated panels
 co-locate on one dashboard (the spike-proven mitigation while exemplar click-through
 is unverified).
+
+Naming (first-real-deploy lessons): the project is the cluster; app dashboards are
+"{app}-{name}" so two agents never overwrite each other's dashboard; cluster-scope
+dashboards (Dashboard.scope == "cluster") render once, app-less, with cluster-wide
+queries. Display names are for humans ("Ledger · Agent Health"), metadata names for
+machines.
 """
 
 from argus.profiles.models import Dashboard, ResolvedProfile
 from argus.rendering.context import Context
 
+# The one dashboard each class ships; anything beyond these (a per-app
+# override extra) keeps its own name in the display.
+_CLASS_PRIMARY_DASHBOARDS = frozenset(
+    {"agent-health", "gateway-red", "web-red", "worker-throughput", "cron-health"}
+)
+
+_KIND_LABELS = {
+    "web": "Web",
+    "worker": "Worker",
+    "cron": "Cron",
+    "heavy": "Heavy",
+    "gpu": "GPU",
+    "agent": "Agent",
+    "gateway": "Gateway",
+}
+
 _PANEL_PLUGINS = {
     "metric": ("TimeSeriesChart", "TimeSeriesQuery", "PrometheusTimeSeriesQuery", "up"),
-    "logs": ("LogsTable", "LogQuery", "LokiLogQuery", '{service_name="%s"}'),
+    "logs": ("LogsTable", "LogQuery", "LokiLogQuery", '{k8s_namespace_name="%(namespace)s"}'),
     "traces": ("TraceTable", "TraceQuery", "TempoTraceQuery", '{resource.service.name="%s"}'),
 }
+
+_ERROR_FILTER = '|~ "(?i)(error|exception|traceback|fatal|panic)"'
 
 # Default PromQL per known metric panel name; unknown names fall back to a placeholder
 # that dashboards-as-code reviewers see immediately in the golden diff.
@@ -30,14 +54,57 @@ _METRIC_QUERIES = {
         "sum by (k8s_pod_name) (k8s_pod_memory_working_set"
         '{k8s_namespace_name="%(namespace)s", k8s_pod_name=~"%(app)s-.*"})'
     ),
+    # kube-state-metrics keeps its own namespace/pod labels through the TargetAllocator
+    # scrape ONLY because the KSM ServiceMonitor sets honorLabels (live-found: without
+    # it the scrape renames them exported_*). Namespace-scoped: gojira gives every app
+    # its own namespace.
+    "pod-restarts": (
+        'sum(increase(kube_pod_container_status_restarts_total{namespace="%(namespace)s"}[1h]))'
+    ),
 }
+
+# Cluster-scope variants, used when a dashboard renders app-less (scope: cluster).
+# node-exporter's node_* names are the baseline dashboard source (see the
+# hostmetrics-duplicates drop rule).
+_CLUSTER_METRIC_QUERIES = {
+    "node-cpu": '100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))',
+    "node-memory": (
+        "100 * (1 - sum by (instance) (node_memory_MemAvailable_bytes) "
+        "/ sum by (instance) (node_memory_MemTotal_bytes))"
+    ),
+    "pod-restarts": (
+        "sum by (namespace) (increase(kube_pod_container_status_restarts_total[1h])) > 0"
+    ),
+}
+
+_CLUSTER_LOG_QUERIES = {
+    "cluster-errors": '{k8s_namespace_name=~".+"} ' + _ERROR_FILTER,
+}
+
+_LOG_QUERIES = {
+    "errors": '{k8s_namespace_name="%(namespace)s"} ' + _ERROR_FILTER,
+    # Unfiltered, beside the error panel: an empty error panel on a healthy app
+    # is indistinguishable from a broken log pipeline - this panel is the
+    # pipeline's visible heartbeat (first-operator-hour lesson).
+    "recent": '{k8s_namespace_name="%(namespace)s"}',
+}
+
+
+def _panel_title(panel_name: str) -> str:
+    prefix, _, metric = panel_name.partition(":")
+    title = metric.replace("-", " ").title().replace("P99", "p99").replace("Cpu", "CPU")
+    if prefix == "logs":
+        return f"{title} (Logs)"
+    if prefix == "traces":
+        return f"{title} (Traces)"
+    return title
 
 
 def _project(name: str) -> dict:
     return {
         "kind": "Project",
         "metadata": {"name": name},
-        "spec": {"display": {"name": f"Argus - {name}"}},
+        "spec": {"display": {"name": f"Argus · {name}"}},
     }
 
 
@@ -79,12 +146,22 @@ def _slow_requests_query(service: str, p: ResolvedProfile) -> str:
 def _panel(panel_name: str, ctx: Context, p: ResolvedProfile) -> dict:
     prefix, _, metric = panel_name.partition(":")
     chart_kind, query_kind, plugin_kind, default_query = _PANEL_PLUGINS[prefix]
+    cluster_scope = ctx.app is None
     if prefix == "metric":
-        template = _METRIC_QUERIES.get(metric, 'up{job="%(app)s"}')
-        query = template % {
-            "app": ctx.app or ctx.cluster,
-            "namespace": ctx.namespace or ctx.cluster,
-        }
+        if cluster_scope and metric in _CLUSTER_METRIC_QUERIES:
+            query = _CLUSTER_METRIC_QUERIES[metric]
+        else:
+            template = _METRIC_QUERIES.get(metric, 'up{job="%(app)s"}')
+            query = template % {
+                "app": ctx.app or ctx.cluster,
+                "namespace": ctx.namespace or ctx.cluster,
+            }
+    elif prefix == "logs":
+        if cluster_scope and metric in _CLUSTER_LOG_QUERIES:
+            query = _CLUSTER_LOG_QUERIES[metric]
+        else:
+            template = _LOG_QUERIES.get(metric, default_query)
+            query = template % {"namespace": ctx.namespace or ctx.cluster}
     elif prefix == "traces" and metric == "slow-requests":
         # Named panel gets a query that actually matches its name (same principle as
         # _METRIC_QUERIES: a panel's title is a promise about what it shows).
@@ -94,7 +171,7 @@ def _panel(panel_name: str, ctx: Context, p: ResolvedProfile) -> dict:
     return {
         "kind": "Panel",
         "spec": {
-            "display": {"name": panel_name},
+            "display": {"name": _panel_title(panel_name)},
             "plugin": {"kind": chart_kind, "spec": {}},
             "queries": [
                 {
@@ -118,11 +195,26 @@ def _dashboard(dash: Dashboard, project: str, ctx: Context, p: ResolvedProfile) 
         }
         for i, key in enumerate(panels)
     ]
+    # Kind-first display names so the project's flat, alphabetically sorted
+    # dashboard list groups itself by kind (Agent · ..., Cluster · ...,
+    # Gateway · ..., Web · ...) - Perses has no folders and this version
+    # strips tags, so the name IS the taxonomy.
+    kind = _KIND_LABELS.get(p.class_name, p.class_name.capitalize())
+    if ctx.app:
+        name = f"{ctx.app}-{dash.name}"
+        display = f"{kind} · {ctx.app.capitalize()}"
+        if dash.name not in _CLASS_PRIMARY_DASHBOARDS:
+            pretty = dash.name.replace("-", " ").title()
+            display = f"{display} · {pretty}"
+    else:
+        name = dash.name
+        pretty = dash.name.removeprefix("cluster-").replace("-", " ").title()
+        display = f"Cluster · {pretty}"
     return {
         "kind": "Dashboard",
-        "metadata": {"name": dash.name, "project": project},
+        "metadata": {"name": name, "project": project},
         "spec": {
-            "display": {"name": dash.name},
+            "display": {"name": display},
             "duration": "1h",
             "panels": panels,
             "layouts": [{"kind": "Grid", "spec": {"items": items}}],
@@ -141,5 +233,11 @@ def render_perses(p: ResolvedProfile, ctx: Context) -> list[dict]:
     docs.append(_datasource("mimir", "PrometheusDatasource", mimir_query, project, ctx.tenant))
     docs.append(_datasource("loki", "LokiDatasource", loki_query, project, ctx.tenant))
     docs.append(_datasource("tempo", "TempoDatasource", tempo_query, project, ctx.tenant))
-    docs.extend(_dashboard(d, project, ctx, p) for d in p.dashboards if d.enabled)
+    # Cluster-scope dashboards render once, app-less (queries go cluster-wide); app
+    # dashboards render per app and carry its name so two apps never collide.
+    cluster_ctx = ctx.model_copy(update={"app": None, "namespace": None})
+    for d in p.dashboards:
+        if not d.enabled:
+            continue
+        docs.append(_dashboard(d, project, cluster_ctx if d.scope == "cluster" else ctx, p))
     return docs

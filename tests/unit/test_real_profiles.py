@@ -9,7 +9,7 @@ from argus.profiles.resolve import resolve
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
-CLASSES = ["web", "worker", "cron", "heavy", "gpu"]
+CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 
 
 @pytest.mark.parametrize("class_name", CLASSES)
@@ -36,3 +36,19 @@ def test_web_resolved_content() -> None:
         "unbounded-labels",
         "kube-system-noise",
     } <= drop_names
+
+
+def _resolved(class_name: str):
+    baseline = load_baseline(PROFILES / "baseline.yaml")
+    cls = load_class(PROFILES / "classes" / f"{class_name}.yaml")
+    return resolve(baseline, cls, load_override(None))
+
+
+@pytest.mark.parametrize("class_name", ["agent", "gateway"])
+def test_no_metrics_contract_classes_suppress_app_scrape(class_name: str) -> None:
+    assert _resolved(class_name).app_scrape is False
+
+
+@pytest.mark.parametrize("class_name", ["web", "worker", "cron", "heavy", "gpu"])
+def test_scraping_classes_keep_app_scrape(class_name: str) -> None:
+    assert _resolved(class_name).app_scrape is True

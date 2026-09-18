@@ -38,6 +38,7 @@ def resolve(baseline: BaselineProfile, cls: ClassProfile, override: Override) ->
     return ResolvedProfile(
         class_name=cls.class_name,
         signals=signals,
+        app_scrape=cls.app_scrape,
         budgets=Budgets(retention=retention, cardinality=cardinality),
         slos=_merge_named(cls.slos, override.slos),
         dashboards=_merge_named(baseline.dashboards, cls.dashboards),

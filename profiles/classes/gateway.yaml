@@ -1,0 +1,9 @@
+# gateway -> HTTP RED at the edge, single-replica by class contract, so restarts sit next
+# to the RED panels. SLOs join when the gateway workload exposes http metrics - not before
+# (an objective over metrics the app does not emit is an SLO that can never fire).
+class: gateway
+signals: [metrics, logs]
+app_scrape: false
+dashboards:
+  - name: gateway-red
+    panels: ["metric:request-rate", "metric:error-rate", "metric:latency-p99", "metric:memory-working-set", "metric:pod-restarts", "logs:errors", "logs:recent"]

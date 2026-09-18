@@ -23,7 +23,7 @@ from argus.rendering.ottl import compile_rules
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
-CLASSES = ["web", "worker", "cron", "heavy", "gpu"]
+CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 TOPOLOGIES = ["solo", "regional"]
 
 pytestmark = pytest.mark.contract

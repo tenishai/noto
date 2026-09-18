@@ -1,2 +1,4 @@
-# KSM: defaults are right; scraped by the TargetAllocator via ServiceMonitor.
-prometheus: { monitor: { enabled: true } }
+# KSM: scraped by the TargetAllocator via ServiceMonitor. honorLabels keeps the
+# TARGET's namespace/pod labels on the series - without it the scrape renames them
+# exported_* and every namespace-scoped dashboard query goes empty (live-found).
+prometheus: { monitor: { enabled: true, honorLabels: true } }

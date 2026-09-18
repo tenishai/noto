@@ -29,7 +29,8 @@ Read the preview when the user asks "what would this app get?" - the YAML is the
 ## The contract
 
 - The workload class in gojira.yaml selects the profile (web -> HTTP RED + SLOs,
-  worker -> throughput, cron -> job health, heavy/gpu -> USE).
+  worker -> throughput, cron -> job health, heavy/gpu -> USE, agent -> runtime health,
+  gateway -> edge RED).
 - The optional `observability:` block overrides per app (enable traces, retention,
   extra SLOs, disable an inherited rule by name with `enabled: false`).
 - Overrides that raise budgets require a `justification:` - refuse to add one without it.
