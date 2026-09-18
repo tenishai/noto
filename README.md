@@ -102,8 +102,10 @@ tenant from the record, in this order:
 
 `render` and `--dry-run` never require a cluster: an unreadable record is simply a missing one.
 
-`rules-sync` and `cardinality` still read with their own `--cluster`/`--tenant`; pass the platform's
-tenant, which `kubectl -n argus get configmap argus-platform-info -o yaml` will tell you.
+`rules-sync` resolves its tenant the same way `observe` does, for the same reason: a rule group filed
+under a tenant the gateway does not write with evaluates over nothing. `cardinality` still reads with
+its own `--tenant`; pass the platform's, which `kubectl -n argus get configmap argus-platform-info -o
+yaml` will tell you.
 
 ### Retention, enforced and alarmed
 
@@ -120,10 +122,16 @@ cluster stood up this morning does not alarm about its missing 29-day-old sample
 
 Nothing in this stack evaluates a `PrometheusRule` on its own: kube-prometheus-stack is installed for
 its operator, CRDs and Alertmanager, with Prometheus itself disabled, because Mimir is the metrics
-engine. Rules become live only once they are pushed into Mimir's ruler, which is what
-`argus rules-sync --gojira <app> --env <env>` does for one app's groups. The platform's own group
-(`argus-platform`) is applied as a CRD like the rest and has no push of its own yet; `argus platform`
-says so at the end of every run.
+engine. Rules become live only once they are pushed into Mimir's ruler.
+
+- **The platform's own group** (`argus-platform`, which carries `ArgusRetentionWindowShort`) is
+  pushed by `argus platform` itself at the end of a successful run, as the tenant it just recorded.
+  A run from an operator's laptop usually cannot reach the in-cluster Mimir URL; that is not a
+  failure of the run, so the push is skipped with one note on stderr naming the URL and the
+  port-forward form. Pass `--mimir-url` to push it from there. A ruler that IS reachable and rejects
+  the rules fails the run.
+- **Each app's groups** are pushed by `argus rules-sync --gojira <app> --env <env>`, which now
+  resolves its tenant from the platform's record exactly the way `observe` does.
 
 ### Endpoints: in-cluster by default, port-forward on request
 

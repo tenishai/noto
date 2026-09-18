@@ -28,6 +28,18 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **The platform arms its own alarm: `argus platform` pushes its rule group to Mimir's
+  ruler.** A `PrometheusRule` is inert in this stack, so applying `argus-platform` and
+  stopping there left `ArgusRetentionWindowShort` unevaluated - an alarm nobody armed.
+  A successful `argus platform` run now pushes that group as the tenant it just recorded,
+  and `argus platform` gains `--mimir-url` (derived from `--namespace` unless given, the
+  same helper the other commands use). The push is tolerant in exactly one direction: a
+  ruler that cannot be REACHED (the ordinary case from an operator's laptop) is one stderr
+  note naming the URL and the port-forward form, and the run still succeeds; a ruler that
+  answers and rejects the rules fails the run. A dry run pushes nothing and says what it
+  would have pushed. `argus rules-sync` now resolves its tenant from the platform's record
+  the same way `observe` does, so an app's groups reach the tenant the gateway writes with.
+
 - **The retention promise is enforced in the backends and alarmed when the window is
   short.** `profiles/baseline.yaml`'s `budgets.retention` (`metrics: 30d, logs: 7d,
   traces: 7d`) reached nothing; it now becomes each backend's own retention setting at

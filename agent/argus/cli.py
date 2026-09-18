@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.error
 from pathlib import Path
 
 import yaml
@@ -353,9 +354,48 @@ def _step_context(
 _RULER_NOTE = (
     "note: PrometheusRule objects are inert in this stack (kube-prometheus-stack ships the\n"
     "operator, not a Prometheus) - rules are only evaluated once they reach Mimir's ruler.\n"
-    "`argus rules-sync --gojira <app> --env <env>` pushes an app's groups; the platform's own\n"
-    'group (argus-platform) has no push of its own yet (README, "Rules reach Mimir\'s ruler").'
+    "`argus platform` pushes its own group (argus-platform); each app's groups are pushed by\n"
+    '`argus rules-sync --gojira <app> --env <env>` (README, "Rules reach Mimir\'s ruler").'
 )
+
+# The ruler namespace the platform's own group is filed under. It is the PrometheusRule's
+# own name, so the group is as easy to find in the ruler as it is in the cluster.
+PLATFORM_RULE_GROUP = "argus-platform"
+
+
+def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str) -> str:
+    """Push the platform's own alert group into Mimir's ruler. Returns the line to report.
+
+    Applying the PrometheusRule and stopping there left `ArgusRetentionWindowShort`
+    unevaluated: an alarm nobody armed. Rules become live only in the ruler.
+
+    Failure-tolerant in exactly one direction. `argus platform` is normally run from an
+    operator's laptop, where the in-cluster ruler URL is not reachable and a port-forward
+    is the answer; that must not fail a platform run whose cluster work all succeeded. A
+    ruler that IS reachable and rejects the rules is a real failure and is raised.
+    """
+    from argus.feedback import ruler
+
+    url = _resolve_mimir_url(args)
+    if args.dry_run:
+        return (
+            f"platform alert group not pushed: dry run (would push {PLATFORM_RULE_GROUP} "
+            f"as tenant {tenant} to {url})"
+        )
+    try:
+        count = ruler.sync_rules(url, tenant, PLATFORM_RULE_GROUP, docs)
+    except urllib.error.HTTPError:
+        raise  # a ruler that answered and said no
+    except urllib.error.URLError as exc:
+        print(
+            f"note: the platform alert group was not pushed: {url} is unreachable from here "
+            f"({exc.reason}); port-forward with `kubectl -n {args.namespace} port-forward "
+            "svc/argus-mimir-gateway 9009:80` and re-run with "
+            "--mimir-url http://localhost:9009/prometheus",
+            file=sys.stderr,
+        )
+        return f"platform alert group not pushed: {url} is unreachable from here"
+    return f"platform alert group pushed to the ruler: {count} group(s), tenant {tenant}"
 
 
 def _born_epoch(born: str) -> int:
@@ -449,9 +489,13 @@ def cmd_platform(args: argparse.Namespace) -> int:
     ]
     result = ProvisionEngine(steps).run(ledger, f"platform@{args.cluster}", step_context)
     _report(result)
-    if result.completed:
-        print(_RULER_NOTE)
-    return 0 if result.completed else 1
+    if not result.completed:
+        return 1
+    # The tenant is the one the platform just recorded as its own, so the group lands where
+    # the gateway writes - the same agreement `observe` now gets from the record.
+    print(_push_platform_rules(args, rendered["platform-rules"], args.cluster))
+    print(_RULER_NOTE)
+    return 0
 
 
 def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
@@ -599,7 +643,13 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
     from argus.feedback.ruler import sync_rules
     from argus.rendering.slo import render_sloth
 
-    p, ctx = _app_context(args)
+    try:
+        # The same resolution `observe` uses, for the same reason: a group pushed to a
+        # tenant the gateway does not write with evaluates over nothing, forever, quietly.
+        p, ctx = _app_context(args, tenant_from_platform=True)
+    except TenantMismatch as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
     docs = [render_alert_rules(p, ctx)]
     sloth_doc = render_sloth(p, ctx)
     if sloth_doc is not None:
@@ -706,6 +756,15 @@ def main(argv: list[str] | None = None) -> int:
     # stamps `environment` on every signal it forwards. A silent default of dev would
     # mislabel a whole prod cluster's telemetry.
     p_platform.add_argument("--env", required=True, choices=["dev", "qa", "prod"])
+    # The platform pushes its own alert group into the ruler at the end of a successful
+    # run, so it needs the same endpoint the other commands take, derived the same way.
+    p_platform.add_argument(
+        "--mimir-url",
+        default=None,
+        help="Mimir Prometheus API base for pushing the platform's own alert group; "
+        "derived from --namespace unless given. Port-forward form: "
+        "--mimir-url http://localhost:9009/prometheus",
+    )
     p_platform.set_defaults(func=cmd_platform)
 
     p_observe = sub.add_parser("observe", help="wire a gojira app into the platform")
