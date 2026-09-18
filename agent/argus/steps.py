@@ -76,6 +76,19 @@ class StepContext:
             cmd += ["--context", self.kube_context]
         return [*cmd, *args, f"--request-timeout={request_timeout}"]
 
+    def helm(self, *args: str) -> list[str]:
+        """Every helm argv argus builds, pinned to the same context as kubectl.
+
+        Without this, helm silently used the kubeconfig's CURRENT context while every
+        kubectl call honored --kube-context: a `platform --kube-context dev` dry run
+        reached the prod control plane because prod happened to be current. The two
+        tools must never disagree about which cluster a run targets.
+        """
+        cmd = ["helm"]
+        if self.kube_context:
+            cmd += ["--kube-context", self.kube_context]
+        return [*cmd, *args]
+
 
 @dataclass
 class EnsureNamespace:
@@ -134,15 +147,14 @@ class HelmInstall:
 
     def check(self, ctx: StepContext) -> str | None:
         code, out = ctx.runner(
-            [
-                "helm",
+            ctx.helm(
                 "status",
                 f"argus-{self.component}",
                 "--namespace",
                 ctx.namespace,
                 "-o",
                 "json",
-            ],
+            ),
             None,
         )
         if code != 0:
@@ -166,8 +178,7 @@ class HelmInstall:
 
     def apply(self, ctx: StepContext) -> str:
         pin = self._pin(ctx)
-        cmd = [
-            "helm",
+        cmd = ctx.helm(
             "upgrade",
             "--install",
             f"argus-{self.component}",
@@ -184,7 +195,7 @@ class HelmInstall:
             "--wait",
             "--description",
             self.fingerprint(ctx),
-        ]
+        )
         for key, value in self.extra_sets.items():
             cmd += ["--set", f"{key}={value}"]
         if ctx.dry_run:
