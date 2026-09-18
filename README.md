@@ -88,13 +88,22 @@ it was given, which is the tenant the gateway writes every metric, log and trace
 `environment` (what the gateway stamps on everything it forwards). Re-running `platform` updates
 `tenant` and `environment` - they describe the platform as it is now, not as it was born.
 
-**The write tenant and the read tenant must be the same value.** The gateway writes with the tenant
-`argus platform --cluster` was given. `observe`, `render`, `rules-sync` and `cardinality` each read or
-write with their OWN `--cluster`/`--tenant` (falling back to the app's gojira.yaml cluster string when
-no override is given) - a per-app command, not the platform. If that value ever differs from the
-cluster `platform` was run with, dashboards, rules and cardinality reports query a tenant nothing
-writes to: empty panels, no error. The record above is what closes that gap; until `observe` reads it
-back, keeping the two in sync is still on the operator.
+**The write tenant and the read tenant can no longer drift apart.** The gateway WRITES with the
+platform's tenant; an app's dashboards, rules and cardinality reports READ with whatever `observe`
+resolved. When those differed, every panel was empty and nothing errored. `observe` now resolves its
+tenant from the record, in this order:
+
+1. an explicit `--cluster` (or `ARGUS_CLUSTER`), which **must agree** with the recorded tenant: a
+   disagreement fails the run before anything is applied, naming both values;
+2. otherwise the recorded tenant, which wins over a gojira.yaml cluster string that disagrees with it
+   (one informational line on stderr);
+3. otherwise (no record: a platform installed before this existed) the contract's own cluster string,
+   with a warning to re-run `argus platform`.
+
+`render` and `--dry-run` never require a cluster: an unreadable record is simply a missing one.
+
+`rules-sync` and `cardinality` still read with their own `--cluster`/`--tenant`; pass the platform's
+tenant, which `kubectl -n argus get configmap argus-platform-info -o yaml` will tell you.
 
 ### Retention, enforced and alarmed
 
@@ -184,10 +193,11 @@ success and failure - the provisioner reads the Job's termination status for pas
 scans the tail of the log for that line; it never parses the rest. Exit code 0 means observe
 completed, 1 means it failed (the summary line names the failing step and reason).
 
-`ARGUS_CLUSTER` is accepted but temporary: it overrides the cluster/tenant name only for the
-one case where gojira's own record of a cluster disagrees with the cluster's real name. It
-defaults to the contract's own cluster and is deleted once that naming gap closes - do not
-build new automation around it.
+`ARGUS_CLUSTER` is an explicit override and nothing more. The case it was invented for - gojira's
+record of a cluster disagreeing with the cluster's real name - is now answered by the platform's own
+record, which is the authority: with no override, `observe` adopts the tenant the platform writes
+with and says so. Set `ARGUS_CLUSTER` only when you mean to assert a tenant, and it must match the
+recorded one or the job fails with `tenant mismatch: ...` as its summary line.
 
 The provisioner itself needs far less than `observe` does: only `create` and `get` on `Jobs`
 in the platform namespace. It does not need the `argus-observe` ServiceAccount's own RBAC -

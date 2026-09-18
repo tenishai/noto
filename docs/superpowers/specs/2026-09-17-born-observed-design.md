@@ -75,7 +75,7 @@ becomes a real step, `ProvisionPerses`, in the `observe` sequence:
 | `GOJIRA_CONTRACT_YAML` | the raw gojira.yaml text |
 | `GOJIRA_CONTRACT_SHA256` | gojira's fingerprint of that contract |
 | `ARGUS_ENV` | which environment of the contract to observe (`dev`, `qa`, `prod`) |
-| `ARGUS_CLUSTER` | optional tenant override; a temporary bridge, see below |
+| `ARGUS_CLUSTER` | optional explicit tenant override; must match the platform's record, see below |
 | `ARGUS_NAMESPACE` | where the platform lives; default `argus` |
 
 Behavior:
@@ -103,10 +103,22 @@ Behavior:
   never parses logs.
 - Exit code: 0 complete, 1 failed (unchanged).
 
-`ARGUS_CLUSTER` exists only because one cluster is registered in gojira under
-a label that differs from its real name. Gojira is renaming that row; the
-infrastructure's own name is the only authority. The variable is optional,
-defaults to the contract's cluster, and is deleted when the names agree.
+`ARGUS_CLUSTER` was invented as a bridge: one cluster is registered in gojira
+under a label that differs from its real name, and the variable let a job
+assert the real one. That bridge is no longer needed. The platform records the
+tenant it writes with (`argus-platform-info`, see "Retention" below), and
+`observe` reads that record before it renders anything: when the contract's
+cluster string disagrees and no override was given, the platform's tenant wins
+and one stderr line says so. The infrastructure's own name is the only
+authority, and now it is written down rather than retyped.
+
+What the variable still is: an explicit override, exactly like `--cluster`,
+which it defaults. Given, it must AGREE with the recorded tenant; a
+disagreement fails the run before anything is applied, with
+`tenant mismatch: platform writes as '<a>' but observe was told '<b>';
+dashboards would read an empty tenant` as the summary line. Do not set it to
+work around a contract that disagrees; re-run `argus platform`, or fix the
+contract.
 
 ### 4. In-cluster endpoints and the job's identity
 
@@ -168,9 +180,10 @@ be discovered.
   timestamp, written once by a check-then-write step and never overwritten.
   Without the age gate the alert would fire for the first month of every new
   cluster.
-- The same ConfigMap carries `tenant` and `environment`, updated on every
-  `platform` run (only `born` is immutable), so the tenant an app reads with
-  can be resolved from the tenant the gateway writes with.
+- The same ConfigMap carries `tenant` and `environment`, which is how the
+  tenant an app reads with stays the tenant the gateway writes with (see
+  "Job mode" above). Those two are updated on every `platform` run; only
+  `born` is immutable.
 - A `PrometheusRule` is inert in this stack (the operator is installed without
   a Prometheus), so the platform group is evaluated only once pushed into
   Mimir's ruler. `argus platform` says so at the end of every run; a push for

@@ -45,6 +45,16 @@ All notable changes to Argus are documented here. The format is based on
   alarm for its first month. The birth instant comes from a new `argus-platform-info`
   ConfigMap, written by `argus platform`, which also records the `tenant` the gateway
   writes with and the `environment` it stamps.
+- **The platform records its tenant, and `observe` reads it: dashboards can no longer read
+  an empty tenant.** The gateway WRITES with the tenant `argus platform --cluster` was
+  given, while each app's dashboards, rules and cardinality queries READ with the tenant
+  `observe` resolved; when those differed, every panel was empty and nothing errored.
+  `observe` now resolves its tenant from the `argus-platform-info` record: an explicit
+  `--cluster`/`ARGUS_CLUSTER` that DISAGREES with the record fails the run before anything
+  is applied; with no override, the recorded tenant wins over a disagreeing contract with
+  one stderr line; with no record at all, the contract's cluster is used and a warning says
+  to re-run `argus platform`. `ARGUS_CLUSTER` is no longer a bridge around a disagreeing
+  contract - it is an explicit override that must match.
 - **`argus platform` renders and applies `argus-observe`'s identity** - the ServiceAccount
   and RBAC a provisioner's Job runs `argus observe` as (born-observed, task 6): one
   ClusterRole (`get`/`list`/`create`/`patch`/`update` on `servicemonitors`/`podmonitors`/

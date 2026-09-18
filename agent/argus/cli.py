@@ -42,7 +42,7 @@ from argus.rendering.collectors import (
 )
 from argus.rendering.context import Context, solo_endpoints
 from argus.rendering.perses import render_perses
-from argus.rendering.rbac import render_observe_rbac
+from argus.rendering.rbac import PLATFORM_INFO_CONFIGMAP, render_observe_rbac
 from argus.rendering.scrape import render_podmonitor, render_servicemonitor
 from argus.rendering.slo import render_sloth
 from argus.steps import (
@@ -199,14 +199,67 @@ def _warn_if_drop_rules_ignored(p: ResolvedProfile, app: str | None) -> None:
     )
 
 
-def _app_context(args: argparse.Namespace) -> tuple[object, Context]:
+class TenantMismatch(RuntimeError):
+    """An explicit --cluster/ARGUS_CLUSTER that disagrees with the tenant the platform
+    records as its own. Raised before anything is applied."""
+
+
+def _resolve_tenant(args: argparse.Namespace, contract_cluster: str) -> str:
+    """Which tenant this app's dashboards, rules and cardinality reports READ with.
+
+    The gateway WRITES with the tenant `argus platform --cluster` was given and records it
+    (steps.EnsurePlatformInfo). If the value resolved here ever differs from that one, every
+    panel is empty and nothing errors, so the platform's own record is the authority:
+
+      1. an explicit --cluster / ARGUS_CLUSTER, which must AGREE with the record;
+      2. otherwise the recorded tenant, even when the contract disagrees (one stderr line);
+      3. otherwise (no record: a platform older than this, or no cluster at all in a dry
+         run) the contract's own cluster string, with one stderr warning.
+
+    Reading the record is a plain `kubectl get` through the runner and never raises, so
+    `render` and `--dry-run` keep working with no cluster in reach.
+    """
+    explicit = getattr(args, "cluster", None)
+    recorded = read_platform_info(_step_context(args)).get("tenant")
+    if recorded:
+        if explicit and explicit != recorded:
+            raise TenantMismatch(
+                f"tenant mismatch: platform writes as '{recorded}' but observe was told "
+                f"'{explicit}'; dashboards would read an empty tenant"
+            )
+        if not explicit and contract_cluster != recorded:
+            print(
+                f"info: the platform writes as tenant '{recorded}'; using it instead of the "
+                f"contract's cluster '{contract_cluster}'",
+                file=sys.stderr,
+            )
+        return recorded
+    if explicit:
+        return explicit
+    print(
+        f"warning: no {PLATFORM_INFO_CONFIGMAP} record in namespace {args.namespace}; "
+        f"falling back to the contract's cluster '{contract_cluster}'. Re-run `argus "
+        "platform` so the tenant the gateway writes with is the one dashboards read with.",
+        file=sys.stderr,
+    )
+    return contract_cluster
+
+
+def _app_context(
+    args: argparse.Namespace, *, tenant_from_platform: bool = False
+) -> tuple[object, Context]:
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
     p = _resolved(spec.class_name, spec.observability)
     _warn_if_drop_rules_ignored(p, spec.app)
+    cluster = (
+        _resolve_tenant(args, env.cluster)
+        if tenant_from_platform
+        else (getattr(args, "cluster", None) or env.cluster)
+    )
     ctx = Context(
         topology="solo",
-        cluster=getattr(args, "cluster", None) or env.cluster,
+        cluster=cluster,
         environment=args.env,
         app=spec.app,
         namespace=env.namespace,
@@ -411,8 +464,11 @@ def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
 def _run_observe(
     args: argparse.Namespace, annotations: dict[str, str] | None = None
 ) -> tuple[RunResult, Context]:
-    """The one observe step sequence, shared by the operator command and job mode."""
-    p, ctx = _app_context(args)
+    """The one observe step sequence, shared by the operator command and job mode.
+
+    The tenant is resolved from the platform's own record here, in this one shared place,
+    before anything is rendered or applied (see `_resolve_tenant`)."""
+    p, ctx = _app_context(args, tenant_from_platform=True)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
     # Per-app families only. The shared collector tier belongs to `argus platform`:
@@ -434,7 +490,13 @@ def _run_observe(
 
 
 def cmd_observe(args: argparse.Namespace) -> int:
-    result, _ctx = _run_observe(args)
+    try:
+        result, _ctx = _run_observe(args)
+    except TenantMismatch as exc:
+        # Loud, and before a single object is applied: the alternative is dashboards that
+        # query a tenant nothing writes to, which look like a quiet, working install.
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
     _report(result)
     return 0 if result.completed else 1
 
@@ -592,20 +654,19 @@ def main(argv: list[str] | None = None) -> int:
             # drift across apps (live-found: one deployment's short name vs the real
             # cluster name), which would scatter one cluster's apps across tenants.
             #
-            # Pin it here; the per-app file stays the fallback.
-            #
-            # WARNING: the gateway that actually WRITES metrics/logs/traces gets its
-            # tenant from `argus platform --cluster`, and the platform now RECORDS that
-            # tenant (the argus-platform-info ConfigMap above); this flag still only
-            # selects which tenant THIS command READS/writes rule groups for. The two
-            # must be given the same value, or dashboards, rules-sync and cardinality
-            # query a tenant nothing writes to: empty panels, no error. The next commit
-            # has `observe` read the record back and close this gap.
+            # The gateway that actually WRITES metrics/logs/traces gets its tenant from
+            # `argus platform --cluster`, and the platform now records it (the
+            # argus-platform-info ConfigMap). `observe` reads that record back, so the
+            # read tenant follows the write tenant on its own and this flag is an
+            # explicit override only: given, it must AGREE with the record or the run
+            # fails before applying anything (see `_resolve_tenant`). ARGUS_CLUSTER is
+            # the same override by another name, which is why it defaults the flag here
+            # rather than being read separately in job mode.
             p.add_argument(
                 "--cluster",
-                default=None,
-                help="canonical cluster/tenant name override - MUST match the cluster "
-                "`argus platform` was run with, or this reads/writes an empty tenant",
+                default=os.environ.get("ARGUS_CLUSTER", "").strip() or None,
+                help="explicit cluster/tenant override (env ARGUS_CLUSTER) - must match "
+                "the tenant `argus platform` recorded, or the run fails",
             )
 
     p_render = sub.add_parser("render", help="render artifacts, touch nothing")
