@@ -146,6 +146,13 @@ class FakeRunner:
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
 
 
+def _fake_perses_opener(req) -> tuple[int, bytes]:
+    """Every GET 404s (nothing provisioned yet), every POST/PUT succeeds - enough for
+    tests where ProvisionPerses only rides along with a job-mode `observe` run; its
+    own behavior is covered by test_perses_step.py."""
+    return (404, b"") if req.get_method() == "GET" else (200, b"{}")
+
+
 def _job_env(gojira_text: str, **overrides) -> dict:
     env = {
         "GOJIRA_CONTRACT_YAML": gojira_text,
@@ -159,6 +166,7 @@ def _job_env(gojira_text: str, **overrides) -> dict:
 def test_job_mode_success_ends_stdout_with_success_summary(tmp_path, monkeypatch, capsys):
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     gojira_text = (FIXTURES / "web.yaml").read_text()
     for k, v in _job_env(gojira_text).items():
@@ -219,6 +227,7 @@ def test_job_mode_ledger_lives_under_temp_dir_not_dot_argus(monkeypatch, capsys)
     monkeypatch.setattr(Ledger, "__init__", spying_init)
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     gojira_text = (FIXTURES / "web.yaml").read_text()
     for k, v in _job_env(gojira_text).items():
@@ -250,6 +259,7 @@ def test_job_mode_progress_lines_go_to_stderr_summary_is_last_stdout_line(monkey
     somewhere for a human reading the pod log, so it goes to stderr instead."""
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     gojira_text = (FIXTURES / "web.yaml").read_text()
     for k, v in _job_env(gojira_text).items():
@@ -317,6 +327,7 @@ def test_job_mode_applied_documents_carry_the_observed_contract_annotation(monke
 
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     gojira_text = (FIXTURES / "web.yaml").read_text()
     sha = contract_fingerprint(gojira_text)
@@ -339,6 +350,7 @@ def test_job_mode_stdout_still_ends_with_summary_when_drop_warning_fires(monkeyp
     still reads exactly one stdout line, the ARGUS_SUMMARY line, last."""
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     gojira_text = (
         "app: demo\nclass: web\n"
@@ -387,6 +399,7 @@ def test_job_mode_namespace_from_job_inputs_reaches_the_step_context(monkeypatch
     monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
 
     code = cli.main(["observe"])
@@ -394,6 +407,34 @@ def test_job_mode_namespace_from_job_inputs_reaches_the_step_context(monkeypatch
     assert code == 0
     assert captured["step_ctx"].namespace == "mocked-ns"
     assert captured["step_ctx"].perses_url == "http://argus-perses.mocked-ns.svc:8080"
+
+
+def test_job_mode_step_order_ends_with_provision_perses(monkeypatch, capsys):
+    """Job mode shares `_run_observe` with the operator command - dashboards must
+    land last there too."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: list[list[str]] = []
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    assert captured
+    assert captured[0][-1] == "provision-perses"
 
 
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from argus.perses_client import Opener, PersesClient
+
 # Injectable clock/sleep (module-level, monkeypatched in tests) so WaitForCollectors
 # is testable without ever really sleeping.
 _sleep = time.sleep
@@ -39,10 +41,13 @@ class StepContext:
     # mode). ApplyRendered stamps these onto every document it applies, so the
     # cluster itself can answer "has the app changed since argus looked".
     annotations: dict[str, str] = field(default_factory=dict)
-    # The Perses API base `observe` was given (or derived from `namespace`); no step
-    # reads it yet (dashboards land in a later task) - carried here so that step only
-    # has to consume it, not thread it through the CLI itself.
+    # The Perses API base `observe` was given (or derived from `namespace`), consumed
+    # by ProvisionPerses.
     perses_url: str | None = None
+    # Injectable seam for PersesClient's `opener` (tests only; real runs always pass
+    # None here, so PersesClient falls back to real `urllib`) - the HTTP-call analogue
+    # of `runner` above, for the one step that speaks HTTP instead of shelling out.
+    perses_opener: Opener | None = None
 
     def kubectl(self, *args: str) -> list[str]:
         cmd = ["kubectl"]
@@ -345,3 +350,76 @@ class ValidateRoundTrip:
         if not_ready:
             raise RuntimeError(f"pods not ready: {not_ready}")
         return f"healthy/{len(pods)} pods"
+
+
+# Perses document kind -> the collection it upserts into, and the order the smoke
+# script proved by hand: project first (datasources and dashboards live inside it),
+# then datasources (dashboards query them), then dashboards. `render_perses` already
+# emits its `perses` family in this order, but the sort below makes the step correct
+# even if that ever changes, rather than relying on renderer output order silently.
+_PERSES_KIND_ORDER = {"Project": 0, "Datasource": 1, "Dashboard": 2}
+
+
+def _perses_collection_path(doc: dict) -> str:
+    kind = doc["kind"]
+    if kind == "Project":
+        return "/api/v1/projects"
+    if kind in ("Datasource", "Dashboard"):
+        project = doc["metadata"]["project"]
+        return f"/api/v1/projects/{project}/{kind.lower()}s"
+    raise RuntimeError(f"unknown perses document kind: {kind!r}")
+
+
+def _perses_plan(docs: list[dict]) -> list[tuple[str, dict]]:
+    """(collection_path, doc) pairs, project before datasources before dashboards."""
+    ordered = sorted(docs, key=lambda d: _PERSES_KIND_ORDER.get(d["kind"], 99))
+    return [(_perses_collection_path(doc), doc) for doc in ordered]
+
+
+@dataclass
+class ProvisionPerses:
+    """Upserts the rendered `perses` family (project, datasources, dashboards) through
+    the Perses HTTP API - the engine-step replacement for
+    `tests/smoke/provision_perses.py`. Perses resources are API objects, not k8s CRDs,
+    so this never kubectl-applies; it speaks the same POST/PUT-on-409 dance the smoke
+    script proved by hand, via `PersesClient`.
+
+    `ephemeral = True`: dashboards must re-reconcile against Perses every run, the same
+    reason `ApplyRendered` never ledger-skips.
+    """
+
+    name: str = "provision-perses"
+    tooling: str = "perses"
+    ephemeral: bool = True
+
+    def _client(self, ctx: StepContext) -> PersesClient:
+        if not ctx.perses_url:
+            raise RuntimeError("provision-perses: no perses_url on the step context")
+        return PersesClient(ctx.perses_url, opener=ctx.perses_opener)
+
+    def check(self, ctx: StepContext) -> str | None:
+        """A skip reason only when EVERY rendered document already matches what
+        Perses holds (same `spec`, ignoring server-managed metadata) - one doc missing
+        or drifted means apply() must run."""
+        plan = _perses_plan(ctx.rendered.get("perses", []))
+        client = self._client(ctx)
+        for collection, doc in plan:
+            name = doc["metadata"]["name"]
+            existing = client.get(f"{collection}/{name}")
+            if existing is None or existing.get("spec") != doc.get("spec"):
+                return None
+        return f"perses: {len(plan)} unchanged"
+
+    def apply(self, ctx: StepContext) -> str:
+        plan = _perses_plan(ctx.rendered.get("perses", []))
+        if ctx.dry_run:
+            named = ", ".join(f"{doc['kind']}/{doc['metadata']['name']}" for _c, doc in plan)
+            return f"would upsert {len(plan)} perses docs: {named}"
+        client = self._client(ctx)
+        counts = {"created": 0, "updated": 0, "unchanged": 0}
+        for collection, doc in plan:
+            counts[client.upsert(collection, doc)] += 1
+        return (
+            f"perses: {counts['created']} created, {counts['updated']} updated, "
+            f"{counts['unchanged']} unchanged"
+        )

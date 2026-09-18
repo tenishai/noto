@@ -45,6 +45,13 @@ class FakeRunner:
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
 
 
+def _fake_perses_opener(req) -> tuple[int, bytes]:
+    """Every GET 404s (nothing provisioned yet), every POST/PUT succeeds - enough for
+    tests where ProvisionPerses only rides along with an `observe` run; its own
+    behavior (create/conflict/unchanged/errors) is covered by test_perses_step.py."""
+    return (404, b"") if req.get_method() == "GET" else (200, b"{}")
+
+
 def _ctx(runner: FakeRunner, **kw) -> StepContext:
     pins = yaml.safe_load((REPO / "helm" / "pins.yaml").read_text())
     return StepContext(runner=runner, pins=pins, repo_root=REPO, **kw)
@@ -503,6 +510,7 @@ def test_drop_override_disabling_a_baseline_rule_warns_and_names_it(tmp_path: Pa
 def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     # sloth generation has its own binary-gated test below
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
@@ -528,6 +536,7 @@ def test_cli_observe_operator_mode_applies_no_contract_annotation(
     monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -557,6 +566,7 @@ def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
     monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -766,6 +776,7 @@ def test_observe_perses_url_flag_reaches_the_step_context(tmp_path: Path, monkey
 
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
@@ -799,6 +810,7 @@ def test_observe_perses_url_derives_from_namespace_when_not_given(
 
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
@@ -816,6 +828,108 @@ def test_observe_perses_url_derives_from_namespace_when_not_given(
     )
     assert code == 0
     assert captured["step_ctx"].perses_url == "http://argus-perses.obs.svc:8080"
+
+
+def test_observe_argus_perses_url_env_wins_over_derived_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://argus-perses.envset:9999"
+
+
+def test_observe_explicit_perses_url_flag_wins_over_env(tmp_path: Path, monkeypatch) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--perses-url",
+            "http://localhost:8080",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://localhost:8080"
+
+
+def test_observe_step_order_ends_with_provision_perses_operator_mode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Dashboards land last: they chart the alerts/SLOs applied earlier in the same
+    run, so provisioning them first would leave dashboards pointing at rules that
+    are not there yet."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: list[list[str]] = []
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured
+    assert captured[0][-1] == "provision-perses"
 
 
 def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monkeypatch) -> None:

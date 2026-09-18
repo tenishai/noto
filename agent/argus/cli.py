@@ -28,6 +28,7 @@ from argus.engine.ledger import Ledger
 from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
 from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
+from argus.perses_client import Opener
 from argus.profiles.loader import load_baseline, load_class, load_override
 from argus.profiles.models import ClassProfile, DropRule, ResolvedProfile
 from argus.profiles.resolve import resolve
@@ -47,6 +48,7 @@ from argus.steps import (
     ApplyRendered,
     EnsureNamespace,
     HelmInstall,
+    ProvisionPerses,
     StepContext,
     ValidateRoundTrip,
     WaitForCollectors,
@@ -76,6 +78,12 @@ PLATFORM_ORDER = [
 def real_runner(cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
     proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True)
     return proc.returncode, proc.stdout + proc.stderr
+
+
+# Injectable seam for ProvisionPerses's PersesClient - the HTTP analogue of
+# `real_runner` above, monkeypatched by tests the same way. Production leaves it
+# None, so PersesClient falls back to real `urllib`.
+default_perses_opener: Opener | None = None
 
 
 def _resolved(class_name: str, override: dict | None):
@@ -254,7 +262,11 @@ def _step_context(
     annotations: dict[str, str] | None = None,
 ) -> StepContext:
     pins = yaml.safe_load((REPO_ROOT / "helm" / "pins.yaml").read_text())
-    perses_url = getattr(args, "perses_url", None) or solo_endpoints(args.namespace)["perses_url"]
+    perses_url = (
+        getattr(args, "perses_url", None)
+        or os.environ.get("ARGUS_PERSES_URL")
+        or solo_endpoints(args.namespace)["perses_url"]
+    )
     return StepContext(
         runner=real_runner,
         kube_context=args.kube_context,
@@ -265,6 +277,7 @@ def _step_context(
         dry_run=args.dry_run,
         annotations=annotations or {},
         perses_url=perses_url,
+        perses_opener=default_perses_opener,
     )
 
 
@@ -347,6 +360,10 @@ def _run_observe(
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
         steps.append(ApplyRendered(family="slo"))
+    # Dashboards land last: they chart the alerts/SLOs applied above, so they must
+    # exist first, or a dashboard-provisioning failure would still leave rules and
+    # alerts wired.
+    steps.append(ProvisionPerses())
     result = ProvisionEngine(steps).run(
         ledger, f"wire@{ctx.app}", _step_context(args, rendered, annotations)
     )
@@ -558,8 +575,8 @@ def main(argv: list[str] | None = None) -> int:
     p_observe.add_argument(
         "--perses-url",
         default=None,
-        help="Perses API base; derived from --namespace unless given (not yet read by "
-        "`observe` itself - carried for the dashboards step). Port-forward form: "
+        help="Perses API base for the dashboards step; env ARGUS_PERSES_URL, else "
+        "derived from --namespace, unless given. Port-forward form: "
         "--perses-url http://localhost:8080",
     )
     p_observe.set_defaults(func=cmd_observe)
