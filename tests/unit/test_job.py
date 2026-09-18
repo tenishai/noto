@@ -117,15 +117,78 @@ def test_summary_line_is_one_bounded_line():
 
 
 def test_success_and_failure_summaries():
+    """The counts are STEPS, not objects: "applied" is how many steps ran and "skipped"
+    how many the engine skipped. The old wording said "unchanged", which reads as a count
+    of objects that did not move - and ApplyRendered.check() never skips, so it could
+    only ever have meant steps anyway."""
     assert (
         success_summary("demo", "dev", 3, 2, "ab" * 32)
-        == "ARGUS_SUMMARY observed demo/dev: 3 applied, 2 unchanged, contract abababababab"
+        == "ARGUS_SUMMARY observed demo/dev: 3 steps applied, 2 skipped, contract abababababab"
     )
     assert (
         failure_summary("apply-alerts", "kubectl: forbidden\nmore")
         == "ARGUS_SUMMARY observe failed: apply-alerts: kubectl: forbidden more"
     )
     assert failure_summary(None, "bad inputs") == "ARGUS_SUMMARY observe failed: bad inputs"
+
+
+def test_a_success_summary_can_carry_a_note():
+    assert success_summary("demo", "dev", 4, 1, "ab" * 32, note="no platform record").endswith(
+        "contract abababababab (no platform record)"
+    )
+
+
+# --- the contract's strings are validated at the boundary ---
+
+
+def _contract(app: str = "demo", namespace: str = "demo", cluster: str = "c1") -> str:
+    return (
+        f"app: {app}\nclass: web\n"
+        f"environments:\n  - name: dev\n    cluster: {cluster}\n    namespace: {namespace}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    "kwargs,field",
+    [
+        ({"app": "de/mo"}, "app"),
+        ({"app": ".."}, "app"),
+        ({"app": 'de"mo'}, "app"),
+        ({"app": "a" * 64}, "app"),
+        ({"app": "Demo"}, "app"),
+        ({"namespace": "de/mo"}, "namespace"),
+        ({"namespace": ".."}, "namespace"),
+        ({"namespace": 'de"mo'}, "namespace"),
+        ({"namespace": "n" * 64}, "namespace"),
+        ({"cluster": "c/1"}, "cluster"),
+        ({"cluster": ".."}, "cluster"),
+        ({"cluster": 'c"1'}, "cluster"),
+    ],
+)
+def test_job_inputs_rejects_contract_strings_that_are_not_names(kwargs, field):
+    """The contract arrives as a string in an environment variable the job does not
+    control, and these fields become object names, `-n` arguments and a tenant header.
+    A name with a slash, a quote, a `..` or 64 characters in it is not a name at all."""
+    text = _contract(**kwargs)
+    env = _job_env_text(text)
+    with pytest.raises(JobInputError) as exc_info:
+        job_inputs(env)
+    assert field in str(exc_info.value)
+
+
+def test_job_inputs_accepts_ordinary_names():
+    text = _contract(app="demo-api", namespace="demo-api", cluster="dev-cluster-1.example")
+    assert job_inputs(_job_env_text(text)) is not None
+    longest = "a" * 63
+    assert job_inputs(_job_env_text(_contract(app=longest, namespace=longest))) is not None
+
+
+def _job_env_text(text: str) -> dict:
+    return {
+        "GOJIRA_CONTRACT_YAML": text,
+        "GOJIRA_CONTRACT_SHA256": contract_fingerprint(text),
+        "ARGUS_ENV": "dev",
+    }
 
 
 # --- CLI wiring: job mode dispatch through main(), fake runner, no real cluster ---

@@ -317,12 +317,19 @@ def read_platform_info(ctx: StepContext) -> dict[str, str]:
 class PlatformInfoUnreadable(RuntimeError):
     """The record could not be read, and not because it is absent.
 
-    Raised only on the write path. Collapsing a Forbidden, an apiserver blip or a network
-    error into "unborn" would make the next write treat a living platform as a new one and
-    stamp `born` with now, which slides the retention alert's age gate forward and mutes
+    Raised on the write path, and on the one read path that has nobody watching it.
+
+    On the WRITE path, collapsing a Forbidden, an apiserver blip or a network error into
+    "unborn" would make the next write treat a living platform as a new one and stamp
+    `born` with now, which slides the retention alert's age gate forward and mutes
     `ArgusRetentionWindowShort` for another whole window. Refusing is the safe answer:
     nothing is lost by not writing, and the birth instant cannot be recovered once it is
     overwritten.
+
+    On the JOB's read path (`read_platform_info_required`), a present-but-unreadable
+    record means the job's own identity was not rolled out - `argus platform` has not been
+    re-run, or was run out of order. Falling back there would wire an app to a tenant
+    nothing writes to and report success to the launcher.
     """
 
 
@@ -334,6 +341,21 @@ def read_platform_info_strict(ctx: StepContext) -> dict[str, str]:
             "refusing to rewrite the platform's birth instant: could not read the record: "
             + _collapse(out)
         )
+    return data
+
+
+def read_platform_info_required(ctx: StepContext) -> dict[str, str]:
+    """The record, {} when it is CLEARLY absent, and an exception for every other failure -
+    the read path of a run with nobody watching (job mode).
+
+    An absent record is a fact a job can act on: an older platform, and the contract's own
+    cluster string is the documented fallback. An unreadable one is not a fact at all, and
+    the ONE thing it most likely means (RBAC that has not been rolled out) is the thing
+    that makes the fallback wrong.
+    """
+    readable, data, out = _read_record(ctx)
+    if not readable:
+        raise PlatformInfoUnreadable("platform record unreadable: " + _collapse(out))
     return data
 
 

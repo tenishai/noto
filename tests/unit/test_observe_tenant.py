@@ -160,6 +160,70 @@ def test_render_never_warns_and_never_fails_over_the_record(
     assert captured["ctx"].tenant == CONTRACT_CLUSTER
 
 
+def _job_observe(tmp_path: Path, monkeypatch, runner: InfoRunner, **env: str) -> int:
+    from argus.job import contract_fingerprint
+
+    contract = (FIXTURES / "web.yaml").read_text()
+    monkeypatch.setenv("GOJIRA_CONTRACT_YAML", contract)
+    monkeypatch.setenv("GOJIRA_CONTRACT_SHA256", contract_fingerprint(contract))
+    monkeypatch.setenv("ARGUS_ENV", "dev")
+    monkeypatch.delenv("ARGUS_CLUSTER", raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    return cli.main(["observe", "--ledger", str(tmp_path / "l.db")])
+
+
+def test_job_mode_says_so_in_the_summary_when_there_is_no_record(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The fallback is invisible in a green Job otherwise: the run succeeds, the
+    dashboards read whatever the contract said, and the only hint is a stderr line
+    nobody reads once the exit code is 0. The summary the provisioner DOES read now
+    carries it."""
+    assert _job_observe(tmp_path, monkeypatch, InfoRunner(None)) == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("ARGUS_SUMMARY observed ")
+    assert last.endswith("(no platform record: tenant from contract)")
+
+
+def test_job_mode_says_nothing_extra_when_the_record_answered(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    assert _job_observe(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("ARGUS_SUMMARY observed ")
+    assert "no platform record" not in last
+
+
+def test_job_mode_fails_when_the_record_is_present_but_unreadable(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A Forbidden is not an absent record: it means the job's own identity was not
+    rolled out, so `argus platform` has not been re-run in the right order. Falling back
+    quietly there would wire an app to a tenant nothing writes to and report success."""
+    runner = InfoRunner(readable=False)
+    assert _job_observe(tmp_path, monkeypatch, runner) == 1
+    assert runner.applies == []
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("ARGUS_SUMMARY observe failed: platform record unreadable: ")
+    assert "Forbidden" in last
+
+
+def test_operator_mode_still_warns_and_falls_back_on_an_unreadable_record(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The operator is standing at a terminal reading stderr, and can be told rather than
+    refused - the strictness belongs to the job, which has nobody watching."""
+    runner = InfoRunner(readable=False)
+    captured: dict = {}
+    assert _observe(tmp_path, monkeypatch, runner, captured=captured) == 0
+    assert captured["ctx"].tenant == CONTRACT_CLUSTER
+    assert "argus platform" in capsys.readouterr().err
+
+
 def test_job_mode_reports_a_tenant_mismatch_as_the_summary_line(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

@@ -895,6 +895,48 @@ def test_feedback_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path, 
     assert captured["base_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
 
 
+def test_feedback_queries_the_tenant_the_platform_recorded(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The last command still reading a tenant straight off the contract. Evidence
+    distilled from an empty tenant is not evidence, so it resolves the tenant the way
+    `observe` does - quietly, because it applies nothing and refuses nothing."""
+    from tests.support.fake_cluster import RECORDED, InfoRunner
+
+    monkeypatch.setattr(cli, "real_runner", InfoRunner(dict(RECORDED)))
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["tenant"] = client.tenant
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert captured["tenant"] == "real-name"
+    assert "tenant" not in capsys.readouterr().err
+
+
 def test_feedback_explicit_mimir_url_wins(monkeypatch, tmp_path: Path, capsys) -> None:
     captured: dict = {}
 

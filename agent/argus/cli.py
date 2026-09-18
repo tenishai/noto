@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
+from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
@@ -59,6 +60,7 @@ from argus.steps import (
     helm_set_values,
     platform_info_configmap,
     read_platform_info,
+    read_platform_info_required,
     read_platform_info_strict,
     retention_helm_sets,
     utc_now_rfc3339,
@@ -248,7 +250,31 @@ class TenantMismatch(RuntimeError):
     records as its own. Raised before anything is applied."""
 
 
-def _resolve_tenant(args: argparse.Namespace, contract_cluster: str, *, quiet: bool = False) -> str:
+@dataclass(frozen=True)
+class TenantResolution:
+    """Which tenant was chosen, and what chose it.
+
+    The source matters beyond the choice itself: "contract" means the platform had no
+    record to consult, which is the one outcome a caller may want to report even on a
+    successful run (see `NO_RECORD_NOTE`).
+    """
+
+    tenant: str
+    source: str  # "record" | "override" | "contract"
+
+
+# Said in the job's summary line when the tenant came from the contract because there was
+# no record to read. A fallback that only shows up on stderr is invisible in a green Job.
+NO_RECORD_NOTE = "no platform record: tenant from contract"
+
+
+def _resolve_tenant(
+    args: argparse.Namespace,
+    contract_cluster: str,
+    *,
+    quiet: bool = False,
+    strict: bool = False,
+) -> TenantResolution:
     """Which tenant this app's dashboards, rules and cardinality reports READ with.
 
     The gateway WRITES with the tenant `argus platform --cluster` was given and records it
@@ -268,13 +294,19 @@ def _resolve_tenant(args: argparse.Namespace, contract_cluster: str, *, quiet: b
     `observe`'s warnings on a machine that will never run `observe`, would be noise. Handled
     here rather than by catching TenantMismatch in the caller, because a second
     `_app_context` call would re-emit the drop-rule warning.
+
+    `strict` is for job mode, and it separates the two failures the lenient read collapses:
+    an absent record (fall back, and say so in the summary) from a present one that could
+    not be READ, which in a job almost always means the identity was not rolled out. That
+    one raises rather than falling back - see steps.read_platform_info_required.
     """
     explicit = getattr(args, "cluster", None)
-    recorded = read_platform_info(_step_context(args)).get("tenant")
+    read = read_platform_info_required if strict else read_platform_info
+    recorded = read(_step_context(args)).get("tenant")
     if recorded:
         if explicit and explicit != recorded:
             if quiet:
-                return explicit
+                return TenantResolution(explicit, "override")
             raise TenantMismatch(
                 f"tenant mismatch: platform writes as '{recorded}' but observe was told "
                 f"'{explicit}'; dashboards would read an empty tenant"
@@ -285,9 +317,9 @@ def _resolve_tenant(args: argparse.Namespace, contract_cluster: str, *, quiet: b
                 f"contract's cluster '{contract_cluster}'",
                 file=sys.stderr,
             )
-        return recorded
+        return TenantResolution(recorded, "record")
     if explicit:
-        return explicit
+        return TenantResolution(explicit, "override")
     if not quiet:
         print(
             f"warning: no {PLATFORM_INFO_CONFIGMAP} record in namespace {args.namespace}; "
@@ -295,30 +327,36 @@ def _resolve_tenant(args: argparse.Namespace, contract_cluster: str, *, quiet: b
             "platform` so the tenant the gateway writes with is the one dashboards read with.",
             file=sys.stderr,
         )
-    return contract_cluster
+    return TenantResolution(contract_cluster, "contract")
 
 
 def _app_context(
-    args: argparse.Namespace, *, tenant_from_platform: bool = False, quiet: bool = False
-) -> tuple[object, Context]:
+    args: argparse.Namespace,
+    *,
+    tenant_from_platform: bool = False,
+    quiet: bool = False,
+    strict: bool = False,
+) -> tuple[object, Context, TenantResolution]:
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
     p = _resolved(spec.class_name, spec.observability)
     _warn_if_drop_rules_ignored(p, spec.app)
-    cluster = (
-        _resolve_tenant(args, env.cluster, quiet=quiet)
-        if tenant_from_platform
-        else (getattr(args, "cluster", None) or env.cluster)
-    )
+    if tenant_from_platform:
+        resolution = _resolve_tenant(args, env.cluster, quiet=quiet, strict=strict)
+    else:
+        explicit = getattr(args, "cluster", None)
+        resolution = TenantResolution(
+            explicit or env.cluster, "override" if explicit else "contract"
+        )
     ctx = Context(
         topology="solo",
-        cluster=cluster,
+        cluster=resolution.tenant,
         environment=args.env,
         app=spec.app,
         namespace=env.namespace,
         platform_namespace=args.namespace,
     )
-    return p, ctx
+    return p, ctx, resolution
 
 
 def _platform_context(args: argparse.Namespace) -> Context:
@@ -352,7 +390,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     else:
         # Preview the tenant `observe` would resolve, silently: render neither warns nor
         # fails over the record (see `_resolve_tenant`'s `quiet`).
-        p, ctx = _app_context(args, tenant_from_platform=True, quiet=True)
+        p, ctx, _resolution = _app_context(args, tenant_from_platform=True, quiet=True)
         families = _render_families(p, ctx)
         label = f"{ctx.app} ({p.class_name})"
     for family, docs in families.items():
@@ -584,13 +622,17 @@ def _generate_slo_rules(
 
 
 def _run_observe(
-    args: argparse.Namespace, annotations: dict[str, str] | None = None
-) -> tuple[RunResult, Context]:
+    args: argparse.Namespace,
+    annotations: dict[str, str] | None = None,
+    *,
+    strict_record: bool = False,
+) -> tuple[RunResult, Context, TenantResolution]:
     """The one observe step sequence, shared by the operator command and job mode.
 
     The tenant is resolved from the platform's own record here, in this one shared place,
-    before anything is rendered or applied (see `_resolve_tenant`)."""
-    p, ctx = _app_context(args, tenant_from_platform=True)
+    before anything is rendered or applied (see `_resolve_tenant`). `strict_record` is job
+    mode's: an unreadable record fails the run instead of falling back."""
+    p, ctx, resolution = _app_context(args, tenant_from_platform=True, strict=strict_record)
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
     # Per-app families only. The shared collector tier belongs to `argus platform`:
@@ -608,12 +650,12 @@ def _run_observe(
     result = ProvisionEngine(steps).run(
         ledger, f"wire@{ctx.app}", _step_context(args, rendered, annotations)
     )
-    return result, ctx
+    return result, ctx, resolution
 
 
 def cmd_observe(args: argparse.Namespace) -> int:
     try:
-        result, _ctx = _run_observe(args)
+        result, _ctx, _resolution = _run_observe(args)
     except TenantMismatch as exc:
         # Loud, and before a single object is applied: the alternative is dashboards that
         # query a tenant nothing writes to, which look like a quiet, working install.
@@ -636,8 +678,12 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
     args.ledger = str(tmpdir / "argus.db")
 
     try:
-        result, ctx = _run_observe(
-            args, annotations={CONTRACT_SHA_ANNOTATION: inputs.contract_sha256}
+        result, ctx, resolution = _run_observe(
+            args,
+            annotations={CONTRACT_SHA_ANNOTATION: inputs.contract_sha256},
+            # A job has nobody reading its stderr: a record it could not read is a failure
+            # here, not a warning (see `_resolve_tenant`).
+            strict_record=True,
         )
     except Exception as exc:  # job mode must always end with a summary line, not a traceback
         print(failure_summary(None, _exception_reason(exc)), flush=True)
@@ -652,6 +698,9 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
                 len(result.steps_run),
                 len(result.steps_skipped),
                 inputs.contract_sha256,
+                # The summary is the only line the launcher reads, so a tenant that came
+                # from the contract for want of a record has to be said HERE.
+                note=NO_RECORD_NOTE if resolution.source == "contract" else None,
             ),
             flush=True,
         )
@@ -676,7 +725,11 @@ def cmd_feedback(args: argparse.Namespace) -> int:
 
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
-    client = MimirClient(base_url=_resolve_mimir_url(args), tenant=env.cluster)
+    # The same resolution every other reader uses: evidence distilled from a tenant the
+    # gateway does not write to is not evidence. Quiet, like `render`: this command
+    # applies nothing and refuses nothing.
+    tenant = _resolve_tenant(args, env.cluster, quiet=True).tenant
+    client = MimirClient(base_url=_resolve_mimir_url(args), tenant=tenant)
     raw = collect(client, spec.app, env.namespace, args.window_days)
 
     profile = UsageProfile(
@@ -708,7 +761,7 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
     try:
         # The same resolution `observe` uses, for the same reason: a group pushed to a
         # tenant the gateway does not write with evaluates over nothing, forever, quietly.
-        p, ctx = _app_context(args, tenant_from_platform=True)
+        p, ctx, _resolution = _app_context(args, tenant_from_platform=True)
     except TenantMismatch as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
