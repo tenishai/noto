@@ -8,6 +8,14 @@ grants the ONE identity the provisioner's Job itself runs as - the narrowest rol
 lets `observe` server-side apply its per-app artifacts and read the platform's own
 record. Nothing else: no secrets, no wildcard, no delete, no workload access.
 
+The trust scope, stated rather than left to be discovered: `argus-observe` is trusted
+platform-wide, across every app namespace including ones that do not exist yet. It has to
+be - gojira creates app namespaces dynamically, so a namespace-scoped grant could not
+cover the next app - and it means this identity is not sandboxed per tenant: whatever can
+run a Job as it can write monitors and rules for any app in the cluster. That is accepted
+scope for a platform provisioner, not an oversight. The narrowing that is real is the
+verb and kind list below, and who is allowed to create Jobs in the platform namespace.
+
 The three granted resources cover every kind the per-app families can render (see the
 contract invariant in tests/contract/test_invariants.py): scrape -> ServiceMonitor,
 PodMonitor; alerts -> PrometheusRule. `slo` renders a Sloth CR (PrometheusServiceLevel)

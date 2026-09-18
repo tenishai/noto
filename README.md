@@ -168,6 +168,15 @@ platform's own `argus-platform-info` ConfigMap by name only. Nothing else - no s
 wildcard, no delete, no workload access. Dashboards go over HTTP to Perses and need no
 Kubernetes permission at all.
 
+**The trust scope, stated plainly:** `argus-observe` is a platform-wide identity, not a
+per-tenant sandbox. Its ClusterRole reaches those three kinds in **every** app namespace,
+including namespaces that do not exist yet, because gojira creates app namespaces
+dynamically and a namespace-scoped grant could not cover the next app. Anything that can
+launch a Job as this ServiceAccount can therefore write monitors and rules for any app in
+the cluster. That is accepted scope for a platform provisioner, not an oversight; the
+narrowing that matters is the verb and kind list, and who may create Jobs in the platform
+namespace.
+
 A ready-to-copy Job manifest for the provisioner to create:
 
 ```yaml
@@ -182,11 +191,22 @@ spec:
   template:
     spec:
       serviceAccountName: argus-observe
+      # Explicit, because observe needs it: it reads the platform's record and applies
+      # its three kinds through the API server.
+      automountServiceAccountToken: true
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: observe
           image: <argus image>@sha256:<digest>
           args: ["observe"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           env:
             - name: GOJIRA_CONTRACT_YAML
               value: <the app's gojira.yaml, as a string>
@@ -203,6 +223,10 @@ spec:
 `<argus image>@sha256:<digest>` is a placeholder: pin the published image by digest, never a
 mutable tag, and never bake a registry name into this repo. The image is a normal argument to
 the provisioner's own Job template, not something Argus renders.
+
+The contract rides in an environment variable, and environment variables share the pod spec's
+own size budget (the API server rejects an object over roughly 1 MiB), so keep `gojira.yaml`
+small - well under that ceiling, since the spec carries everything else too.
 
 The last line the job ever writes to stdout is always `ARGUS_SUMMARY <one line>`, on both
 success and failure - the provisioner reads the Job's termination status for pass/fail and

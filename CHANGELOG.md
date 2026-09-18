@@ -8,6 +8,27 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Fixed
 
+- **`born` is written once and can no longer be rewritten by a failed read.** The platform's
+  birth instant is what gates `ArgusRetentionWindowShort`, and the write path used the same
+  lenient reader as the read path: NotFound, Forbidden, an apiserver blip and a network error
+  all collapsed to "no record", after which a full `data:` apply stamped `born` with now and
+  muted the alert for another whole retention window. `born` is now written by a
+  `kubectl create` that cannot overwrite (an `AlreadyExists` is success) and appears in no
+  later write at all; `tenant` and `environment` reconcile through a separate merge patch.
+  A pre-read that fails for any reason other than "absent" refuses to write, with
+  `refusing to rewrite the platform's birth instant: could not read the record: <one line>`.
+  The read path (`observe`, `rules-sync`, `render`, every dry run) still treats an unreadable
+  record as a missing one, so a preview never needs a cluster.
+
+- **`argus render` previews what the commands actually do.** `render --platform` now shows the
+  platform's own record and its own alert rules alongside the collector tier and the job
+  identity - all four families come from one renderer that `argus platform` and the goldens
+  also read, instead of three hand-derivations of the same thing. `argus render` (per-app)
+  resolves its tenant from the platform's record the way `observe` does, silently: it neither
+  warns about a missing record nor fails on a disagreeing `--cluster`, because it applies
+  nothing. `render_platform_rules` refuses a missing `metrics` promise with a sentence rather
+  than a bare `KeyError`.
+
 - **The collector tier is platform-owned; observing one app can no longer reconfigure the
   gateway for all.** The shared tier (PriorityClass, target-allocator RBAC, agent DaemonSet,
   gateway, target allocator) used to be re-rendered from the profile of whichever single app
@@ -25,6 +46,16 @@ All notable changes to Argus are documented here. The format is based on
   after upgrading - `observe` no longer applies the collector tier, so an existing cluster keeps
   its old gateway (missing traces pipeline included) until `platform` re-applies it. The apply
   itself is clean: same field manager, same object names, a superset manifest.
+
+  **That same run turns Loki's retention on, and it is irreversible.** Until now Loki's
+  compactor kept every log line it had, because nothing set a retention period and nothing
+  enabled the deletion loop. The first `argus platform` run after this merges sets both from
+  the profile's promise (`retention.logs`, `7d` by default), and on its next compaction loop
+  the compactor begins permanently deleting log data older than that window. This is the
+  intended behavior - a promise nobody enforces is a lie - but logs deleted this way are gone,
+  so decide the number BEFORE the run rather than after: override `retention.logs` in the
+  profile (and `retention.metrics` / `retention.traces`, which take effect in Mimir and Tempo
+  the same way) to whatever the cluster is actually meant to keep, then run `argus platform`.
 
 ### Added
 
@@ -74,7 +105,11 @@ All notable changes to Argus are documented here. The format is based on
   created dynamically) plus a namespaced Role granting `get` on the platform's own
   `argus-platform-info` ConfigMap by name only - nothing else, no secrets, no wildcard, no
   delete. Applied as a new `identity` family, right after `collectors`. README documents the
-  Job spec a provisioner should create.
+  Job spec a provisioner should create, hardened (`runAsNonRoot`, `RuntimeDefault` seccomp,
+  no privilege escalation, all capabilities dropped, `automountServiceAccountToken` explicit
+  because the job needs the token), and both README and the module state the trust scope
+  plainly: this identity is trusted platform-wide across every app namespace, not sandboxed
+  per tenant, because app namespaces are created dynamically.
 - **Profiles for gojira's `agent` and `gateway` workload classes**: agent -> runtime health
   (kubeletstats memory + kube-state-metrics restarts + logs; alert-based like cron - agents
   expose no /metrics, and an objective over metrics the app does not emit is an SLO that can
