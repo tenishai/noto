@@ -110,6 +110,56 @@ def test_a_missing_record_still_honors_an_explicit_cluster(tmp_path: Path, monke
     assert captured["ctx"].tenant == "chosen"
 
 
+def _render(tmp_path: Path, monkeypatch, runner: InfoRunner, *extra: str) -> tuple[int, dict]:
+    monkeypatch.setattr(cli, "real_runner", runner)
+    captured: dict = {}
+    render_families = cli._render_families
+
+    def spy(p, ctx):
+        captured["ctx"] = ctx
+        return render_families(p, ctx)
+
+    monkeypatch.setattr(cli, "_render_families", spy)
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--out",
+            str(tmp_path / "out"),
+            "--ledger",
+            str(tmp_path / "l.db"),
+            *extra,
+        ]
+    )
+    return code, captured
+
+
+def test_render_previews_the_recorded_tenant(tmp_path: Path, monkeypatch, capsys) -> None:
+    """A preview whose tenant is not the one `observe` would resolve is a preview of a
+    run that will not happen."""
+    code, captured = _render(tmp_path, monkeypatch, InfoRunner(dict(RECORDED)))
+    assert code == 0
+    assert captured["ctx"].tenant == "real-name"
+
+
+def test_render_never_warns_and_never_fails_over_the_record(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Silent on every branch `observe` is loud on: a disagreeing override, a missing
+    record. `render` applies nothing, so it has nothing to refuse."""
+    code, _ = _render(tmp_path, monkeypatch, InfoRunner(dict(RECORDED)), "--cluster", "wrong-name")
+    assert code == 0
+    assert capsys.readouterr().err == ""
+
+    code, captured = _render(tmp_path, monkeypatch, InfoRunner(None))
+    assert code == 0
+    assert capsys.readouterr().err == ""
+    assert captured["ctx"].tenant == CONTRACT_CLUSTER
+
+
 def test_job_mode_reports_a_tenant_mismatch_as_the_summary_line(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

@@ -15,11 +15,11 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "agent"))
 
-from argus.cli import _platform_profile  # noqa: E402
+from argus.cli import _platform_profile, _render_platform_families  # noqa: E402
 from argus.integrations.catalog import load_catalog  # noqa: E402
 from argus.profiles.loader import load_baseline, load_class, load_override  # noqa: E402
 from argus.profiles.resolve import resolve  # noqa: E402
-from argus.rendering.alerts import render_alert_rules, render_platform_rules  # noqa: E402
+from argus.rendering.alerts import render_alert_rules  # noqa: E402
 from argus.rendering.collectors import (  # noqa: E402
     render_agent,
     render_gateway,
@@ -28,10 +28,8 @@ from argus.rendering.collectors import (  # noqa: E402
 )
 from argus.rendering.context import Context  # noqa: E402
 from argus.rendering.perses import render_perses  # noqa: E402
-from argus.rendering.rbac import render_observe_rbac  # noqa: E402
 from argus.rendering.scrape import render_podmonitor, render_servicemonitor  # noqa: E402
 from argus.rendering.slo import render_sloth  # noqa: E402
-from argus.steps import platform_info_configmap  # noqa: E402
 
 GOLDEN = REPO / "tests" / "contract" / "golden"
 PROFILES = REPO / "profiles"
@@ -49,7 +47,6 @@ TOPOLOGIES = ["solo", "regional"]
 # age gate from it (born + the promise), so a wall clock here would rewrite the file on
 # every run and the diff would stop meaning anything.
 GOLDEN_BORN = "2026-01-01T00:00:00Z"
-GOLDEN_BORN_EPOCH = 1767225600
 
 REGIONAL_ENDPOINTS = {
     "mimir_otlp_http": "http://mimir.us-east4.argus.internal:9009/otlp",
@@ -112,14 +109,20 @@ _IDENTITY_DOC_NAMES = [
 
 
 def render_platform(topology: str) -> dict[str, object]:
-    """The shared collector tier, from the CLI's own platform profile so a golden can
-    never show a tier `argus platform` would not apply. Also the job's own identity
-    (`identity-*`): unrelated to the collector tier, but applied by `argus platform`
-    right after it (see `cli._render_platform_families`'s docstring) - carries no
-    topology dependence, so it renders byte-identical in both cases, same as
-    `collector-targetallocator`."""
+    """Everything `argus platform` puts in a cluster, taken from the CLI's own
+    `_render_platform_families` so a golden can never show something a real run would not
+    apply. Nothing here is re-derived by hand.
+
+    The families are split back into one document per file because that is what a golden
+    is for: a reviewable diff per object. `identity-*` and `collector-targetallocator`
+    carry no topology dependence and so render byte-identical in both cases. The regional
+    ingest collector is the one document `_render_platform_families` does not carry (it
+    belongs to the regional topology, which `argus platform` does not stand up yet), so it
+    is still rendered directly.
+    """
     p = _platform_profile()
     ctx = platform_context(topology)
+    families = _render_platform_families(ctx, GOLDEN_BORN)
     artifacts: dict[str, object] = {
         "collector-agent": render_agent(p, ctx, catalog=load_catalog(REPO / "integrations")),
         "collector-gateway": render_gateway(p, ctx),
@@ -127,20 +130,13 @@ def render_platform(topology: str) -> dict[str, object]:
     }
     if topology == "regional":
         artifacts["collector-ingest"] = render_ingest(p, ctx)
-    identity_docs = render_observe_rbac(ctx.platform_namespace)
-    for name, doc in zip(_IDENTITY_DOC_NAMES, identity_docs, strict=True):
+    for name, doc in zip(_IDENTITY_DOC_NAMES, families["identity"], strict=True):
         artifacts[name] = doc
-    # The platform's own record and its own alert rules. Both are applied by `argus
-    # platform` and belong to no app. A real run stamps the birth instant it finds (or
-    # records now); a golden needs a fixed one, or the file would differ every run.
-    artifacts["platform-info"] = platform_info_configmap(
-        ctx.platform_namespace, GOLDEN_BORN, ctx.cluster, ctx.environment
-    )
-    artifacts["platform-rules"] = render_platform_rules(
-        load_baseline(PROFILES / "baseline.yaml").budgets.retention,
-        GOLDEN_BORN_EPOCH,
-        namespace=ctx.platform_namespace,
-    )
+    # The platform's own record and its own alert rules, both applied by `argus platform`
+    # and belonging to no app. A real run uses the birth instant it finds (or records now);
+    # a golden needs a fixed one, or the file would differ on every run.
+    (artifacts["platform-info"],) = families["platform-info"]
+    (artifacts["platform-rules"],) = families["platform-rules"]
     return artifacts
 
 

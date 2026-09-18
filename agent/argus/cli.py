@@ -57,6 +57,7 @@ from argus.steps import (
     ValidateRoundTrip,
     WaitForCollectors,
     helm_set_values,
+    platform_info_configmap,
     read_platform_info,
     read_platform_info_strict,
     retention_helm_sets,
@@ -85,7 +86,13 @@ PLATFORM_ORDER = [
 
 
 def real_runner(cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
-    proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True)
+    """A missing binary is reported the way a failed command is, not as a traceback:
+    `render` consults the platform's record through this runner and must still render on a
+    machine that has no kubectl at all."""
+    try:
+        proc = subprocess.run(cmd, input=stdin_text, capture_output=True, text=True)
+    except (FileNotFoundError, PermissionError) as exc:
+        return 127, f"{cmd[0]}: {exc}"
     return proc.returncode, proc.stdout + proc.stderr
 
 
@@ -131,17 +138,35 @@ def _platform_profile() -> ResolvedProfile:
     return p.model_copy(update={"class_name": "platform", "signals": list(ALL_SIGNALS)})
 
 
-def _render_platform_families(ctx: Context) -> dict[str, list[dict]]:
-    """The platform-owned families. `ctx` carries no app and no namespace: nothing in
-    the shared tier may depend on one app (the collector CRDs live in the argus
-    namespace and are named by role, never by app).
+def _render_platform_families(ctx: Context, born: str) -> dict[str, list[dict]]:
+    """Everything `argus platform` puts in a cluster, rendered in ONE place so that
+    `render --platform`, the goldens and the real apply can never show three different
+    answers. `ctx` carries no app and no namespace: nothing in the shared tier may depend
+    on one app (the collector CRDs live in the argus namespace and are named by role,
+    never by app).
 
-    `identity` is a separate family from `collectors` on purpose: it is the job
-    identity a provisioner's Job runs `argus observe` as, an unrelated concern from the
-    collector tier (RBAC objects have no CRD dependency, so it does not need the
-    collectors' `opentelemetry-operator`-after-helm ordering either) - keeping it
-    separate keeps both families' names meaningful. `cmd_platform` applies it right
-    after `collectors`, which keeps `ApplyRendered` ordering a plain list append."""
+    `born` is the platform's birth instant, RFC 3339. The retention alert's age gate is
+    derived from it here, in one place, so a preview and a live run count from the same
+    instant.
+
+    The families and why each is its own:
+
+      collectors      the shared agent/gateway/allocator tier. Applied AFTER the helm
+                      steps: these are OpenTelemetryCollector custom resources and the
+                      CRDs and webhook that accept them arrive with the operator's chart.
+      identity        the job identity a provisioner's Job runs `argus observe` as. An
+                      unrelated concern from the collector tier, and plain RBAC with no
+                      CRD dependency, so it needs no particular position.
+      platform-info   the platform's own record, in the shape it takes in the cluster.
+                      PREVIEW AND GOLDEN ONLY: `cmd_platform` never kubectl-applies this
+                      family, because a full `data:` apply carries `born` (see
+                      steps.EnsurePlatformInfo, which creates that key once and patches
+                      only tenant/environment afterwards). It is rendered here anyway so
+                      `render --platform` shows the record a run would leave behind.
+      platform-rules  the platform's own PrometheusRule (retention). Needs the CRD that
+                      arrives with kube-prometheus-stack, so it too is applied after the
+                      helm steps.
+    """
     p = _platform_profile()
     return {
         "collectors": [
@@ -152,6 +177,14 @@ def _render_platform_families(ctx: Context) -> dict[str, list[dict]]:
             render_targetallocator(p, ctx),
         ],
         "identity": render_observe_rbac(ctx.platform_namespace),
+        "platform-info": [
+            platform_info_configmap(ctx.platform_namespace, born, ctx.cluster, ctx.environment)
+        ],
+        "platform-rules": [
+            render_platform_rules(
+                p.budgets.retention, _born_epoch(born), namespace=ctx.platform_namespace
+            )
+        ],
     }
 
 
@@ -207,7 +240,7 @@ class TenantMismatch(RuntimeError):
     records as its own. Raised before anything is applied."""
 
 
-def _resolve_tenant(args: argparse.Namespace, contract_cluster: str) -> str:
+def _resolve_tenant(args: argparse.Namespace, contract_cluster: str, *, quiet: bool = False) -> str:
     """Which tenant this app's dashboards, rules and cardinality reports READ with.
 
     The gateway WRITES with the tenant `argus platform --cluster` was given and records it
@@ -221,16 +254,24 @@ def _resolve_tenant(args: argparse.Namespace, contract_cluster: str) -> str:
 
     Reading the record is a plain `kubectl get` through the runner and never raises, so
     `render` and `--dry-run` keep working with no cluster in reach.
+
+    `quiet` is for `render`, which previews rather than applies: it consults the record the
+    same way, but says nothing and refuses nothing. A preview that failed, or that repeated
+    `observe`'s warnings on a machine that will never run `observe`, would be noise. Handled
+    here rather than by catching TenantMismatch in the caller, because a second
+    `_app_context` call would re-emit the drop-rule warning.
     """
     explicit = getattr(args, "cluster", None)
     recorded = read_platform_info(_step_context(args)).get("tenant")
     if recorded:
         if explicit and explicit != recorded:
+            if quiet:
+                return explicit
             raise TenantMismatch(
                 f"tenant mismatch: platform writes as '{recorded}' but observe was told "
                 f"'{explicit}'; dashboards would read an empty tenant"
             )
-        if not explicit and contract_cluster != recorded:
+        if not explicit and contract_cluster != recorded and not quiet:
             print(
                 f"info: the platform writes as tenant '{recorded}'; using it instead of the "
                 f"contract's cluster '{contract_cluster}'",
@@ -239,24 +280,25 @@ def _resolve_tenant(args: argparse.Namespace, contract_cluster: str) -> str:
         return recorded
     if explicit:
         return explicit
-    print(
-        f"warning: no {PLATFORM_INFO_CONFIGMAP} record in namespace {args.namespace}; "
-        f"falling back to the contract's cluster '{contract_cluster}'. Re-run `argus "
-        "platform` so the tenant the gateway writes with is the one dashboards read with.",
-        file=sys.stderr,
-    )
+    if not quiet:
+        print(
+            f"warning: no {PLATFORM_INFO_CONFIGMAP} record in namespace {args.namespace}; "
+            f"falling back to the contract's cluster '{contract_cluster}'. Re-run `argus "
+            "platform` so the tenant the gateway writes with is the one dashboards read with.",
+            file=sys.stderr,
+        )
     return contract_cluster
 
 
 def _app_context(
-    args: argparse.Namespace, *, tenant_from_platform: bool = False
+    args: argparse.Namespace, *, tenant_from_platform: bool = False, quiet: bool = False
 ) -> tuple[object, Context]:
     spec = read_gojira_yaml(Path(args.gojira))
     env = spec.environment(args.env)
     p = _resolved(spec.class_name, spec.observability)
     _warn_if_drop_rules_ignored(p, spec.app)
     cluster = (
-        _resolve_tenant(args, env.cluster)
+        _resolve_tenant(args, env.cluster, quiet=quiet)
         if tenant_from_platform
         else (getattr(args, "cluster", None) or env.cluster)
     )
@@ -293,10 +335,16 @@ def cmd_render(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if args.platform:
         ctx = _platform_context(args)
-        families = _render_platform_families(ctx)
+        # The recorded birth instant when there is one, so the previewed age gate is the
+        # one a real run would apply; otherwise now, the same fallback the run itself uses.
+        # The read is the lenient one: a preview must never need a cluster.
+        born = read_platform_info(_step_context(args)).get("born") or utc_now_rfc3339()
+        families = _render_platform_families(ctx, born)
         label = f"platform tier for {ctx.cluster} ({ctx.environment})"
     else:
-        p, ctx = _app_context(args)
+        # Preview the tenant `observe` would resolve, silently: render neither warns nor
+        # fails over the record (see `_resolve_tenant`'s `quiet`).
+        p, ctx = _app_context(args, tenant_from_platform=True, quiet=True)
         families = _render_families(p, ctx)
         label = f"{ctx.app} ({p.class_name})"
     for family, docs in families.items():
@@ -438,10 +486,7 @@ def cmd_platform(args: argparse.Namespace) -> int:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
     born = recorded.get("born") or utc_now_rfc3339()
-    rendered = _render_platform_families(_platform_context(args))
-    rendered["platform-rules"] = [
-        render_platform_rules(retention, _born_epoch(born), namespace=args.namespace)
-    ]
+    rendered = _render_platform_families(_platform_context(args), born)
     step_context.rendered = rendered
     steps = [
         EnsureNamespace(),

@@ -55,6 +55,22 @@ def test_a_signal_with_no_promise_gets_no_sets() -> None:
     assert set(sets) == {"mimir"}
 
 
+def test_a_missing_metrics_promise_fails_the_same_way_on_both_sides() -> None:
+    """`retention_helm_sets` tolerates a signal with no promise (the chart keeps its own
+    default); the alert cannot, since there is no window to check. It must at least say so
+    in a sentence rather than as a bare KeyError."""
+    assert retention_helm_sets({"logs": "7d"}) == {
+        "loki": [
+            "--set",
+            "loki.limits_config.retention_period=7d",
+            "--set",
+            "loki.compactor.retention_enabled=true",
+        ]
+    }
+    with pytest.raises(ValueError, match="retention has no metrics promise"):
+        render_platform_rules({"logs": "7d"}, 0)
+
+
 def test_an_overridden_promise_reaches_the_chart() -> None:
     sets = retention_helm_sets({"metrics": "90d", "logs": "30d", "traces": "14d"})
     assert sets["mimir"] == [

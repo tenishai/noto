@@ -323,7 +323,12 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    assert {p.name for p in out.glob("*.yaml")} == {"collectors.yaml", "identity.yaml"}
+    assert {p.name for p in out.glob("*.yaml")} == {
+        "collectors.yaml",
+        "identity.yaml",
+        "platform-info.yaml",
+        "platform-rules.yaml",
+    }
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
     names = {d["metadata"]["name"] for d in docs}
     assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
@@ -366,6 +371,57 @@ def test_cli_render_platform_writes_the_observe_job_identity(tmp_path: Path) -> 
     assert "secrets" not in dumped
     assert "*" not in dumped
     assert "delete" not in dumped
+
+
+def test_cli_render_platform_previews_exactly_what_platform_applies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A preview that omits half of what a run applies is worse than no preview: the
+    platform's own record and its own alert rules go through the same renderer, so
+    `render --platform` and `platform` cannot show different answers."""
+    from tests.support.fake_cluster import InfoRunner
+
+    recorded = {"born": "2026-01-01T00:00:00Z", "tenant": "c1", "environment": "dev"}
+    runner = InfoRunner(dict(recorded))
+    monkeypatch.setattr(cli, "real_runner", runner)
+    out = tmp_path / "rendered"
+    assert (
+        cli.main(
+            [
+                "render",
+                "--platform",
+                "--cluster",
+                "c1",
+                "--env",
+                "dev",
+                "--out",
+                str(out),
+                "--ledger",
+                str(tmp_path / "l.db"),
+            ]
+        )
+        == 0
+    )
+    previewed = list(yaml.safe_load_all((out / "platform-rules.yaml").read_text()))
+    assert [d["kind"] for d in previewed] == ["PrometheusRule"]
+    info = list(yaml.safe_load_all((out / "platform-info.yaml").read_text()))
+    assert info[0]["data"] == recorded
+
+    applied_runner = InfoRunner(dict(recorded))
+    monkeypatch.setattr(cli, "real_runner", applied_runner)
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", lambda *a, **k: 1)
+    assert (
+        cli.main(
+            ["platform", "--cluster", "c1", "--env", "dev", "--ledger", str(tmp_path / "p.db")]
+        )
+        == 0
+    )
+    applied = [
+        d
+        for d in applied_runner.applied_docs()
+        if d.get("metadata", {}).get("name") == "argus-platform"
+    ]
+    assert applied == previewed
 
 
 def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(

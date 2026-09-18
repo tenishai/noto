@@ -36,6 +36,8 @@ REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
 CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 TOPOLOGIES = ["solo", "regional"]
+# A fixed birth instant, so nothing rendered here depends on a wall clock.
+BORN = "2026-01-01T00:00:00Z"
 
 pytestmark = pytest.mark.contract
 
@@ -106,7 +108,7 @@ def test_observing_an_app_without_traces_does_not_change_the_gateway() -> None:
         for doc in docs:
             assert doc.get("kind") != "OpenTelemetryCollector", family
 
-    platform = cli._render_platform_families(_platform_ctx("solo"))
+    platform = cli._render_platform_families(_platform_ctx("solo"), BORN)
     pipelines = dict(iter_pipelines(_role(platform["collectors"], "gateway")))
     assert {"metrics", "logs", "traces", "metrics/self"} <= set(pipelines)
 
@@ -141,14 +143,14 @@ def test_platform_profile_has_all_signals_and_only_baseline_rules(monkeypatch) -
         drop=[r for r in baseline.drop if r.enabled],
         log_collection=baseline.log_collection,
     )
-    first = cli._render_platform_families(ctx)
+    first = cli._render_platform_families(ctx, BORN)
     assert _role(first["collectors"], "gateway") == render_gateway(expected, ctx)
 
     def _no_class_files(*_args, **_kwargs):
         raise AssertionError("the platform collector tier must not read a class profile")
 
     monkeypatch.setattr(cli, "load_class", _no_class_files)
-    assert cli._render_platform_families(ctx) == first
+    assert cli._render_platform_families(ctx, BORN) == first
 
 
 def _tier_profile():

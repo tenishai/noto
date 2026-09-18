@@ -100,7 +100,15 @@ tenant from the record, in this order:
 3. otherwise (no record: a platform installed before this existed) the contract's own cluster string,
    with a warning to re-run `argus platform`.
 
-`render` and `--dry-run` never require a cluster: an unreadable record is simply a missing one.
+Three commands consult the record: `observe` and `rules-sync` resolve their tenant from it by the
+order above, and `render` previews the same resolution **silently** - it neither warns about a
+missing record nor fails on a `--cluster` that disagrees with one, because it applies nothing. On
+those read paths an unreadable record is simply a missing one, so `render` and `--dry-run` never
+require a cluster.
+
+The WRITE path is the opposite: `argus platform` refuses to write at all when it cannot read the
+record and the reason is not "absent", because `born` can only be written once and a mistaken
+rewrite would mute the retention alert for another full window.
 
 `rules-sync` resolves its tenant the same way `observe` does, for the same reason: a rule group filed
 under a tenant the gateway does not write with evaluates over nothing. `cardinality` still reads with

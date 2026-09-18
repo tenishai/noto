@@ -108,9 +108,16 @@ def render_platform_rules(
     scalars without the `bool` modifier ("comparisons between scalars must use BOOL
     modifier", verified with promtool against the pinned Prometheus), and `bool` would
     turn the age gate into a constant 0/1 rather than the filter `and on()` needs.
+
+    A missing `metrics` promise is refused with a sentence rather than a bare KeyError:
+    `retention_helm_sets` tolerates a signal with no promise (the chart keeps its own
+    default), so the two sides of the same profile key must at least fail legibly on the
+    same input.
     """
-    days = _promise_days(retention["metrics"])
-    promise = retention["metrics"]
+    promise = retention.get("metrics")
+    if not promise:
+        raise ValueError("retention has no metrics promise")
+    days = _promise_days(promise)
     age_gate = born_epoch + days * _SECONDS_PER_DAY
     expr = f"absent_over_time(up[1h] offset {days - 1}d) and on() (vector(time()) > {age_gate})"
     return {
