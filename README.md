@@ -80,13 +80,41 @@ or disabled by an app's class or `observability:` override is a no-op; `observe`
 on stderr, naming the ignored rules), and per-app shaping in the shared gateway is a registered
 follow-up.
 
+### The platform's own record
+
+`argus platform` writes down what it is, in an `argus-platform-info` ConfigMap in the platform
+namespace: `born` (its birth instant, written once and never overwritten), `tenant` (the cluster name
+it was given, which is the tenant the gateway writes every metric, log and trace with) and
+`environment` (what the gateway stamps on everything it forwards). Re-running `platform` updates
+`tenant` and `environment` - they describe the platform as it is now, not as it was born.
+
 **The write tenant and the read tenant must be the same value.** The gateway writes with the tenant
 `argus platform --cluster` was given. `observe`, `render`, `rules-sync` and `cardinality` each read or
 write with their OWN `--cluster`/`--tenant` (falling back to the app's gojira.yaml cluster string when
 no override is given) - a per-app command, not the platform. If that value ever differs from the
 cluster `platform` was run with, dashboards, rules and cardinality reports query a tenant nothing
-writes to: empty panels, no error. Until a later task makes `platform` record its tenant and these
-commands read it back, keeping them in sync is on the operator.
+writes to: empty panels, no error. The record above is what closes that gap; until `observe` reads it
+back, keeping the two in sync is still on the operator.
+
+### Retention, enforced and alarmed
+
+The profile's `budgets.retention` (`metrics: 30d`, `logs: 7d`, `traces: 7d`) is not a comment.
+`argus platform` passes it to each backend as that backend's own retention setting: Mimir's
+compactor block retention, Loki's retention period (plus the compactor switch that actually makes it
+delete), Tempo's block retention. It also applies a platform-level `PrometheusRule` named
+`argus-platform`, whose `ArgusRetentionWindowShort` fires when nothing was stored at the far edge of
+the promised window - a compactor deleting early, or object storage that stopped accepting blocks.
+The alert is gated on the platform being older than the promise (that is what `born` is for), so a
+cluster stood up this morning does not alarm about its missing 29-day-old samples.
+
+### Rules reach Mimir's ruler
+
+Nothing in this stack evaluates a `PrometheusRule` on its own: kube-prometheus-stack is installed for
+its operator, CRDs and Alertmanager, with Prometheus itself disabled, because Mimir is the metrics
+engine. Rules become live only once they are pushed into Mimir's ruler, which is what
+`argus rules-sync --gojira <app> --env <env>` does for one app's groups. The platform's own group
+(`argus-platform`) is applied as a CRD like the rest and has no push of its own yet; `argus platform`
+says so at the end of every run.
 
 ### Endpoints: in-cluster by default, port-forward on request
 

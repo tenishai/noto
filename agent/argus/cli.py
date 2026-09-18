@@ -32,7 +32,7 @@ from argus.perses_client import Opener
 from argus.profiles.loader import load_baseline, load_class, load_override
 from argus.profiles.models import ClassProfile, DropRule, ResolvedProfile
 from argus.profiles.resolve import resolve
-from argus.rendering.alerts import render_alert_rules
+from argus.rendering.alerts import render_alert_rules, render_platform_rules
 from argus.rendering.collectors import (
     render_agent,
     render_gateway,
@@ -48,11 +48,16 @@ from argus.rendering.slo import render_sloth
 from argus.steps import (
     ApplyRendered,
     EnsureNamespace,
+    EnsurePlatformInfo,
     HelmInstall,
     ProvisionPerses,
     StepContext,
     ValidateRoundTrip,
     WaitForCollectors,
+    helm_set_values,
+    read_platform_info,
+    retention_helm_sets,
+    utc_now_rfc3339,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -290,13 +295,51 @@ def _step_context(
     )
 
 
+_RULER_NOTE = (
+    "note: PrometheusRule objects are inert in this stack (kube-prometheus-stack ships the\n"
+    "operator, not a Prometheus) - rules are only evaluated once they reach Mimir's ruler.\n"
+    "`argus rules-sync --gojira <app> --env <env>` pushes an app's groups; the platform's own\n"
+    'group (argus-platform) has no push of its own yet (README, "Rules reach Mimir\'s ruler").'
+)
+
+
+def _born_epoch(born: str) -> int:
+    """The recorded birth instant as a unix timestamp. A hand-edited or truncated `born`
+    must not stop a platform run: warn, and count the age gate from now instead (the alert
+    then simply stays quiet for one more retention window)."""
+    try:
+        return int(datetime.datetime.fromisoformat(born).timestamp())
+    except ValueError:
+        print(
+            f"warning: the platform record's born value {born!r} is not an RFC 3339 "
+            "timestamp; the retention alert's age gate counts from now instead",
+            file=sys.stderr,
+        )
+        return int(datetime.datetime.now(datetime.UTC).timestamp())
+
+
 def cmd_platform(args: argparse.Namespace) -> int:
     ledger = Ledger(Path(args.ledger))
     baseline = load_baseline(REPO_ROOT / "profiles" / "baseline.yaml")
     budget = baseline.budgets.cardinality[args.env]
+    retention = dict(baseline.budgets.retention)
+    retention_sets = retention_helm_sets(retention)
     rendered = _render_platform_families(_platform_context(args))
+    step_context = _step_context(args, rendered)
+    # The platform rules need the birth instant BEFORE the engine runs (they are rendered,
+    # not generated at apply time), and EnsurePlatformInfo needs the same value so the
+    # alert's age gate and the record can never disagree by a second. An unborn platform
+    # (or an unreachable cluster in a dry run) reads back nothing and is born now.
+    born = read_platform_info(step_context).get("born") or utc_now_rfc3339()
+    rendered["platform-rules"] = [
+        render_platform_rules(retention, _born_epoch(born), namespace=args.namespace)
+    ]
     steps = [
         EnsureNamespace(),
+        # Before the platform rules, which count their age gate from the `born` it records,
+        # and before anything else has a chance to fail: the record is what `observe` reads
+        # to learn which tenant this platform writes as.
+        EnsurePlatformInfo(tenant=args.cluster, environment=args.env, born=born),
         *[
             HelmInstall(
                 component=c,
@@ -306,7 +349,10 @@ def cmd_platform(args: argparse.Namespace) -> int:
                     {"mimir.structuredConfig.limits.max_global_series_per_user": str(budget)}
                     if c == "mimir"
                     else {}
-                ),
+                )
+                # ... and the profile's retention promise becomes each backend's own
+                # retention setting, the same way (see retention_helm_sets).
+                | helm_set_values(retention_sets.get(c, [])),
             )
             for c in PLATFORM_ORDER
         ],
@@ -321,6 +367,9 @@ def cmd_platform(args: argparse.Namespace) -> int:
         # particular position relative to the helm installs - applying it right after
         # `collectors` keeps this list a simple append.
         ApplyRendered(family="identity"),
+        # The platform's own alert rules (retention). A PrometheusRule needs the CRD that
+        # arrives with kube-prometheus-stack, so this must stay after the helm steps.
+        ApplyRendered(family="platform-rules"),
         # The apply above has no --wait (unlike HelmInstall): the OpenTelemetry
         # operator still has to turn the CRs into workloads and pull images, so a
         # fresh install (or an upgrade rolling the DaemonSet) sees ordinary
@@ -329,10 +378,10 @@ def cmd_platform(args: argparse.Namespace) -> int:
         WaitForCollectors(),
         ValidateRoundTrip(),
     ]
-    result = ProvisionEngine(steps).run(
-        ledger, f"platform@{args.cluster}", _step_context(args, rendered)
-    )
+    result = ProvisionEngine(steps).run(ledger, f"platform@{args.cluster}", step_context)
     _report(result)
+    if result.completed:
+        print(_RULER_NOTE)
     return 0 if result.completed else 1
 
 
@@ -542,15 +591,16 @@ def main(argv: list[str] | None = None) -> int:
             # headers) must be ONE value per cluster. gojira.yaml cluster strings
             # drift across apps (live-found: one deployment's short name vs the real
             # cluster name), which would scatter one cluster's apps across tenants.
+            #
             # Pin it here; the per-app file stays the fallback.
             #
             # WARNING: the gateway that actually WRITES metrics/logs/traces gets its
-            # tenant from `argus platform --cluster` (task 3, born-observed); this
-            # flag only selects which tenant THIS command READS/writes rule groups
-            # for. The two must be given the same value, or dashboards, rules-sync
-            # and cardinality query a tenant nothing writes to: empty panels, no
-            # error. A later task makes `platform` record its tenant and `observe`
-            # read it back, closing this gap; until then it is on the operator.
+            # tenant from `argus platform --cluster`, and the platform now RECORDS that
+            # tenant (the argus-platform-info ConfigMap above); this flag still only
+            # selects which tenant THIS command READS/writes rule groups for. The two
+            # must be given the same value, or dashboards, rules-sync and cardinality
+            # query a tenant nothing writes to: empty panels, no error. The next commit
+            # has `observe` read the record back and close this gap.
             p.add_argument(
                 "--cluster",
                 default=None,

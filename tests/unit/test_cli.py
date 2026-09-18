@@ -388,19 +388,25 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
         ]
     )
     assert code == 0
-    verbs = [
-        (c[0], c[1])
-        for c, _ in runner.calls
-        if (c[0] == "helm" and c[1] == "upgrade") or "apply" in c
+    # Every apply, in order, judged by what it actually applies rather than by position:
+    # the platform's own record (a plain ConfigMap, no CRD to wait for) is applied before
+    # the helm steps on purpose, so a count would say nothing about the CRD dependency.
+    ordered = [
+        (c, s) for c, s in runner.calls if (c[0] == "helm" and c[1] == "upgrade") or "apply" in c
     ]
-    applies = [i for i, v in enumerate(verbs) if v[0] == "kubectl"]
-    helms = [i for i, v in enumerate(verbs) if v[0] == "helm"]
-    assert len(applies) == 2  # collectors, identity
-    assert applies[0] > max(helms)
-    apply_calls = [(c, s) for c, s in runner.calls if "apply" in c]
-    all_kinds = {
-        doc["kind"] for _cmd, stdin_text in apply_calls for doc in yaml.safe_load_all(stdin_text)
+    last_helm = max(i for i, (c, _s) in enumerate(ordered) if c[0] == "helm")
+    kinds_at = {
+        i: {d["kind"] for d in yaml.safe_load_all(s) if d}
+        for i, (c, s) in enumerate(ordered)
+        if c[0] == "kubectl" and s
     }
+    needs_crds = [
+        i
+        for i, kinds in kinds_at.items()
+        if kinds & {"OpenTelemetryCollector", "ClusterRole", "PrometheusRule"}
+    ]
+    assert needs_crds and min(needs_crds) > last_helm
+    all_kinds = set().union(*kinds_at.values())
     assert "OpenTelemetryCollector" in all_kinds
     assert {"ServiceAccount", "Role", "RoleBinding"} <= all_kinds
 

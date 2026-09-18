@@ -147,17 +147,34 @@ The baseline profile declares `retention: {metrics: 30d, logs: 7d, traces:
 be discovered.
 
 - **Enforced**: `argus platform` passes the metrics budget to Mimir as
-  `limits.compactor_blocks_retention_period`, the same way it already passes
-  the cardinality budget. Logs and traces follow the same pattern for Loki
-  and Tempo.
+  `limits.compactor_blocks_retention_period` (through the same
+  `mimir.structuredConfig` passthrough the cardinality budget already uses).
+  Logs and traces follow the same pattern: `loki.limits_config.retention_period`
+  plus `loki.compactor.retention_enabled` (the period alone is inert; Loki only
+  deletes when the compactor's retention loop is on, and refuses to start
+  without a `delete_request_store`, which the values file supplies), and
+  `tempo.retention` - the chart's own key, which it templates into
+  `compactor.compaction.block_retention`, and which must be given in hours
+  because a Go duration has no day unit. Every key verified against the pinned
+  chart and then against the backend's own binary.
 - **Alarmed**: a platform-level rule group, applied once per cluster by
   `argus platform` (not per app):
   `ArgusRetentionWindowShort` fires when no sample exists at
   `promise - 1d` ago (`absent_over_time(up[1h] offset 29d)`), but only once
-  the platform is older than the promise. The platform's age comes from a
-  `argus-platform-info` ConfigMap holding a `born` timestamp, created once by
-  a check-then-create step and never overwritten. Without the age gate the
-  alert would fire for the first month of every new cluster.
+  the platform is older than the promise
+  (`and on() (vector(time()) > born + promise)`; `vector(time())` rather than
+  a bare `time()` because PromQL refuses a comparison between two scalars).
+  The platform's age comes from the `argus-platform-info` ConfigMap's `born`
+  timestamp, written once by a check-then-write step and never overwritten.
+  Without the age gate the alert would fire for the first month of every new
+  cluster.
+- The same ConfigMap carries `tenant` and `environment`, updated on every
+  `platform` run (only `born` is immutable), so the tenant an app reads with
+  can be resolved from the tenant the gateway writes with.
+- A `PrometheusRule` is inert in this stack (the operator is installed without
+  a Prometheus), so the platform group is evaluated only once pushed into
+  Mimir's ruler. `argus platform` says so at the end of every run; a push for
+  the platform's own group, next to `rules-sync`, is a registered follow-up.
 
 ## The rightsizing handover (context, not built here)
 

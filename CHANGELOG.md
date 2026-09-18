@@ -28,6 +28,23 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **The retention promise is enforced in the backends and alarmed when the window is
+  short.** `profiles/baseline.yaml`'s `budgets.retention` (`metrics: 30d, logs: 7d,
+  traces: 7d`) reached nothing; it now becomes each backend's own retention setting at
+  apply time, the same way the cardinality budget already did: Mimir
+  (`mimir.structuredConfig.limits.compactor_blocks_retention_period`), Loki
+  (`loki.limits_config.retention_period` plus `loki.compactor.retention_enabled`, which is
+  what actually makes it delete), Tempo (`tempo.retention`, the chart's own key for
+  `compactor.compaction.block_retention`, converted to hours because a Go duration has no
+  day unit). `helm/values/loki.yaml` gains `compactor.delete_request_store`, without which
+  Loki refuses to start once retention is enabled. Every key was verified against the
+  PINNED chart and then against the backend's own binary, not from memory. `argus platform`
+  also applies a platform-level `PrometheusRule` (`argus-platform`) whose
+  `ArgusRetentionWindowShort` fires when nothing was stored at the far edge of the promised
+  window, gated on the platform being older than the promise so a new cluster does not
+  alarm for its first month. The birth instant comes from a new `argus-platform-info`
+  ConfigMap, written by `argus platform`, which also records the `tenant` the gateway
+  writes with and the `environment` it stamps.
 - **`argus platform` renders and applies `argus-observe`'s identity** - the ServiceAccount
   and RBAC a provisioner's Job runs `argus observe` as (born-observed, task 6): one
   ClusterRole (`get`/`list`/`create`/`patch`/`update` on `servicemonitors`/`podmonitors`/

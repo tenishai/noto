@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    argus.dev/class: platform
+    argus.dev/managed: 'true'
+  name: argus-platform
+  namespace: argus
+spec:
+  groups:
+  - name: argus-platform-retention
+    rules:
+    - alert: ArgusRetentionWindowShort
+      annotations:
+        description: Nothing was stored at the far edge of the retention window, so
+          queries over the promised 30d now return less than they should. Check Mimir's
+          compactor retention setting (limits.compactor_blocks_retention_period) against
+          the profile promise, and check that object storage has capacity and is still
+          accepting blocks.
+        summary: Metrics older than 29d are gone, but the profile promises 30d
+      expr: absent_over_time(up[1h] offset 29d) and on() (vector(time()) > 1769817600)
+      for: 1h
+      labels:
+        severity: warning

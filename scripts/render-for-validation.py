@@ -6,9 +6,10 @@ platform-owned collector tier (platform-solo, platform-regional) and writes arti
 grouped by the tool that judges them:
 
   <out>/otelcol/<case>-<role>.yaml   standalone collector configs (spec.config extracted)
-  <out>/k8s/<case>-<name>.yaml       CRDs and plain RBAC for kubeconform
+  <out>/k8s/<case>-<name>.yaml       CRDs and plain objects for kubeconform
                                      (ServiceMonitor/PodMonitor/PrometheusRule/
-                                     OpenTelemetryCollector/the argus-observe identity)
+                                     OpenTelemetryCollector/the argus-observe identity/
+                                     the platform's own record and rules)
   <out>/sloth/<case>.yaml            Sloth specs (validated by `sloth generate` itself)
   <out>/perses/<case>.yaml           Perses resources for `percli lint`
 
@@ -48,7 +49,13 @@ def main(out: Path) -> None:
                 config = doc["spec"]["config"]
                 (out / "otelcol" / f"{case}-{role}.yaml").write_text(yaml.safe_dump(config))
                 (out / "k8s" / f"{case}-{name}.yaml").write_text(yaml.safe_dump(doc))
-            elif name in ("servicemonitor", "podmonitor", "alerts") or name.startswith("identity-"):
+            elif name in (
+                "servicemonitor",
+                "podmonitor",
+                "alerts",
+                "platform-info",
+                "platform-rules",
+            ) or name.startswith("identity-"):
                 (out / "k8s" / f"{case}-{name}.yaml").write_text(yaml.safe_dump(doc))
             elif name == "sloth":
                 (out / "sloth" / f"{case}.yaml").write_text(yaml.safe_dump(doc))

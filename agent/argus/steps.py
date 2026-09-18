@@ -8,16 +8,22 @@ example root when a deployment brings a project).
 """
 
 import copy
+import datetime
 import hashlib
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from argus.perses_client import Opener, PersesClient
+
+# The one spelling of the platform's own record. It is imported, not re-typed: the
+# job identity's Role grants `get` on this ConfigMap BY NAME, so a second spelling
+# here would read as a permission failure rather than as the typo it is.
+from argus.rendering.rbac import PLATFORM_INFO_CONFIGMAP
 
 # Injectable clock/sleep (module-level, monkeypatched in tests) so WaitForCollectors
 # is testable without ever really sleeping.
@@ -172,6 +178,165 @@ class HelmInstall:
         if code != 0:
             raise RuntimeError(f"helm install {self.component} failed: {out[-2000:]}")
         return f"helmrelease/argus-{self.component}"
+
+
+def helm_set_values(args: Sequence[str]) -> dict[str, str]:
+    """The {key: value} mapping behind a list of `helm --set key=value` arguments.
+
+    HelmInstall carries its settings as a mapping because it hashes them into the release
+    description (drift detection), so this is the one place the argument form and the
+    mapping form meet. `--set` tokens are ignored; only the first `=` splits.
+    """
+    values: dict[str, str] = {}
+    for arg in args:
+        if arg == "--set":
+            continue
+        key, _, value = arg.partition("=")
+        values[key] = value
+    return values
+
+
+def _go_duration(promise: str) -> str:
+    """A retention promise in a form Go's `time.ParseDuration` accepts.
+
+    Go has no day unit, and Tempo parses `compactor.compaction.block_retention` as a plain
+    time.Duration: the pinned chart (tempo 2.2.3, app 2.10.7) rejects `7d` outright with
+    "cannot unmarshal !!str `7d` into time.Duration", verified against the real binary.
+    Mimir and Loki parse their own retention limits with Prometheus's model.Duration, which
+    does understand days, so only Tempo needs this.
+    """
+    value, unit = promise[:-1], promise[-1:]
+    if not value.isdigit():
+        raise ValueError(f"retention promise {promise!r} must be <N>d or <N>h")
+    if unit == "h":
+        return promise
+    if unit == "d":
+        return f"{int(value) * 24}h"
+    raise ValueError(f"retention promise {promise!r} must be <N>d or <N>h")
+
+
+def retention_helm_sets(retention: Mapping[str, str]) -> dict[str, list[str]]:
+    """component -> the extra `helm --set` arguments that turn the profile's retention
+    promise (profiles/baseline.yaml `budgets.retention`) into each backend's own retention
+    setting. A promise nobody enforces is a lie waiting to be discovered.
+
+    A signal with no promise contributes no arguments at all, so the chart keeps its own
+    default rather than being set to something invented here.
+
+    Every key below was verified against the PINNED chart version in helm/pins.yaml by
+    templating that chart with this repo's values file plus the --set, and then handing the
+    rendered config to the backend's own binary:
+
+      mimir  `mimir.structuredConfig.limits.compactor_blocks_retention_period` - the same
+             structuredConfig passthrough the cardinality budget already uses; mimir 3.1.2
+             rejects unknown limit keys outright, and accepts this one.
+      loki   `loki.limits_config.retention_period` plus `loki.compactor.retention_enabled`.
+             The period alone is inert: loki 3.7.3 only deletes when the compactor's
+             retention loop is on (and refuses to start with retention on and no
+             `delete_request_store`, which helm/values/loki.yaml now supplies).
+      tempo  `tempo.retention` - NOT `compactor.compaction.block_retention`. The chart owns
+             that config path and templates it from this one values key, so setting the
+             config path directly would be a values key the chart does not read.
+    """
+    sets: dict[str, list[str]] = {}
+    metrics = retention.get("metrics")
+    if metrics:
+        sets["mimir"] = [
+            "--set",
+            f"mimir.structuredConfig.limits.compactor_blocks_retention_period={metrics}",
+        ]
+    logs = retention.get("logs")
+    if logs:
+        sets["loki"] = [
+            "--set",
+            f"loki.limits_config.retention_period={logs}",
+            "--set",
+            "loki.compactor.retention_enabled=true",
+        ]
+    traces = retention.get("traces")
+    if traces:
+        sets["tempo"] = ["--set", f"tempo.retention={_go_duration(traces)}"]
+    return sets
+
+
+def utc_now_rfc3339() -> str:
+    return datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def read_platform_info(ctx: StepContext) -> dict[str, str]:
+    """The platform's own record of itself, or {} when it cannot be read.
+
+    Never raises and never distinguishes the reasons: an older platform that predates the
+    record, a dry run with no cluster at all, a job whose RBAC has not been rolled out.
+    Every caller's answer to all three is the same fallback.
+    """
+    code, out = ctx.runner(
+        ctx.kubectl("get", "configmap", PLATFORM_INFO_CONFIGMAP, "-n", ctx.namespace, "-o", "json"),
+        None,
+    )
+    if code != 0:
+        return {}
+    try:
+        data = json.loads(out).get("data")
+    except json.JSONDecodeError, AttributeError:
+        return {}
+    return {str(k): str(v) for k, v in (data or {}).items()}
+
+
+def platform_info_configmap(namespace: str, born: str, tenant: str, environment: str) -> dict:
+    """The record itself. `born` is the platform's birth instant (RFC 3339, UTC), `tenant`
+    the name the gateway writes telemetry with, `environment` what it stamps on every
+    signal it forwards."""
+    return {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": PLATFORM_INFO_CONFIGMAP,
+            "namespace": namespace,
+            "labels": {"argus.dev/managed": "true"},
+        },
+        "data": {"born": born, "tenant": tenant, "environment": environment},
+    }
+
+
+@dataclass
+class EnsurePlatformInfo:
+    """The platform writes down what it is, so nothing has to guess later.
+
+    `born` is the birth instant the retention alert's age gate counts from: written once,
+    NEVER overwritten (a re-run reads the recorded value back and writes that same value
+    again). `tenant` and `environment` describe the CURRENT platform, not its birth, so
+    re-running `argus platform` with different values updates them - that is the whole
+    point of the record: the tenant an app's dashboards READ with is resolved from the
+    tenant the gateway WRITES with, instead of the two drifting apart in silence.
+    """
+
+    tenant: str = ""
+    environment: str = ""
+    born: str = field(default_factory=utc_now_rfc3339)
+    name: str = "ensure-platform-info"
+    tooling: str = "cli"
+    ephemeral: bool = True  # tenant/environment must reconcile every run, never ledger-skip
+
+    def check(self, ctx: StepContext) -> str | None:
+        info = read_platform_info(ctx)
+        recorded = (info.get("tenant"), info.get("environment"))
+        if info.get("born") and recorded == (self.tenant, self.environment):
+            return f"configmap/{PLATFORM_INFO_CONFIGMAP} (born {info['born']})"
+        return None
+
+    def apply(self, ctx: StepContext) -> str:
+        # Re-read inside apply(): the birth instant this step was constructed with is only
+        # a candidate, and an already-born platform's own value always wins over it.
+        born = read_platform_info(ctx).get("born") or self.born
+        doc = platform_info_configmap(ctx.namespace, born, self.tenant, self.environment)
+        if ctx.dry_run:
+            return f"would record tenant {self.tenant} ({self.environment}), born {born}"
+        cmd = ctx.kubectl("apply", "--server-side", "--field-manager", "argus", "-f", "-")
+        code, out = ctx.runner(cmd, yaml.safe_dump(doc))
+        if code != 0:
+            raise RuntimeError(f"recording the platform info failed: {out[-2000:]}")
+        return f"configmap/{PLATFORM_INFO_CONFIGMAP} (tenant {self.tenant}, born {born})"
 
 
 @dataclass
