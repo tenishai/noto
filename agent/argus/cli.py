@@ -42,6 +42,7 @@ from argus.rendering.collectors import (
 )
 from argus.rendering.context import Context, solo_endpoints
 from argus.rendering.perses import render_perses
+from argus.rendering.rbac import render_observe_rbac
 from argus.rendering.scrape import render_podmonitor, render_servicemonitor
 from argus.rendering.slo import render_sloth
 from argus.steps import (
@@ -125,7 +126,14 @@ def _platform_profile() -> ResolvedProfile:
 def _render_platform_families(ctx: Context) -> dict[str, list[dict]]:
     """The platform-owned families. `ctx` carries no app and no namespace: nothing in
     the shared tier may depend on one app (the collector CRDs live in the argus
-    namespace and are named by role, never by app)."""
+    namespace and are named by role, never by app).
+
+    `identity` is a separate family from `collectors` on purpose: it is the job
+    identity a provisioner's Job runs `argus observe` as, an unrelated concern from the
+    collector tier (RBAC objects have no CRD dependency, so it does not need the
+    collectors' `opentelemetry-operator`-after-helm ordering either) - keeping it
+    separate keeps both families' names meaningful. `cmd_platform` applies it right
+    after `collectors`, which keeps `ApplyRendered` ordering a plain list append."""
     p = _platform_profile()
     return {
         "collectors": [
@@ -134,7 +142,8 @@ def _render_platform_families(ctx: Context) -> dict[str, list[dict]]:
             render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),
             render_targetallocator(p, ctx),
-        ]
+        ],
+        "identity": render_observe_rbac(ctx.platform_namespace),
     }
 
 
@@ -307,6 +316,11 @@ def cmd_platform(args: argparse.Namespace) -> int:
         # admission webhook that accept them arrive with `opentelemetry-operator` in
         # PLATFORM_ORDER. Keep that ordering.
         ApplyRendered(family="collectors"),
+        # The job's own identity (ServiceAccount + RBAC a provisioner's Job runs
+        # `argus observe` as): plain RBAC objects, no CRD dependency, so it needs no
+        # particular position relative to the helm installs - applying it right after
+        # `collectors` keeps this list a simple append.
+        ApplyRendered(family="identity"),
         # The apply above has no --wait (unlike HelmInstall): the OpenTelemetry
         # operator still has to turn the CRs into workloads and pull images, so a
         # fresh install (or an upgrade rolling the DaemonSet) sees ordinary

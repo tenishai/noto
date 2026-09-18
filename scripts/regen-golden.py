@@ -28,6 +28,7 @@ from argus.rendering.collectors import (  # noqa: E402
 )
 from argus.rendering.context import Context  # noqa: E402
 from argus.rendering.perses import render_perses  # noqa: E402
+from argus.rendering.rbac import render_observe_rbac  # noqa: E402
 from argus.rendering.scrape import render_podmonitor, render_servicemonitor  # noqa: E402
 from argus.rendering.slo import render_sloth  # noqa: E402
 
@@ -94,9 +95,22 @@ def render_everything(class_name: str, topology: str) -> dict[str, object]:
     return artifacts
 
 
+_IDENTITY_DOC_NAMES = [
+    "identity-serviceaccount",
+    "identity-clusterrole",
+    "identity-clusterrolebinding",
+    "identity-role-platform-info",
+    "identity-rolebinding-platform-info",
+]
+
+
 def render_platform(topology: str) -> dict[str, object]:
     """The shared collector tier, from the CLI's own platform profile so a golden can
-    never show a tier `argus platform` would not apply."""
+    never show a tier `argus platform` would not apply. Also the job's own identity
+    (`identity-*`): unrelated to the collector tier, but applied by `argus platform`
+    right after it (see `cli._render_platform_families`'s docstring) - carries no
+    topology dependence, so it renders byte-identical in both cases, same as
+    `collector-targetallocator`."""
     p = _platform_profile()
     ctx = platform_context(topology)
     artifacts: dict[str, object] = {
@@ -106,6 +120,9 @@ def render_platform(topology: str) -> dict[str, object]:
     }
     if topology == "regional":
         artifacts["collector-ingest"] = render_ingest(p, ctx)
+    identity_docs = render_observe_rbac(ctx.platform_namespace)
+    for name, doc in zip(_IDENTITY_DOC_NAMES, identity_docs, strict=True):
+        artifacts[name] = doc
     return artifacts
 
 

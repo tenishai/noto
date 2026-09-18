@@ -323,7 +323,7 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    assert {p.name for p in out.glob("*.yaml")} == {"collectors.yaml"}
+    assert {p.name for p in out.glob("*.yaml")} == {"collectors.yaml", "identity.yaml"}
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
     names = {d["metadata"]["name"] for d in docs}
     assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
@@ -338,11 +338,42 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
     }
 
 
+def test_cli_render_platform_writes_the_observe_job_identity(tmp_path: Path) -> None:
+    """The job's own identity - the ServiceAccount + RBAC a provisioner's Job runs
+    `argus observe` as - is a separate family from `collectors` (see
+    `_render_platform_families`'s docstring); `render --platform` must include it."""
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    docs = list(yaml.safe_load_all((out / "identity.yaml").read_text()))
+    assert len(docs) == 5
+    kinds = [d["kind"] for d in docs]
+    assert kinds == ["ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding"]
+    dumped = yaml.safe_dump_all(docs)
+    assert "secrets" not in dumped
+    assert "*" not in dumped
+    assert "delete" not in dumped
+
+
 def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
     tmp_path: Path, monkeypatch
 ) -> None:
     """The collector CRs need the operator's CRDs and webhook, which arrive with the
-    opentelemetry-operator helm step - so the apply must land after every helm step."""
+    opentelemetry-operator helm step - so both applies (collectors, identity) must
+    land after every helm step."""
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
     code = cli.main(
@@ -364,11 +395,14 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
     ]
     applies = [i for i, v in enumerate(verbs) if v[0] == "kubectl"]
     helms = [i for i, v in enumerate(verbs) if v[0] == "helm"]
-    assert len(applies) == 1
+    assert len(applies) == 2  # collectors, identity
     assert applies[0] > max(helms)
-    _cmd, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
-    kinds = {d["kind"] for d in yaml.safe_load_all(stdin_text)}
-    assert "OpenTelemetryCollector" in kinds
+    apply_calls = [(c, s) for c, s in runner.calls if "apply" in c]
+    all_kinds = {
+        doc["kind"] for _cmd, stdin_text in apply_calls for doc in yaml.safe_load_all(stdin_text)
+    }
+    assert "OpenTelemetryCollector" in all_kinds
+    assert {"ServiceAccount", "Role", "RoleBinding"} <= all_kinds
 
 
 def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
@@ -393,7 +427,10 @@ def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeyp
     assert captured
     names = captured[0]
     assert (
-        names.index("apply_collectors") < names.index("wait_collectors") < names.index("validate")
+        names.index("apply_collectors")
+        < names.index("apply_identity")
+        < names.index("wait_collectors")
+        < names.index("validate")
     )
 
 

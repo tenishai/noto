@@ -104,6 +104,67 @@ kubectl -n argus port-forward svc/argus-mimir-gateway 9009:80
 argus rules-sync --gojira app/gojira.yaml --env dev --mimir-url http://localhost:9009/prometheus
 ```
 
+### Running observe as a Job
+
+A provisioner (gojira) launches `argus observe` as a one-shot, in-cluster Job rather than
+running the CLI itself. `argus platform` renders and applies the identity that Job runs as -
+a ServiceAccount plus the narrowest RBAC that lets `observe` do its work: server-side apply
+`ServiceMonitor`/`PodMonitor`/`PrometheusRule` (`monitoring.coreos.com`) cluster-wide (app
+namespaces are created dynamically, so this cannot be namespace-scoped), plus `get` on the
+platform's own `argus-platform-info` ConfigMap by name only. Nothing else - no secrets, no
+wildcard, no delete, no workload access. Dashboards go over HTTP to Perses and need no
+Kubernetes permission at all.
+
+A ready-to-copy Job manifest for the provisioner to create:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argus-observe-<app>-<env>
+  namespace: argus
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: argus-observe
+      restartPolicy: Never
+      containers:
+        - name: observe
+          image: <argus image>@sha256:<digest>
+          args: ["observe"]
+          env:
+            - name: GOJIRA_CONTRACT_YAML
+              value: <the app's gojira.yaml, as a string>
+            - name: GOJIRA_CONTRACT_SHA256
+              value: <sha256 of GOJIRA_CONTRACT_YAML, provisioner-computed>
+            - name: ARGUS_ENV
+              value: dev
+            # Optional - defaults to "argus" (the platform namespace argus-observe's
+            # RBAC was rendered for; must match what `argus platform` was run with).
+            - name: ARGUS_NAMESPACE
+              value: argus
+```
+
+`<argus image>@sha256:<digest>` is a placeholder: pin the published image by digest, never a
+mutable tag, and never bake a registry name into this repo. The image is a normal argument to
+the provisioner's own Job template, not something Argus renders.
+
+The last line the job ever writes to stdout is always `ARGUS_SUMMARY <one line>`, on both
+success and failure - the provisioner reads the Job's termination status for pass/fail and
+scans the tail of the log for that line; it never parses the rest. Exit code 0 means observe
+completed, 1 means it failed (the summary line names the failing step and reason).
+
+`ARGUS_CLUSTER` is accepted but temporary: it overrides the cluster/tenant name only for the
+one case where gojira's own record of a cluster disagrees with the cluster's real name. It
+defaults to the contract's own cluster and is deleted once that naming gap closes - do not
+build new automation around it.
+
+The provisioner itself needs far less than `observe` does: only `create` and `get` on `Jobs`
+in the platform namespace. It does not need the `argus-observe` ServiceAccount's own RBAC -
+that identity belongs to the Job it launches, not to the thing launching the Job.
+
 ## The stack
 
 | Layer | Tool |

@@ -29,6 +29,8 @@ from argus.rendering.collectors import (
 )
 from argus.rendering.context import Context
 from argus.rendering.ottl import compile_rules
+from argus.rendering.rbac import render_observe_rbac
+from argus.rendering.slo import render_sloth
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
@@ -347,3 +349,82 @@ def test_integrations_autodiscovery_wired() -> None:
     )
     pipelines = dict(iter_pipelines(agent))
     assert "receiver_creator" in pipelines["metrics"]["receivers"]
+
+
+# --- Task 6: argus-observe RBAC is exactly as narrow as observe needs ------------------
+#
+# `render_observe_rbac`'s ClusterRole grants exactly three resources
+# (servicemonitors, podmonitors, prometheusrules under monitoring.coreos.com). The
+# invariant this suite proves: those three resources are sufficient for every kind
+# `argus observe` can be asked to server-side apply, in every class and topology - so
+# the identity a provisioner's Job runs as is narrow AND complete, never one requiring
+# a later widening.
+
+_GRANTED_KINDS = {"ServiceMonitor", "PodMonitor", "PrometheusRule"}
+
+
+@pytest.mark.parametrize("class_name", CLASSES)
+@pytest.mark.parametrize("topology", TOPOLOGIES)
+def test_observe_rbac_covers_every_kind_scrape_and_alerts_can_render(
+    class_name: str, topology: str
+) -> None:
+    """`scrape` and `alerts` need no local generator step: their rendered kind IS the
+    kind `ApplyRendered` server-side applies, so this checks them directly against the
+    real per-app families the way the contract tests render everything else."""
+    families = cli._render_families(_profile(class_name), _ctx(topology, class_name))
+    for family in ("scrape", "alerts"):
+        for doc in families.get(family, []):
+            assert doc["kind"] in _GRANTED_KINDS, (class_name, topology, family, doc["kind"])
+
+
+@pytest.mark.parametrize("class_name", ["web", "worker"])  # the only classes with slos
+def test_render_sloth_itself_is_a_generator_input_not_an_applied_kind(class_name: str) -> None:
+    """The one kind `render_sloth` renders (`PrometheusServiceLevel`, a Sloth CR) is
+    OUTSIDE the three granted resources - documented and locked here rather than
+    silently assumed. This is not an RBAC gap: `_generate_slo_rules` (agent/argus/
+    cli.py) always converts this document into real PrometheusRule documents via the
+    pinned, LOCAL `sloth generate` binary (a subprocess, never kubectl) before
+    `_run_observe` ever builds the `ApplyRendered(family="slo")` step - see
+    `test_generate_slo_rules_via_real_sloth` (tests/unit/test_cli.py) and Sloth's own
+    "generator, not an operator" design decision. The ServiceAccount never needs
+    `sloth.slok.dev` permissions because that document is never sent to the API
+    server. Widening the ClusterRole for it would be over-permissioning for a kind
+    `observe` never applies - see the next test for the kind that actually reaches
+    ApplyRendered."""
+    p = _profile(class_name)
+    ctx = _ctx("solo", class_name)
+    doc = render_sloth(p, ctx)
+    assert doc is not None, "fixture drift: this class is expected to carry an slo"
+    assert doc["kind"] == "PrometheusServiceLevel"
+    assert doc["kind"] not in _GRANTED_KINDS
+
+
+_SLOTH_BIN = REPO / ".argus" / "tools" / "sloth-0.16.0"
+
+
+@pytest.mark.skipif(
+    not _SLOTH_BIN.exists(), reason="pinned sloth binary not fetched (run `make validate`)"
+)
+@pytest.mark.parametrize("topology", TOPOLOGIES)
+@pytest.mark.parametrize("class_name", ["web", "worker"])  # the only classes with slos
+def test_observe_rbac_covers_the_kind_slo_actually_applies(class_name: str, topology: str) -> None:
+    """What `ApplyRendered(family="slo")` actually receives, end to end through the
+    real pinned `sloth generate` binary - the same conversion `_run_observe` performs -
+    is always a PrometheusRule, one of the three granted kinds."""
+    p = _profile(class_name)
+    ctx = _ctx(topology, class_name)
+    sloth_doc = render_sloth(p, ctx)
+    assert sloth_doc is not None
+    applied = cli._generate_slo_rules(sloth_doc, ctx.namespace or "default")
+    assert applied, "sloth generate produced no PrometheusRule documents"
+    for doc in applied:
+        assert doc["kind"] in _GRANTED_KINDS, (class_name, topology, doc["kind"])
+
+
+def test_observe_rbac_cluster_role_grants_exactly_the_three_resources() -> None:
+    _sa, cluster_role, *_rest = render_observe_rbac("argus")
+    assert cluster_role["kind"] == "ClusterRole"
+    assert len(cluster_role["rules"]) == 1
+    rule = cluster_role["rules"][0]
+    assert set(rule["resources"]) == {"servicemonitors", "podmonitors", "prometheusrules"}
+    assert rule["apiGroups"] == ["monitoring.coreos.com"]

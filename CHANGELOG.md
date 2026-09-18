@@ -28,6 +28,14 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **`argus platform` renders and applies `argus-observe`'s identity** - the ServiceAccount
+  and RBAC a provisioner's Job runs `argus observe` as (born-observed, task 6): one
+  ClusterRole (`get`/`list`/`create`/`patch`/`update` on `servicemonitors`/`podmonitors`/
+  `prometheusrules`, `monitoring.coreos.com`, cluster-wide because app namespaces are
+  created dynamically) plus a namespaced Role granting `get` on the platform's own
+  `argus-platform-info` ConfigMap by name only - nothing else, no secrets, no wildcard, no
+  delete. Applied as a new `identity` family, right after `collectors`. README documents the
+  Job spec a provisioner should create.
 - **Profiles for gojira's `agent` and `gateway` workload classes**: agent -> runtime health
   (kubeletstats memory + kube-state-metrics restarts + logs; alert-based like cron - agents
   expose no /metrics, and an objective over metrics the app does not emit is an SLO that can

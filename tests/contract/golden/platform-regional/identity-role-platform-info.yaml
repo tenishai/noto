@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argus-observe-platform-info
+  namespace: argus
+rules:
+- apiGroups:
+  - ''
+  resourceNames:
+  - argus-platform-info
+  resources:
+  - configmaps
+  verbs:
+  - get
