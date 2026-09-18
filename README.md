@@ -243,6 +243,46 @@ The provisioner itself needs far less than `observe` does: only `create` and `ge
 in the platform namespace. It does not need the `argus-observe` ServiceAccount's own RBAC -
 that identity belongs to the Job it launches, not to the thing launching the Job.
 
+## The image
+
+The `Dockerfile` at the repo root builds the image the Job above runs: `python:3.14-slim`,
+upgraded (`apt-get -y upgrade`) so a stale cached base layer never ships known-fixed CVEs,
+running as the non-root numeric user `10001` with `HOME=/tmp`. `ENTRYPOINT` is
+`python -m argus.cli`; `CMD` is `observe`, so the Job manifest above only needs to pass
+`args: ["observe"]` (or override it entirely for `argus platform`/`render` from the same
+image).
+
+**The layout law.** `REPO_ROOT` (`agent/argus/cli.py`) is `Path(__file__).resolve().parents[2]`
+- derived from the source file's own location, not an installed package - and `profiles/`,
+`integrations/` and `helm/pins.yaml` are read from it at runtime. The image therefore does
+**not** `pip install` argus into site-packages: it `COPY`s the repo layout verbatim under
+`/app` (`agent/`, `profiles/`, `integrations/`, `helm/pins.yaml`) and runs with
+`PYTHONPATH=/app/agent`, so `REPO_ROOT` resolves to `/app` inside the container exactly as it
+does at the repo root on disk. `tests/unit/test_layout.py` guards this: if it ever fails, the
+Dockerfile's `COPY` lines need to move with whatever changed. Runtime dependencies
+(`pydantic`, `pyyaml`) are `pip install`ed at the exact versions `pyproject.toml` pins, never
+the `dev` group; `tests/unit/test_dockerfile_pins.py` fails the build the moment those two
+drift apart.
+
+**Two pinned binaries live in the image, neither from PyPI:**
+
+- `kubectl`, at `/usr/local/bin/kubectl`, downloaded from `dl.k8s.io` at the exact
+  `KUBECTL_VERSION` build arg and verified against its own published `.sha256` file before
+  `chmod +x`.
+- `sloth`, at `/app/.argus/tools/sloth-<version>`, the same binary and version
+  `scripts/validate-rendered.sh` fetches locally for `make validate` (one pin, enforced by
+  `test_dockerfile_pins.py`). `observe` shells out to it to turn an app's SLO spec into a
+  `PrometheusRule` (`_generate_slo_rules`); without it, every app with SLOs would fail in the
+  Job. Sloth publishes no checksum file for this asset, so its sha256 is hand-recorded in the
+  Dockerfile's `SLOTH_SHA256_AMD64` build arg and checked with `sha256sum -c` at build time.
+  `.argus` is otherwise runtime scratch and is never copied into the image wholesale (see
+  `.dockerignore`) - this one binary is the sole exception, placed there deliberately.
+
+The image is `linux/amd64` only. A `push to main` publishes it (`.github/workflows/image.yml`)
+only once it exists as a repository/organization variable (`ARGUS_IMAGE`); the workflow writes
+the resulting `<image>@sha256:<digest>` to the job summary, and that digest, never a mutable
+tag, is what a provisioner's Job config pins (see the Job manifest above).
+
 ## The stack
 
 | Layer | Tool |
