@@ -295,3 +295,30 @@ def test_the_cache_does_not_outlive_the_apply_that_used_it() -> None:
     second = FakeOpener([(404, b""), (200, b"{}")])
     assert step.apply(_ctx(second, docs=docs)) == "perses: 1 created, 0 updated, 0 unchanged"
     assert [m for m, _u, _b in second.calls] == ["GET", "POST"]
+
+
+def test_apply_trusts_the_check_time_read_even_if_the_document_changed_since() -> None:
+    """The accepted trade-off named next to `_seen`'s field docstring in steps.py:
+    apply() reuses whatever check() already read rather than re-asking Perses, so a
+    write that lands on the server between check() and apply() for a document check()
+    already matched is invisible to THIS run - it is reported unchanged and nothing is
+    sent. The next run's check() reads Perses fresh and heals it (the same healing
+    `test_the_cache_does_not_outlive_the_apply_that_used_it` proves)."""
+    doc = _doc("c1", None, "Project", {"display": {"name": "same"}})
+    opener = FakeOpener([(200, json.dumps(doc).encode())])
+    ctx = _ctx(opener, docs=[doc])
+    step = ProvisionPerses()
+
+    assert step.check(ctx) == "perses: 1 unchanged"
+
+    # An external write lands on the server right after check() read it: if apply()
+    # asked again, it would see a different spec.
+    drifted = {**doc, "spec": {"display": {"name": "changed-by-someone-else"}}}
+    opener.responses.append((200, json.dumps(drifted).encode()))
+
+    result = step.apply(ctx)
+
+    assert result == "perses: 0 created, 0 updated, 1 unchanged"
+    # apply() never asked again: the drifted response above was never consumed.
+    assert len(opener.responses) == 1
+    assert [m for m, _u, _b in opener.calls] == ["GET"]

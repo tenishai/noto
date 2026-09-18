@@ -639,8 +639,16 @@ def _run_observe(
 
     The tenant is resolved from the platform's own record here, in this one shared place,
     before anything is rendered or applied (see `_resolve_tenant`). `strict_record` is job
-    mode's: an unreadable record fails the run instead of falling back."""
-    p, ctx, resolution = _app_context(args, tenant_from_platform=True, strict=strict_record)
+    mode's: an unreadable record fails the run instead of falling back.
+
+    `--dry-run` overrides `strict_record` back to the lenient read, in job mode same as
+    operator mode: a dry run must never require a cluster (README, "The platform's own
+    record"), and a Forbidden/unreadable record is exactly the case a cluster-less dry
+    run has to tolerate. Strictness is for a REAL job run, where the same failure means
+    the job's own identity was never rolled out."""
+    p, ctx, resolution = _app_context(
+        args, tenant_from_platform=True, strict=strict_record and not args.dry_run
+    )
     rendered = _render_families(p, ctx)
     ledger = Ledger(Path(args.ledger))
     # Per-app families only. The shared collector tier belongs to `argus platform`:

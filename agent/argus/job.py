@@ -30,6 +30,12 @@ _KNOWN_ENVS = ("dev", "qa", "prod")
 # every kubectl argv, and `cluster` becomes the tenant header dashboards query with. A
 # value with a slash, a quote, a `..` or 64 characters in it is not a Kubernetes name, and
 # the place to say so is here - before a temp file is written or a command is built.
+#
+# This is the DNS-1123 LABEL rule (RFC 1123), not the looser DNS-1123 SUBDOMAIN rule
+# Kubernetes actually allows for most object names (which permits dots, joining several
+# labels). The stricter one is deliberate: `app` also becomes a Kubernetes namespace name
+# (namespaces are labels, so they carry the 63-char cap and no dots) and a Perses/URL path
+# segment, and every contract this repo has ever accepted already complies with it.
 _DNS_LABEL_RE = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 _NAME_MAX = 63
 # Cluster names are not k8s object names (they carry dots and capitals in every cloud's

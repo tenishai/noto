@@ -268,9 +268,12 @@ A success can carry one parenthetical note, and today there is exactly one:
 `argus-platform-info` record and fell back to the cluster string in the contract. The run is
 real and the app is wired, but the tenant it reads with was never confirmed against the one
 the gateway writes with - re-run `argus platform`. A record that exists and cannot be READ is
-not that case and does not fall back: in job mode it fails with
+not that case and does not fall back: in a real job run it fails with
 `ARGUS_SUMMARY observe failed: platform record unreadable: ...`, because the likeliest reason
-is that the job's identity was never rolled out.
+is that the job's identity was never rolled out. `--dry-run` is the one exception, in job
+mode exactly as everywhere else: it touches nothing and must never require a cluster, so an
+unreadable record falls back to the contract's cluster and the run still ends with the
+`(no platform record: tenant from contract)` note.
 
 **`observe` never deletes.** It renders what the app's class asks for and server-side applies
 it; nothing prunes. So a class change that drops the scrape family (or sets `app_scrape:

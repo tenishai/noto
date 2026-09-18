@@ -160,7 +160,7 @@ def test_render_never_warns_and_never_fails_over_the_record(
     assert captured["ctx"].tenant == CONTRACT_CLUSTER
 
 
-def _job_observe(tmp_path: Path, monkeypatch, runner: InfoRunner, **env: str) -> int:
+def _job_observe(tmp_path: Path, monkeypatch, runner: InfoRunner, *extra: str, **env: str) -> int:
     from argus.job import contract_fingerprint
 
     contract = (FIXTURES / "web.yaml").read_text()
@@ -173,7 +173,7 @@ def _job_observe(tmp_path: Path, monkeypatch, runner: InfoRunner, **env: str) ->
     monkeypatch.setattr(cli, "real_runner", runner)
     monkeypatch.setattr(cli, "default_perses_opener", fake_perses_opener)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
-    return cli.main(["observe", "--ledger", str(tmp_path / "l.db")])
+    return cli.main(["observe", "--ledger", str(tmp_path / "l.db"), *extra])
 
 
 def test_job_mode_says_so_in_the_summary_when_there_is_no_record(
@@ -204,6 +204,35 @@ def test_job_mode_fails_when_the_record_is_present_but_unreadable(
     """A Forbidden is not an absent record: it means the job's own identity was not
     rolled out, so `argus platform` has not been re-run in the right order. Falling back
     quietly there would wire an app to a tenant nothing writes to and report success."""
+    runner = InfoRunner(readable=False)
+    assert _job_observe(tmp_path, monkeypatch, runner) == 1
+    assert runner.applies == []
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("ARGUS_SUMMARY observe failed: platform record unreadable: ")
+    assert "Forbidden" in last
+
+
+def test_job_mode_dry_run_never_requires_a_cluster_even_with_an_unreadable_record(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """`--dry-run` must never require a cluster, in every mode (README, "The platform's
+    own record"). Job mode's strict read exists for a REAL run, where a job's own
+    identity not being rolled out must fail loudly; a dry run touches nothing and must
+    fall back exactly like operator mode does, carrying the fallback note in its
+    summary."""
+    runner = InfoRunner(readable=False)
+    assert _job_observe(tmp_path, monkeypatch, runner, "--dry-run") == 0
+    last = capsys.readouterr().out.strip().splitlines()[-1]
+    assert last.startswith("ARGUS_SUMMARY observed ")
+    assert last.endswith("(no platform record: tenant from contract)")
+
+
+def test_job_mode_without_dry_run_still_fails_on_an_unreadable_record(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The existing strict behavior, pinned so the dry-run carve-out above cannot widen
+    into a real job run: a Forbidden record still fails the job when it is not a
+    `--dry-run`."""
     runner = InfoRunner(readable=False)
     assert _job_observe(tmp_path, monkeypatch, runner) == 1
     assert runner.applies == []

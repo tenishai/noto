@@ -702,6 +702,9 @@ class ProvisionPerses:
     # server holds, or None for one it does not. apply() consumes it, so a run asks
     # Perses about each document once rather than twice, and empties it afterwards: the
     # next run has to see the world as it is then, not as check() found it before.
+    # Trade-off, accepted: a write that lands between check() and apply() for a document
+    # check() already matched is invisible to this run and is skipped, not applied - the
+    # next run re-reads from Perses and heals it (see test_perses_step.py).
     _seen: dict[str, dict | None] = field(default_factory=dict, init=False, repr=False)
 
     def _client(self, ctx: StepContext) -> PersesClient:

@@ -822,6 +822,7 @@ def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path
         return 0
 
     monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
             "rules-sync",
@@ -845,6 +846,7 @@ def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None
         return 0
 
     monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
             "rules-sync",
