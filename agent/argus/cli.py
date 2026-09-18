@@ -66,6 +66,14 @@ from argus.steps import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# The one sloth version this repo knows about. Three files have to agree on it: the
+# Dockerfile downloads the binary at this version into the image, scripts/
+# validate-rendered.sh fetches the same one locally for `make validate`, and
+# `_generate_slo_rules` below looks it up by that exact filename. It lives here as a
+# named constant rather than inside a path expression so a bump is a one-line change and
+# tests/unit/test_dockerfile_pins.py can hold all three to it.
+SLOTH_VERSION = "0.16.0"
+
 # Every object argus applies in job mode carries this annotation with the verified
 # contract fingerprint, so the cluster itself can answer "has the app changed since
 # argus looked". Operator mode sets no annotation at all (there is no job contract).
@@ -543,12 +551,21 @@ def cmd_platform(args: argparse.Namespace) -> int:
     return 0
 
 
-def _generate_slo_rules(sloth_doc: dict, namespace: str) -> list[dict]:
+def _generate_slo_rules(
+    sloth_doc: dict, namespace: str, sloth_bin: Path | None = None
+) -> list[dict]:
     """Sloth is a GENERATOR, not an operator (design decision): spec in,
-    PrometheusRule out. Requires the pinned sloth binary (make validate fetches it)."""
-    sloth_bin = REPO_ROOT / ".argus" / "tools" / "sloth-0.16.0"
+    PrometheusRule out. Requires the pinned sloth binary (make validate fetches it
+    locally; the image ships it at the same path under its own repo root)."""
+    sloth_bin = sloth_bin or REPO_ROOT / ".argus" / "tools" / f"sloth-{SLOTH_VERSION}"
     if not sloth_bin.exists():
-        raise RuntimeError("sloth binary missing; run `make validate` once to fetch pinned tools")
+        # Both readers matter: an operator on a laptop, who can fetch it, and a human
+        # reading a Job's log, where there is no repo and no make and a missing binary
+        # can only mean the image was built wrong.
+        raise RuntimeError(
+            f"sloth binary missing at {sloth_bin}; locally run `make validate`; "
+            "in the image this is a build defect"
+        )
     with tempfile.TemporaryDirectory() as td:
         spec = Path(td) / "slo.yaml"
         out = Path(td) / "rules.yaml"

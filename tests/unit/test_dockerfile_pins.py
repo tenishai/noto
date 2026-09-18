@@ -73,3 +73,30 @@ def test_dockerfile_sloth_version_matches_validate_rendered() -> None:
     version, and the image must ship the exact same binary the CLI's `sloth generate`
     call (agent/argus/cli.py, `_generate_slo_rules`) expects to find."""
     assert _dockerfile_sloth_version() == _validate_rendered_sloth_version()
+
+
+def test_all_three_sloth_pins_agree() -> None:
+    """Three files name the sloth version: the Dockerfile downloads it, the validate
+    script fetches it locally, and the CLI looks the binary up by that exact filename.
+    The CLI's copy used to be a literal in the middle of a path expression, so a bump
+    that moved the other two shipped an image whose binary the CLI could not find, and
+    the failure only showed up on the first app with SLOs."""
+    from argus.cli import SLOTH_VERSION
+
+    assert SLOTH_VERSION == _dockerfile_sloth_version() == _validate_rendered_sloth_version()
+
+
+def test_the_missing_binary_message_makes_sense_inside_the_image() -> None:
+    """`run make validate` is the right advice on a laptop and nonsense in a container,
+    where there is no repo and no make: the message has to name the path it looked at and
+    say what a missing binary means in each place."""
+    import pytest
+
+    from argus import cli
+
+    with pytest.raises(RuntimeError) as exc_info:
+        cli._generate_slo_rules({"kind": "PrometheusServiceLevel"}, "demo", sloth_bin=Path("/no/s"))
+    message = str(exc_info.value)
+    assert "/no/s" in message
+    assert "make validate" in message
+    assert "build defect" in message

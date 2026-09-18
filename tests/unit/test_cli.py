@@ -1120,7 +1120,7 @@ def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monke
 
 
 @pytest.mark.skipif(
-    not (REPO / ".argus" / "tools" / "sloth-0.16.0").exists(),
+    not (REPO / ".argus" / "tools" / f"sloth-{cli.SLOTH_VERSION}").exists(),
     reason="pinned sloth binary not fetched (run `make validate`)",
 )
 def test_generate_slo_rules_via_real_sloth() -> None:
