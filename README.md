@@ -188,6 +188,10 @@ metadata:
 spec:
   backoffLimit: 0
   ttlSecondsAfterFinished: 600
+  # The outer bound on the summary line: past this the Job is killed, whatever it was
+  # doing. Every kubectl call argus makes carries its own --request-timeout, so this is
+  # the backstop, not the first line of defence.
+  activeDeadlineSeconds: 900
   template:
     spec:
       serviceAccountName: argus-observe
@@ -199,14 +203,30 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      volumes:
+        # observe writes the contract, its throwaway ledger and sloth's temp files under
+        # /tmp - the only path it ever writes to, which is what makes the root filesystem
+        # below read-only.
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: observe
           image: <argus image>@sha256:<digest>
           args: ["observe"]
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
           env:
             - name: GOJIRA_CONTRACT_YAML
               value: <the app's gojira.yaml, as a string>

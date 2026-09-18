@@ -157,6 +157,45 @@ def test_dry_run_threads_through(tmp_path: Path) -> None:
     assert "--dry-run=server" in cmd
 
 
+def test_every_kubectl_argv_carries_a_request_timeout(tmp_path: Path, monkeypatch) -> None:
+    """The job is a one-shot Job that must end with a summary line. A kubectl call with
+    no bound (an apiserver that accepts the connection and never answers, a kubeconfig
+    pointing at a cluster that is gone) hangs until something outside kills the pod, and
+    then there is no summary at all. `StepContext.kubectl` is the one place every argv is
+    built, so the bound is added there and cannot be forgotten by a new step."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    kubectl_calls = [c for c, _s in runner.calls if c[0] == "kubectl"]
+    assert kubectl_calls
+    for cmd in kubectl_calls:
+        assert any(a.startswith("--request-timeout=") for a in cmd), cmd
+
+
+def test_the_rollout_poll_is_bounded_by_its_own_deadline_not_by_thirty_seconds() -> None:
+    """`kubectl rollout status` waits for a rollout to finish, and --request-timeout
+    bounds the watch request underneath it - so the standing 30s bound would abort a
+    healthy rollout that simply takes longer than that. The polling step passes its own
+    remaining deadline instead."""
+    from argus.steps import StepContext as Ctx
+
+    cmd = Ctx(runner=lambda *_a: (0, "")).kubectl("rollout", "status", request_timeout="330s")
+    assert cmd[-1] == "--request-timeout=330s"
+
+
 def test_apply_rendered_with_empty_annotations_is_byte_identical_to_today(
     tmp_path: Path,
 ) -> None:
@@ -626,6 +665,34 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     assert code == 0
     applies = [c for c, _ in runner.calls if "apply" in c]
     assert len(applies) == 3  # scrape, alerts, slo - never the shared collector tier
+
+
+def test_cli_observe_dry_run_opens_no_sockets(tmp_path: Path, monkeypatch) -> None:
+    """A dry run is the one mode that must work with nothing reachable: a laptop with no
+    port-forward, a cluster that is not up yet. Any HTTP call at all fails this test."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+
+    def exploding_opener(req):
+        raise AssertionError(f"--dry-run opened a socket: {req.get_method()} {req.full_url}")
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", exploding_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert any("--dry-run=server" in c for c, _s in runner.calls)
 
 
 def test_cli_observe_operator_mode_applies_no_contract_annotation(

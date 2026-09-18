@@ -22,6 +22,18 @@ class PersesError(RuntimeError):
     """A Perses call failed: a non-2xx/404 status, or the server was unreachable."""
 
 
+class _Unfetched:
+    """Sentinel for `upsert(existing=...)`: nobody has asked the server about this
+    document yet. `None` cannot say that - it is the real answer for a document the
+    server does not have."""
+
+    def __repr__(self) -> str:
+        return "<unfetched>"
+
+
+UNFETCHED = _Unfetched()
+
+
 def _one_line_excerpt(body: bytes, limit: int = 200) -> str:
     """The first `limit` characters of `body`, decoded and collapsed to one line -
     a raised PersesError must never carry an embedded newline."""
@@ -64,16 +76,25 @@ class PersesClient:
         self._raise_for_status(status, body)
         return json.loads(body)
 
-    def upsert(self, collection_path: str, doc: dict) -> str:
+    def upsert(
+        self, collection_path: str, doc: dict, existing: dict | None | _Unfetched = UNFETCHED
+    ) -> str:
         """Create or update `doc` in `collection_path`, matching the smoke script's
         proven dance: POST, falling back to PUT when the server says 409 (already
         exists). Skips the write entirely - returning "unchanged" - when the server
         already holds a document whose `spec` equals the one being sent (server-managed
         metadata such as createdAt/updatedAt/version is never part of that comparison,
-        because metadata is never compared at all)."""
+        because metadata is never compared at all).
+
+        `existing` is what the caller already knows the server holds (`None` for a
+        document it does not have). A caller that just read the document - the
+        ProvisionPerses step's check(), which reads every one of them - passes it so this
+        does not read it a second time in the same run.
+        """
         name = doc["metadata"]["name"]
         item_path = f"{collection_path}/{name}"
-        existing = self.get(item_path)
+        if isinstance(existing, _Unfetched):
+            existing = self.get(item_path)
         if existing is not None and existing.get("spec") == doc.get("spec"):
             return "unchanged"
         if existing is None:

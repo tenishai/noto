@@ -221,3 +221,77 @@ def test_dry_run_sends_nothing_and_describes_the_plan() -> None:
     result = ProvisionPerses().apply(ctx)
     assert "would" in result
     assert "4" in result
+
+
+def test_dry_run_check_sends_nothing_either() -> None:
+    """`--dry-run` is the mode that must work with nothing reachable at all - a laptop
+    with no port-forward, a preview of a cluster that is not up yet. check() used to ask
+    Perses over real HTTP even here, so a dry run failed on a connection error before it
+    ever reached the apply() that describes the plan."""
+
+    def exploding_opener(req: urllib.request.Request) -> tuple[int, bytes]:
+        raise AssertionError("dry-run must send nothing")
+
+    ctx = StepContext(
+        runner=lambda *_a, **_kw: (0, ""),
+        rendered={"perses": _rendered_docs()},
+        dry_run=True,
+        perses_url="http://p:8080",
+        perses_opener=exploding_opener,
+    )
+    assert ProvisionPerses().check(ctx) is None
+
+
+def test_check_then_apply_asks_perses_about_each_document_once() -> None:
+    """check() already fetched every document; apply() reuses what it saw instead of
+    fetching the same documents a second time. One GET per document per run, not two."""
+    docs = _rendered_docs()
+    responses = [(200, json.dumps(d).encode()) for d in docs[:-1]]
+    responses.append((404, b""))  # the dashboard is missing, so check() cannot skip
+    responses.append((200, b"{}"))  # the POST that creates it
+    opener = FakeOpener(responses)
+    ctx = _ctx(opener, docs=docs)
+    step = ProvisionPerses()
+
+    assert step.check(ctx) is None
+    result = step.apply(ctx)
+
+    assert result == "perses: 1 created, 0 updated, 3 unchanged"
+    gets = [url for method, url, _b in opener.calls if method == "GET"]
+    assert len(gets) == len(docs)
+    assert len(gets) == len(set(gets))
+    assert [m for m, _u, _b in opener.calls if m != "GET"] == ["POST"]
+
+
+def test_a_document_check_never_saw_is_still_fetched_by_apply() -> None:
+    """check() stops at the first drifted document, so apply() inherits a partial view -
+    every document it was not told about must still be asked for."""
+    docs = _rendered_docs()
+    opener = FakeOpener(
+        [
+            (404, b""),  # check(): the project is missing -> stop right there
+            (200, b"{}"),  # apply(): the project's POST, straight from the cache
+            *[r for _d in docs[1:] for r in ((404, b""), (200, b"{}"))],
+        ]
+    )
+    ctx = _ctx(opener, docs=docs)
+    step = ProvisionPerses()
+
+    assert step.check(ctx) is None
+    assert step.apply(ctx) == "perses: 4 created, 0 updated, 0 unchanged"
+    # one GET for the cached project (check's), three for the documents check never saw
+    assert len([m for m, _u, _b in opener.calls if m == "GET"]) == 4
+
+
+def test_the_cache_does_not_outlive_the_apply_that_used_it() -> None:
+    """A second run of the same step object must re-ask Perses: the world moved on
+    between runs, and a stale cache would silently skip a drifted dashboard."""
+    docs = [_doc("c1", None, "Project", {"display": {"name": "x"}})]
+    opener = FakeOpener([(404, b""), (200, b"{}")])
+    step = ProvisionPerses()
+    assert step.check(_ctx(opener, docs=docs)) is None
+    step.apply(_ctx(opener, docs=docs))
+
+    second = FakeOpener([(404, b""), (200, b"{}")])
+    assert step.apply(_ctx(second, docs=docs)) == "perses: 1 created, 0 updated, 0 unchanged"
+    assert [m for m, _u, _b in second.calls] == ["GET", "POST"]

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from argus.perses_client import Opener, PersesClient
+from argus.perses_client import UNFETCHED, Opener, PersesClient
 
 # The one spelling of the platform's own record. It is imported, not re-typed: the
 # job identity's Role grants `get` on this ConfigMap BY NAME, so a second spelling
@@ -55,11 +55,26 @@ class StepContext:
     # of `runner` above, for the one step that speaks HTTP instead of shelling out.
     perses_opener: Opener | None = None
 
-    def kubectl(self, *args: str) -> list[str]:
+    def kubectl(self, *args: str, request_timeout: str = "30s") -> list[str]:
+        """Every kubectl argv argus builds, bounded.
+
+        The bound lives here because this is the one place an argv is assembled, so no
+        future step can forget it. A kubectl call with no bound blocks forever when the
+        apiserver accepts the connection and never answers (a cluster that was deleted,
+        a VPN that dropped, a stale kubeconfig): in a one-shot Job that means no summary
+        line at all, and on a laptop it means `render` hanging on a cluster it never
+        needed.
+
+        `request_timeout` is a parameter rather than a constant for the one caller that
+        polls: `kubectl rollout status` waits for a rollout to finish, and
+        --request-timeout bounds the watch request underneath it, so a flat 30s here
+        would abort a healthy rollout that simply takes longer. That caller passes its
+        own remaining deadline (see WaitForCollectors).
+        """
         cmd = ["kubectl"]
         if self.kube_context:
             cmd += ["--context", self.kube_context]
-        return [*cmd, *args]
+        return [*cmd, *args, f"--request-timeout={request_timeout}"]
 
 
 @dataclass
@@ -572,6 +587,7 @@ class WaitForCollectors:
                 raise RuntimeError(
                     f"timed out waiting for {workload} in {namespace}: {_collapse(last_out)}"
                 )
+            wait_seconds = max(1, int(remaining))
             cmd = ctx.kubectl(
                 "rollout",
                 "status",
@@ -579,7 +595,11 @@ class WaitForCollectors:
                 "-n",
                 namespace,
                 "--timeout",
-                f"{max(1, int(remaining))}s",
+                f"{wait_seconds}s",
+                # The watch underneath `rollout status` lasts as long as the wait does,
+                # so the request bound has to clear it - the step's own deadline is what
+                # ends this loop, not the transport.
+                request_timeout=f"{wait_seconds + 30}s",
             )
             code, out = ctx.runner(cmd, None)
             if code == 0:
@@ -656,6 +676,11 @@ class ProvisionPerses:
     name: str = "provision-perses"
     tooling: str = "perses"
     ephemeral: bool = True
+    # What check() already read from Perses this run: item path -> the document the
+    # server holds, or None for one it does not. apply() consumes it, so a run asks
+    # Perses about each document once rather than twice, and empties it afterwards: the
+    # next run has to see the world as it is then, not as check() found it before.
+    _seen: dict[str, dict | None] = field(default_factory=dict, init=False, repr=False)
 
     def _client(self, ctx: StepContext) -> PersesClient:
         if not ctx.perses_url:
@@ -665,12 +690,22 @@ class ProvisionPerses:
     def check(self, ctx: StepContext) -> str | None:
         """A skip reason only when EVERY rendered document already matches what
         Perses holds (same `spec`, ignoring server-managed metadata) - one doc missing
-        or drifted means apply() must run."""
+        or drifted means apply() must run.
+
+        A dry run asks nothing at all: `--dry-run` has to work with nothing reachable
+        (a laptop with no port-forward, a cluster that is not up yet), and apply()
+        describes the plan without sending anything either.
+        """
+        self._seen = {}
+        if ctx.dry_run:
+            return None
         plan = _perses_plan(ctx.rendered.get("perses", []))
         client = self._client(ctx)
         for collection, doc in plan:
             name = doc["metadata"]["name"]
-            existing = client.get(f"{collection}/{name}")
+            item_path = f"{collection}/{name}"
+            existing = client.get(item_path)
+            self._seen[item_path] = existing
             if existing is None or existing.get("spec") != doc.get("spec"):
                 return None
         return f"perses: {len(plan)} unchanged"
@@ -682,8 +717,12 @@ class ProvisionPerses:
             return f"would upsert {len(plan)} perses docs: {named}"
         client = self._client(ctx)
         counts = {"created": 0, "updated": 0, "unchanged": 0}
+        seen, self._seen = self._seen, {}
         for collection, doc in plan:
-            counts[client.upsert(collection, doc)] += 1
+            item_path = f"{collection}/{doc['metadata']['name']}"
+            # Documents check() never reached (it stops at the first drifted one) are
+            # simply not in `seen`, and UNFETCHED sends the client to read them.
+            counts[client.upsert(collection, doc, seen.get(item_path, UNFETCHED))] += 1
         return (
             f"perses: {counts['created']} created, {counts['updated']} updated, "
             f"{counts['unchanged']} unchanged"
