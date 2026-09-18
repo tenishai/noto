@@ -457,8 +457,9 @@ _RULER_NOTE = (
 PLATFORM_RULE_GROUP = "argus-platform"
 
 
-def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str) -> str:
-    """Push the platform's own alert group into Mimir's ruler. Returns the line to report.
+def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str) -> str | None:
+    """Push the platform's own alert group into Mimir's ruler. Returns the line to report,
+    or None when the push failed and the run should end as a failure.
 
     Applying the PrometheusRule and stopping there left `ArgusRetentionWindowShort`
     unevaluated: an alarm nobody armed. Rules become live only in the ruler.
@@ -466,7 +467,10 @@ def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str
     Failure-tolerant in exactly one direction. `argus platform` is normally run from an
     operator's laptop, where the in-cluster ruler URL is not reachable and a port-forward
     is the answer; that must not fail a platform run whose cluster work all succeeded. A
-    ruler that IS reachable and rejects the rules is a real failure and is raised.
+    ruler that IS reachable and rejects the rules is a different thing: the rules or the
+    tenant are wrong, the alarm is not armed, and nothing else in the run will say so. It
+    is reported as the failure it is, in the same shape as every other failure the CLI
+    reports - a FAILED line on stderr and exit 1, not a traceback.
     """
     from argus.feedback import ruler
 
@@ -478,8 +482,9 @@ def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str
         )
     try:
         count = ruler.sync_rules(url, tenant, PLATFORM_RULE_GROUP, docs)
-    except urllib.error.HTTPError:
-        raise  # a ruler that answered and said no
+    except ruler.RulerSyncError as exc:  # a ruler that answered and said no
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return None
     except urllib.error.URLError as exc:
         print(
             f"note: the platform alert group was not pushed: {url} is unreachable from here "
@@ -584,7 +589,10 @@ def cmd_platform(args: argparse.Namespace) -> int:
         return 1
     # The tenant is the one the platform just recorded as its own, so the group lands where
     # the gateway writes - the same agreement `observe` now gets from the record.
-    print(_push_platform_rules(args, rendered["platform-rules"], args.cluster))
+    pushed = _push_platform_rules(args, rendered["platform-rules"], args.cluster)
+    if pushed is None:  # the ruler answered and rejected the rules: the alarm is not armed
+        return 1
+    print(pushed)
     print(_RULER_NOTE)
     return 0
 
@@ -946,12 +954,12 @@ def main(argv: list[str] | None = None) -> int:
             args = parser.parse_args(argv)
             inputs = job_inputs(os.environ)
             if inputs is None:
-                # GOJIRA_CONTRACT_YAML vanished between the check above and here
-                # (a racy environ mutation) - fall back to operator's own error.
-                if args.gojira is None or args.env is None:
-                    p_observe.error("the following arguments are required: --gojira, --env")
-                Path(args.ledger).parent.mkdir(parents=True, exist_ok=True)
-                return args.func(args)
+                # GOJIRA_CONTRACT_YAML vanished between the check above and here (a racy
+                # environ mutation). Job mode was already entered, so it ends the way job
+                # mode ends - the handler below turns this into the summary line. Sliding
+                # into operator mode instead would write a `.argus/` ledger into whatever
+                # directory the container started in and leave the launcher nothing to read.
+                raise JobInputError("GOJIRA_CONTRACT_YAML is no longer set")
             return _observe_job(inputs, args)
         except SystemExit as exc:
             if exc.code:  # argparse error (or p_observe.error above): code 2

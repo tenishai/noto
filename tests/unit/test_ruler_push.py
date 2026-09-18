@@ -9,7 +9,6 @@ pushes each app's groups to the tenant the platform recorded as its own.
 import urllib.error
 from pathlib import Path
 
-import pytest
 from tests.support.fake_cluster import RECORDED, InfoRunner
 
 from argus import cli
@@ -84,14 +83,20 @@ def test_an_unreachable_ruler_is_a_note_not_a_failed_platform_run(
     assert "--mimir-url http://localhost:9009/prometheus" in captured.err
 
 
-def test_a_ruler_that_rejects_the_rules_is_a_real_failure(tmp_path: Path, monkeypatch) -> None:
+def test_a_ruler_that_rejects_the_rules_is_a_real_failure(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
     """Reachable and refusing is not the laptop case: something is wrong with the rules
-    or with the tenant, and swallowing it would leave a silent hole."""
+    or with the tenant, and swallowing it would leave a silent hole. It is a failure of
+    the run, reported the way every other failure is - a FAILED line and exit 1, not a
+    traceback out of an otherwise successful platform run."""
     from argus.feedback.ruler import RulerSyncError
 
     _spy(monkeypatch, RulerSyncError("ruler rejected group argus-platform-retention: 400 bad"))
-    with pytest.raises(RulerSyncError):
-        _platform(tmp_path, monkeypatch, InfoRunner(None))
+    assert _platform(tmp_path, monkeypatch, InfoRunner(None)) == 1
+    captured = capsys.readouterr()
+    assert "FAILED: ruler rejected group argus-platform-retention: 400 bad" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_a_dry_run_pushes_nothing_and_says_what_it_would_push(

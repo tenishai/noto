@@ -354,6 +354,24 @@ def test_job_mode_bad_flag_still_ends_stdout_with_summary(monkeypatch, capsys):
     assert out[-1].startswith("ARGUS_SUMMARY observe failed: bad invocation")
 
 
+def test_job_mode_never_silently_becomes_operator_mode(monkeypatch, capsys):
+    """Job mode is decided from the environment before parsing and confirmed after it.
+    If the variable disappears in between, the answer is a summary line and exit 1 - not
+    a quiet slide into operator mode, which would write a `.argus/` ledger into whatever
+    directory the container started in and report nothing the launcher can read."""
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(cli, "job_inputs", lambda environ: None)
+
+    code = cli.main(["observe"])
+
+    assert code == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[-1].startswith("ARGUS_SUMMARY observe failed: ")
+    assert "GOJIRA_CONTRACT_YAML" in out[-1]
+
+
 def test_job_mode_help_passes_through_untouched(monkeypatch, capsys):
     gojira_text = (FIXTURES / "web.yaml").read_text()
     for k, v in _job_env(gojira_text).items():
