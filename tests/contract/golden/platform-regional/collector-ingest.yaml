@@ -86,4 +86,12 @@ spec:
           - batch
           receivers:
           - kafka
+        traces:
+          exporters:
+          - otlp/tempo
+          processors:
+          - memory_limiter
+          - batch
+          receivers:
+          - kafka
   mode: deployment

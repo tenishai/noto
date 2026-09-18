@@ -20,18 +20,13 @@ kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || kind create cluster --nam
 
 step "argus platform (step engine; resumable)"
 rm -f "$LEDGER"
-uv run argus platform --cluster "$CLUSTER" --kube-context "$CTX" --ledger "$LEDGER"
+uv run argus platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER"
 
 step "sample apps (podinfo + traffic; exemplar-demo for the #47 exemplar assertion)"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/sample-app.yaml"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/exemplar-app.yaml"
 
-step "argus observe (wire podinfo by class)"
-uv run argus observe --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
-  --kube-context "$CTX" --ledger "$LEDGER"
-
-step "provision perses (rendered docs via API, like the spike)"
-uv run argus render --gojira "$REPO/tests/smoke/gojira.yaml" --env dev --out "$REPO/.argus/smoke-rendered"
+step "perses port-forward (observe provisions dashboards through it, no separate script)"
 kubectl --context "$CTX" -n argus rollout status statefulset/argus-perses --timeout=300s
 kubectl --context "$CTX" -n argus port-forward svc/argus-perses 8080:8080 >/dev/null 2>&1 &
 PF_PERSES=$!
@@ -39,7 +34,10 @@ for i in $(seq 1 30); do
   curl -sf http://localhost:8080/api/v1/health >/dev/null 2>&1 && break
   sleep 2
 done
-uv run python "$REPO/tests/smoke/provision_perses.py" "$REPO/.argus/smoke-rendered/perses.yaml"
+
+step "argus observe (wire podinfo by class: collection, alerts, and dashboards together)"
+uv run argus observe --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
+  --kube-context "$CTX" --ledger "$LEDGER" --perses-url http://localhost:8080
 
 step "rules-sync (Mimir ruler, tenant-scoped) + cardinality report"
 kubectl --context "$CTX" -n argus port-forward svc/argus-mimir-gateway 9009:80 >/dev/null 2>&1 &

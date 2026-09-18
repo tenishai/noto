@@ -78,6 +78,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Cluster scrape sources | **kube-state-metrics + node-exporter + cAdvisor/kubelet** | The "big singletons" + per-node host/pod telemetry |
 | Span metrics ownership | **Tempo metrics-generator** (`service-graphs` + `span-metrics` processors, spike-verified) owns span-metrics and the service graph; the spanmetrics connector ships in the distro but is unwired by default | One owner avoids double-counted RED metrics; Tempo-side needs zero extra collector pipelines. The connector is the fallback for a deployment that disables the generator |
 | Collection topology | **Agent (DaemonSet) + Gateway (Deployment) + TargetAllocator (StatefulSet)** | The recommended architecture from the enablement guide |
+| Collector tier ownership | **Platform-owned (decided 2026-09-17).** The agent, gateway and target allocator are rendered once by `argus platform` from the *platform profile* (the baseline, all three signals, no class deltas) and applied there; `argus observe` renders and applies per-app artifacts only (scrape wiring, dashboards, SLOs, alerts) | One cluster has one collector tier, shared by every app. Rendering it from the app being observed made each `observe` a server-side apply of the whole shared gateway, so observing an app whose class has no traces signal deleted the traces pipeline for everyone (last writer wins). The consequence, stated plainly: per-class and per-app shaping rules no longer reach the shared gateway - the baseline rules apply to everyone, and per-app shaping in the shared gateway is a registered follow-up |
 | **Apply model** | **Direct apply via cloud CLI / SDK / Helm** through an idempotent step engine | **No third-party GitOps (no ArgoCD/Flux).** Argus provisions directly, like gojira shells to gcloud/gh/kubectl |
 | Cloud-side infra | **OpenTofu or cloud SDK** | Object-storage buckets, IAM/WIF - stateful, declarative. OpenTofu, not Terraform: Terraform is BUSL (not open source) since 1.6, which violates the 100% OSS rule |
 | In-cluster components | **Helm** (charts + pinned values) | The OSS standard; versioned, idempotent |
@@ -443,7 +444,7 @@ Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hy
 | Skill | Does | Trigger phrasing | Phase |
 |---|---|---|---|
 | `argus-platform` | Stand up the per-cluster platform (collectors + Mimir/Loki/Tempo + Perses) | "make this cluster observable", "stand up the observability stack" | 1 |
-| `argus-observe-app` | Wire a gojira app into observability by its class | "observe the clips app", "add dashboards/SLOs for this service" | 1 |
+| `argus-observe-app` | Wire a gojira app into observability by its class (per-app artifacts only; the shared collector tier belongs to `argus-platform`) | "observe the clips app", "add dashboards/SLOs for this service" | 1 |
 | `argus-pipeline` | Author/modify OTel collector pipelines & processors | "add a redaction step", "tail-sample traces" | 1 |
 | `argus-slo` | Define SLOs → SLO spec → generated rules + alerts (via Sloth/Pyrra, never hand-rolled) | "add an SLO for checkout latency" | 2 |
 | `argus-dashboard` | Generate Perses dashboards-as-code (RED/USE per profile) | "dashboard for the growth service" | 2 |

@@ -130,6 +130,17 @@ spec:
           - kubeletstats
           - hostmetrics
           - receiver_creator
+        traces:
+          exporters:
+          - otlp/gateway
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resourcedetection
+          - filter/argus-agent
+          - batch
+          receivers:
+          - otlp
   env:
   - name: KUBE_NODE_NAME
     valueFrom:

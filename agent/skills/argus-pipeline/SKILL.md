@@ -30,8 +30,19 @@ inputs allow), `enabled`, and exactly one matcher:
    declared stage and nowhere else.
 3. `make regen-golden` if goldens changed - the PR diff of golden files IS the review.
 4. `make validate` - the real collector binary judges the rendered config.
-5. Re-apply to affected apps/clusters via argus-observe-app / argus-platform.
+5. Re-apply the cluster's collector tier via argus-platform (`uv run argus platform
+   --cluster <name> --env <env>`). Shaping rules render into the shared collector tier
+   only, and that tier is platform-owned: `argus observe` never re-renders it.
 
 Refuse requests to hand-edit an OpenTelemetryCollector CR in-cluster: the next reconcile
 overwrites it, and the change would bypass every contract test. The profile is the only
 mutation surface.
+
+## Where a rule may live today
+
+Only `profiles/baseline.yaml` rules reach the cluster. The shared collector tier is rendered
+from the baseline with no class deltas, so a `drop:` rule written into a class profile or into
+an app's `observability:` block renders nowhere at all - say so plainly rather than writing one
+and letting it look applied. Per-app shaping in the shared gateway is a registered follow-up
+(ROADMAP, Phase 2); until it lands, a rule that should not apply to the whole cluster has no
+home, and that is the honest answer to give.

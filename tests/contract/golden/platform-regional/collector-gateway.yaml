@@ -10,48 +10,11 @@ metadata:
 spec:
   config:
     exporters:
-      otlp/tempo:
-        compression: zstd
-        endpoint: argus-tempo.argus.svc:4317
-        headers:
-          X-Scope-OrgID: golden-cluster
-        retry_on_failure:
-          enabled: true
-        sending_queue:
-          num_consumers: 50
-          queue_size: 1000
-          storage: file_storage
-        timeout: 30s
-        tls:
-          insecure: true
-      otlphttp/loki:
-        compression: zstd
-        endpoint: http://argus-loki.argus.svc:3100/otlp
-        headers:
-          X-Scope-OrgID: golden-cluster
-        retry_on_failure:
-          enabled: true
-        sending_queue:
-          num_consumers: 50
-          queue_size: 1000
-          storage: file_storage
-        timeout: 30s
-      otlphttp/mimir:
-        compression: zstd
-        endpoint: http://argus-mimir-gateway.argus.svc:80/otlp
-        headers:
-          X-Scope-OrgID: golden-cluster
-        retry_on_failure:
-          enabled: true
-        sending_queue:
-          num_consumers: 50
-          queue_size: 1000
-          storage: file_storage
-        timeout: 30s
+      kafka:
+        brokers:
+        - redpanda.us-east4.argus.internal:9092
+        protocol_version: 2.6.0
     extensions:
-      file_storage:
-        create_directory: true
-        directory: /var/lib/otelcol/queue
       health_check:
         endpoint: 0.0.0.0:13133
       pprof: {}
@@ -93,6 +56,9 @@ spec:
         - action: upsert
           key: cluster
           value: golden-cluster
+        - action: upsert
+          key: region
+          value: us-east4
       resource/self:
         attributes:
         - action: upsert
@@ -124,11 +90,10 @@ spec:
       - health_check
       - zpages
       - pprof
-      - file_storage
       pipelines:
         logs:
           exporters:
-          - otlphttp/loki
+          - kafka
           processors:
           - memory_limiter
           - k8sattributes
@@ -139,7 +104,7 @@ spec:
           - otlp
         metrics:
           exporters:
-          - otlphttp/mimir
+          - kafka
           processors:
           - memory_limiter
           - k8sattributes
@@ -152,17 +117,22 @@ spec:
           - otlp
         metrics/self:
           exporters:
-          - otlphttp/mimir
+          - kafka
           processors:
           - memory_limiter
           - resource/self
           - batch
           receivers:
           - prometheus/self
+        traces:
+          exporters:
+          - kafka
+          processors:
+          - memory_limiter
+          - k8sattributes
+          - resource/default
+          - filter/argus-gateway
+          - batch
+          receivers:
+          - otlp
   mode: deployment
-  volumeMounts:
-  - mountPath: /var/lib/otelcol
-    name: queue
-  volumes:
-  - emptyDir: {}
-    name: queue

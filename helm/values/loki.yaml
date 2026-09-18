@@ -15,6 +15,14 @@ loki:
         object_store: filesystem # solo default; engine overrides per cloud seam
         schema: v13
         index: { prefix: index_, period: 24h }
+  compactor:
+    # Retention is switched on at apply time from the profile promise
+    # (`--set loki.compactor.retention_enabled=true`, see steps.retention_helm_sets), and
+    # loki refuses to start with retention enabled and no delete request store:
+    # "compactor.delete-request-store should be configured when retention is enabled"
+    # (verified against the pinned chart's app, loki 3.7.3). Solo default: the same
+    # filesystem backend as `storage.type` above, which the engine overrides per cloud seam.
+    delete_request_store: filesystem
   limits_config:
     allow_structured_metadata: true
     otlp_config:

@@ -45,6 +45,13 @@ class FakeRunner:
         return 0, "{}" if "-o json" not in joined else '{"items": []}'
 
 
+def _fake_perses_opener(req) -> tuple[int, bytes]:
+    """Every GET 404s (nothing provisioned yet), every POST/PUT succeeds - enough for
+    tests where ProvisionPerses only rides along with an `observe` run; its own
+    behavior (create/conflict/unchanged/errors) is covered by test_perses_step.py."""
+    return (404, b"") if req.get_method() == "GET" else (200, b"{}")
+
+
 def _ctx(runner: FakeRunner, **kw) -> StepContext:
     pins = yaml.safe_load((REPO / "helm" / "pins.yaml").read_text())
     return StepContext(runner=runner, pins=pins, repo_root=REPO, **kw)
@@ -150,7 +157,135 @@ def test_dry_run_threads_through(tmp_path: Path) -> None:
     assert "--dry-run=server" in cmd
 
 
-def test_cli_render_writes_all_families(tmp_path: Path) -> None:
+def test_every_kubectl_argv_carries_a_request_timeout(tmp_path: Path, monkeypatch) -> None:
+    """The job is a one-shot Job that must end with a summary line. A kubectl call with
+    no bound (an apiserver that accepts the connection and never answers, a kubeconfig
+    pointing at a cluster that is gone) hangs until something outside kills the pod, and
+    then there is no summary at all. `StepContext.kubectl` is the one place every argv is
+    built, so the bound is added there and cannot be forgotten by a new step."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    kubectl_calls = [c for c, _s in runner.calls if c[0] == "kubectl"]
+    assert kubectl_calls
+    for cmd in kubectl_calls:
+        assert any(a.startswith("--request-timeout=") for a in cmd), cmd
+
+
+def test_the_rollout_poll_is_bounded_by_its_own_deadline_not_by_thirty_seconds() -> None:
+    """`kubectl rollout status` waits for a rollout to finish, and --request-timeout
+    bounds the watch request underneath it - so the standing 30s bound would abort a
+    healthy rollout that simply takes longer than that. The polling step passes its own
+    remaining deadline instead."""
+    from argus.steps import StepContext as Ctx
+
+    cmd = Ctx(runner=lambda *_a: (0, "")).kubectl("rollout", "status", request_timeout="330s")
+    assert cmd[-1] == "--request-timeout=330s"
+
+
+def test_apply_rendered_with_empty_annotations_is_byte_identical_to_today(
+    tmp_path: Path,
+) -> None:
+    """StepContext.annotations defaults to {}; job mode is the only caller that ever
+    sets it. Operator mode (and the golden-file suite) must see the exact same
+    stdin manifest as before this field existed."""
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [
+        {"kind": "ServiceMonitor", "metadata": {"name": "x"}},
+        {"kind": "PodMonitor", "metadata": {"name": "y", "annotations": {"keep": "me"}}},
+    ]
+    rendered = {"scrape": docs}
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger, "wire@x", _ctx(runner, rendered=rendered)
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    assert stdin_text == yaml.safe_dump_all(docs)
+
+
+def test_apply_rendered_annotates_documents_with_the_observed_contract(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [{"kind": "ServiceMonitor", "metadata": {"name": "x"}}]
+    rendered = {"scrape": docs}
+    sha = "a" * 64
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    applied = list(yaml.safe_load_all(stdin_text))
+    assert applied[0]["metadata"]["annotations"] == {"argus.dev/contract-sha256": sha}
+
+
+def test_apply_rendered_annotation_survives_alongside_unrelated_annotations(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    docs = [
+        {
+            "kind": "ServiceMonitor",
+            "metadata": {
+                "name": "x",
+                "annotations": {
+                    "unrelated/keep": "yes",
+                    "argus.dev/contract-sha256": "stale" * 12 + "0000",
+                },
+            },
+        }
+    ]
+    rendered = {"scrape": docs}
+    sha = "b" * 64
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+    )
+    _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
+    applied = list(yaml.safe_load_all(stdin_text))
+    annotations = applied[0]["metadata"]["annotations"]
+    assert annotations["unrelated/keep"] == "yes"
+    assert annotations["argus.dev/contract-sha256"] == sha
+
+
+def test_apply_rendered_never_mutates_the_callers_rendered_documents(
+    tmp_path: Path,
+) -> None:
+    """Rendered families are reused across steps/runs - apply() must copy, not touch,
+    the caller's objects, even for a document that starts with no metadata at all."""
+    runner = FakeRunner()
+    ledger = Ledger(tmp_path / "l.db")
+    original_doc = {"kind": "ServiceMonitor"}
+    docs = [original_doc]
+    rendered = {"scrape": docs}
+    ProvisionEngine([ApplyRendered(family="scrape")]).run(
+        ledger,
+        "wire@x",
+        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": "c" * 64}),
+    )
+    assert original_doc == {"kind": "ServiceMonitor"}
+    assert "metadata" not in original_doc
+
+
+def test_cli_render_writes_the_per_app_families(tmp_path: Path) -> None:
+    """Per-app render is per-app only: the shared collector tier is the platform's."""
     out = tmp_path / "rendered"
     code = cli.main(
         [
@@ -167,17 +302,353 @@ def test_cli_render_writes_all_families(tmp_path: Path) -> None:
     )
     assert code == 0
     names = {p.name for p in out.glob("*.yaml")}
-    assert {"collectors.yaml", "scrape.yaml", "alerts.yaml", "perses.yaml", "slo.yaml"} <= names
+    assert {"scrape.yaml", "alerts.yaml", "perses.yaml", "slo.yaml"} <= names
+    assert "collectors.yaml" not in names
+    for path in out.glob("*.yaml"):
+        for doc in yaml.safe_load_all(path.read_text()):
+            assert doc["kind"] != "OpenTelemetryCollector", path.name
+
+
+def test_cli_render_defaults_out_dir_per_mode(tmp_path: Path, monkeypatch) -> None:
+    """--out is shared by both render modes but one default cannot fit both: a
+    per-app render and a --platform render must not collide on the same directory
+    when neither passes --out."""
+    monkeypatch.chdir(tmp_path)
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l1.db"),
+        ]
+    )
+    assert code == 0
+    assert (tmp_path / ".argus" / "rendered-app" / "alerts.yaml").exists()
+
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l2.db"),
+        ]
+    )
+    assert code == 0
+    assert (tmp_path / ".argus" / "rendered-platform" / "collectors.yaml").exists()
+    assert not (tmp_path / ".argus" / "rendered-app" / "collectors.yaml").exists()
+
+
+def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert {p.name for p in out.glob("*.yaml")} == {
+        "collectors.yaml",
+        "identity.yaml",
+        "platform-info.yaml",
+        "platform-rules.yaml",
+    }
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
     names = {d["metadata"]["name"] for d in docs}
     assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
     kinds = {d["kind"] for d in docs}
-    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding"} <= kinds
+    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding", "PriorityClass"} <= kinds
+    gateway = next(d for d in docs if d["metadata"]["name"] == "argus-gateway")
+    assert set(gateway["spec"]["config"]["service"]["pipelines"]) == {
+        "metrics",
+        "logs",
+        "traces",
+        "metrics/self",
+    }
+
+
+def test_cli_render_platform_writes_the_observe_job_identity(tmp_path: Path) -> None:
+    """The job's own identity - the ServiceAccount + RBAC a provisioner's Job runs
+    `argus observe` as - is a separate family from `collectors` (see
+    `_render_platform_families`'s docstring); `render --platform` must include it."""
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    docs = list(yaml.safe_load_all((out / "identity.yaml").read_text()))
+    assert len(docs) == 5
+    kinds = [d["kind"] for d in docs]
+    assert kinds == ["ServiceAccount", "ClusterRole", "ClusterRoleBinding", "Role", "RoleBinding"]
+    dumped = yaml.safe_dump_all(docs)
+    assert "secrets" not in dumped
+    assert "*" not in dumped
+    assert "delete" not in dumped
+
+
+def test_cli_render_platform_previews_exactly_what_platform_applies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A preview that omits half of what a run applies is worse than no preview: the
+    platform's own record and its own alert rules go through the same renderer, so
+    `render --platform` and `platform` cannot show different answers."""
+    from tests.support.fake_cluster import InfoRunner
+
+    recorded = {"born": "2026-01-01T00:00:00Z", "tenant": "c1", "environment": "dev"}
+    runner = InfoRunner(dict(recorded))
+    monkeypatch.setattr(cli, "real_runner", runner)
+    out = tmp_path / "rendered"
+    assert (
+        cli.main(
+            [
+                "render",
+                "--platform",
+                "--cluster",
+                "c1",
+                "--env",
+                "dev",
+                "--out",
+                str(out),
+                "--ledger",
+                str(tmp_path / "l.db"),
+            ]
+        )
+        == 0
+    )
+    previewed = list(yaml.safe_load_all((out / "platform-rules.yaml").read_text()))
+    assert [d["kind"] for d in previewed] == ["PrometheusRule"]
+    info = list(yaml.safe_load_all((out / "platform-info.yaml").read_text()))
+    assert info[0]["data"] == recorded
+
+    applied_runner = InfoRunner(dict(recorded))
+    monkeypatch.setattr(cli, "real_runner", applied_runner)
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", lambda *a, **k: 1)
+    assert (
+        cli.main(
+            ["platform", "--cluster", "c1", "--env", "dev", "--ledger", str(tmp_path / "p.db")]
+        )
+        == 0
+    )
+    applied = [
+        d
+        for d in applied_runner.applied_docs()
+        if d.get("metadata", {}).get("name") == "argus-platform"
+    ]
+    assert applied == previewed
+
+
+def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The collector CRs need the operator's CRDs and webhook, which arrive with the
+    opentelemetry-operator helm step - so both applies (collectors, identity) must
+    land after every helm step."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    # Every apply, in order, judged by what it actually applies rather than by position.
+    # A count would say nothing about the CRD dependency, and the platform's own record is
+    # not an apply at all (it is created once and patched - see EnsurePlatformInfo).
+    ordered = [
+        (c, s) for c, s in runner.calls if (c[0] == "helm" and c[1] == "upgrade") or "apply" in c
+    ]
+    last_helm = max(i for i, (c, _s) in enumerate(ordered) if c[0] == "helm")
+    kinds_at = {
+        i: {d["kind"] for d in yaml.safe_load_all(s) if d}
+        for i, (c, s) in enumerate(ordered)
+        if c[0] == "kubectl" and s
+    }
+    needs_crds = [
+        i
+        for i, kinds in kinds_at.items()
+        if kinds & {"OpenTelemetryCollector", "ClusterRole", "PrometheusRule"}
+    ]
+    assert needs_crds and min(needs_crds) > last_helm
+    all_kinds = set().union(*kinds_at.values())
+    assert "OpenTelemetryCollector" in all_kinds
+    assert {"ServiceAccount", "Role", "RoleBinding"} <= all_kinds
+
+
+def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
+    """collectors apply -> wait_collectors -> validate, in that order: the collector
+    apply has no --wait, so validate must not race the operator standing up pods."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: list[list[str]] = []
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    code = cli.main(
+        ["platform", "--cluster", "c1", "--env", "dev", "--ledger", str(tmp_path / "l.db")]
+    )
+    assert code == 0
+    assert captured
+    names = captured[0]
+    assert (
+        names.index("apply_collectors")
+        < names.index("apply_identity")
+        < names.index("wait_collectors")
+        < names.index("validate")
+    )
+
+
+def test_cli_platform_requires_an_environment(tmp_path: Path) -> None:
+    """The gateway stamps `environment` on everything it forwards; a silent default
+    would mislabel a whole cluster's telemetry."""
+    import pytest as _pytest
+
+    with _pytest.raises(SystemExit) as exc_info:
+        cli.main(["platform", "--cluster", "c1", "--ledger", str(tmp_path / "l.db")])
+    assert exc_info.value.code == 2
+
+
+def test_ignored_drop_rule_names_covers_added_changed_and_disabled() -> None:
+    from argus.profiles.models import DropRule
+
+    platform = [
+        DropRule(name="health-endpoints", stage="agent", path_matches=["/healthz"]),
+        DropRule(name="ksm-churn", stage="gateway", metric_names=["a"]),
+    ]
+    app = [
+        DropRule(name="ksm-churn", stage="gateway", metric_names=["b"]),  # changed
+        DropRule(name="app-only", stage="gateway", metric_names=["c"]),  # added
+        # "health-endpoints" is simply absent: disabled by the app's class/override
+    ]
+    ignored = cli._ignored_drop_rule_names(app, platform)
+    assert ignored == ["app-only", "health-endpoints", "ksm-churn"]
+
+
+def test_ignored_drop_rule_names_empty_when_identical() -> None:
+    from argus.profiles.models import DropRule
+
+    rules = [DropRule(name="x", stage="agent", path_matches=["/y"])]
+    assert cli._ignored_drop_rule_names(list(rules), list(rules)) == []
+
+
+def test_no_drop_deltas_warns_nothing(tmp_path: Path, capsys) -> None:
+    """The stock web fixture carries no observability.drop override, so its resolved
+    drop rules are exactly the platform's (baseline-only) - nothing to warn about."""
+    out = tmp_path / "rendered"
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--out",
+            str(out),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert "platform-owned" not in capsys.readouterr().err
+
+
+def test_drop_override_adding_a_rule_warns_and_names_it(tmp_path: Path, capsys) -> None:
+    gojira = tmp_path / "gojira.yaml"
+    gojira.write_text(
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+        "observability:\n  drop:\n    - name: extra-noise\n      stage: gateway\n"
+        "      metric_names: ['foo_.*']\n"
+    )
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(gojira),
+            "--env",
+            "dev",
+            "--out",
+            str(tmp_path / "rendered"),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "warning: drop rules are platform-owned now" in err
+    assert "ignored for demo" in err
+    assert "extra-noise" in err
+    assert "\n" not in err.strip()  # one line
+
+
+def test_drop_override_disabling_a_baseline_rule_warns_and_names_it(tmp_path: Path, capsys) -> None:
+    gojira = tmp_path / "gojira.yaml"
+    gojira.write_text(
+        "app: demo\nclass: web\n"
+        "environments:\n  - name: dev\n    cluster: c1\n    namespace: demo\n"
+        "observability:\n  drop:\n    - name: health-endpoints\n      stage: agent\n"
+        "      enabled: false\n"
+    )
+    code = cli.main(
+        [
+            "render",
+            "--gojira",
+            str(gojira),
+            "--env",
+            "dev",
+            "--out",
+            str(tmp_path / "rendered"),
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    err = capsys.readouterr().err
+    assert "warning: drop rules are platform-owned now" in err
+    assert "health-endpoints" in err
 
 
 def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
     # sloth generation has its own binary-gated test below
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
@@ -193,14 +664,507 @@ def test_cli_observe_flow_with_fake_runner(tmp_path: Path, monkeypatch) -> None:
     )
     assert code == 0
     applies = [c for c, _ in runner.calls if "apply" in c]
-    assert len(applies) == 4  # collectors, scrape, alerts, slo
+    assert len(applies) == 3  # scrape, alerts, slo - never the shared collector tier
+
+
+def test_cli_observe_dry_run_opens_no_sockets(tmp_path: Path, monkeypatch) -> None:
+    """A dry run is the one mode that must work with nothing reachable: a laptop with no
+    port-forward, a cluster that is not up yet. Any HTTP call at all fails this test."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+
+    def exploding_opener(req):
+        raise AssertionError(f"--dry-run opened a socket: {req.get_method()} {req.full_url}")
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", exploding_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert any("--dry-run=server" in c for c, _s in runner.calls)
+
+
+def test_cli_observe_operator_mode_applies_no_contract_annotation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Operator mode has no contract to record - it must set no annotation at all."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    applies = [(c, s) for c, s in runner.calls if "apply" in c]
+    assert applies
+    for _cmd, stdin_text in applies:
+        for doc in yaml.safe_load_all(stdin_text):
+            assert "argus.dev/contract-sha256" not in doc.get("metadata", {}).get("annotations", {})
+
+
+def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Operator mode must behave exactly as before job mode existed: progress lines
+    (skipped/applied/done) go to stdout, and there is never an ARGUS_SUMMARY line -
+    that line belongs to job mode only."""
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "applied" in captured.out
+    assert "done" in captured.out
+    assert "ARGUS_SUMMARY" not in captured.out
+    assert "ARGUS_SUMMARY" not in captured.err
 
 
 import pytest  # noqa: E402
 
+# --- in-cluster endpoint derivation: --namespace / ARGUS_NAMESPACE feed --mimir-url
+# and --perses-url unless the flag is given explicitly ---
+
+
+def test_cardinality_mimir_url_derives_from_default_namespace(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return [("foo", 5)]
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_cardinality_explicit_mimir_url_wins_over_derived_default(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(
+        ["cardinality", "--tenant", "t1", "--mimir-url", "http://localhost:9009/prometheus"]
+    )
+    assert code == 0
+    assert captured["mimir_base"] == "http://localhost:9009/prometheus"
+
+
+def test_cardinality_namespace_flag_changes_the_derived_default(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1", "--namespace", "obs"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.obs.svc:80/prometheus"
+
+
+def test_cardinality_argus_namespace_env_feeds_the_derived_default(monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_NAMESPACE", "envns")
+    captured: dict = {}
+
+    def fake_top_metric_names(mimir_base, tenant, limit=15):
+        captured["mimir_base"] = mimir_base
+        return []
+
+    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    code = cli.main(["cardinality", "--tenant", "t1"])
+    assert code == 0
+    assert captured["mimir_base"] == "http://argus-mimir-gateway.envns.svc:80/prometheus"
+
+
+def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path) -> None:
+    captured: dict = {}
+
+    def fake_sync_rules(mimir_url, tenant, namespace, docs):
+        captured["mimir_url"] = mimir_url
+        return 0
+
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "rules-sync",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured["mimir_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None:
+    captured: dict = {}
+
+    def fake_sync_rules(mimir_url, tenant, namespace, docs):
+        captured["mimir_url"] = mimir_url
+        return 0
+
+    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "rules-sync",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--mimir-url",
+            "http://localhost:9009/prometheus",
+        ]
+    )
+    assert code == 0
+    assert captured["mimir_url"] == "http://localhost:9009/prometheus"
+
+
+def test_feedback_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path, capsys) -> None:
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["base_url"] = client.base_url
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert captured["base_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+
+
+def test_feedback_queries_the_tenant_the_platform_recorded(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    """The last command still reading a tenant straight off the contract. Evidence
+    distilled from an empty tenant is not evidence, so it resolves the tenant the way
+    `observe` does - quietly, because it applies nothing and refuses nothing."""
+    from tests.support.fake_cluster import RECORDED, InfoRunner
+
+    monkeypatch.setattr(cli, "real_runner", InfoRunner(dict(RECORDED)))
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["tenant"] = client.tenant
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+    assert code == 0
+    assert captured["tenant"] == "real-name"
+    assert "tenant" not in capsys.readouterr().err
+
+
+def test_feedback_explicit_mimir_url_wins(monkeypatch, tmp_path: Path, capsys) -> None:
+    captured: dict = {}
+
+    def fake_collect(client, app, namespace, window_days):
+        captured["base_url"] = client.base_url
+        return {
+            "cpu_samples": [0.1],
+            "memory_samples": [1024.0],
+            "cpu_request": 0.1,
+            "cpu_limit": 0.2,
+            "memory_request": 1024.0,
+            "memory_limit": 2048.0,
+            "restarts": 0,
+            "oom_kills": 0,
+        }
+
+    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    code = cli.main(
+        [
+            "feedback",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+            "--mimir-url",
+            "http://localhost:9009/prometheus",
+        ]
+    )
+    assert code == 0
+    assert captured["base_url"] == "http://localhost:9009/prometheus"
+
+
+def test_observe_perses_url_flag_reaches_the_step_context(tmp_path: Path, monkeypatch) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--perses-url",
+            "http://localhost:8080",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://localhost:8080"
+
+
+def test_observe_perses_url_derives_from_namespace_when_not_given(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--namespace",
+            "obs",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://argus-perses.obs.svc:8080"
+
+
+def test_observe_argus_perses_url_env_wins_over_derived_default(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://argus-perses.envset:9999"
+
+
+def test_observe_explicit_perses_url_flag_wins_over_env(tmp_path: Path, monkeypatch) -> None:
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: dict = {}
+
+    class SpyEngine(RealEngine):
+        def run(self, ledger, name, ctx):
+            captured["step_ctx"] = ctx
+            return super().run(ledger, name, ctx)
+
+    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--perses-url",
+            "http://localhost:8080",
+        ]
+    )
+    assert code == 0
+    assert captured["step_ctx"].perses_url == "http://localhost:8080"
+
+
+def test_observe_step_order_ends_with_provision_perses_operator_mode(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Dashboards land last: they chart the alerts/SLOs applied earlier in the same
+    run, so provisioning them first would leave dashboards pointing at rules that
+    are not there yet."""
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    captured: list[list[str]] = []
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    assert captured
+    assert captured[0][-1] == "provision-perses"
+
+
+def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monkeypatch) -> None:
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--namespace",
+            "obs",
+        ]
+    )
+    assert code == 0
+    ns_cmds = [c for c, _ in runner.calls if "namespace" in c]
+    assert any("obs" in c for c in ns_cmds)
+
 
 @pytest.mark.skipif(
-    not (REPO / ".argus" / "tools" / "sloth-0.16.0").exists(),
+    not (REPO / ".argus" / "tools" / f"sloth-{cli.SLOTH_VERSION}").exists(),
     reason="pinned sloth binary not fetched (run `make validate`)",
 )
 def test_generate_slo_rules_via_real_sloth() -> None:
