@@ -60,6 +60,17 @@ def render_sloth(p: ResolvedProfile, ctx: Context) -> dict | None:
                     "objective": slo.objective,
                     "description": f"Argus {p.class_name} profile SLO {slo.name} for {ctx.app}",
                     "sli": _sli(slo, ctx.app, ctx.namespace),
+                    # Sloth copies an SLO's own `labels` onto the RECORDING rules it
+                    # generates (checked against the pinned sloth 0.16.0), and the
+                    # burn-rate alerts aggregate those series `without (sloth_window)`,
+                    # which preserves every other label - so a firing alert carries these
+                    # too, and this is the one place it can pick up who owns it (design
+                    # Part 1.3).
+                    "labels": {
+                        "app": ctx.app,
+                        "namespace": ctx.namespace,
+                        "class": p.class_name,
+                    },
                     "alerting": {
                         "name": f"ArgusSLO-{ctx.app}-{slo.name}",
                         "pageAlert": {"labels": {"severity": "page"}},

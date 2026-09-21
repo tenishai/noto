@@ -518,6 +518,65 @@ def test_job_mode_step_order_ends_with_provision_perses(monkeypatch, capsys):
     assert captured[0][-1] == "provision-perses"
 
 
+def test_job_mode_pushes_the_apps_rules_and_counts_the_step(monkeypatch, capsys):
+    """A job-provisioned app's alerts used to reach nothing that evaluates them: the
+    PrometheusRule objects were applied and no engine ever read them. The push is a step
+    of the run like any other, so it is counted in the line the launcher reads."""
+    calls: list[tuple[str, dict]] = []
+
+    def ruler(method: str, url: str, data: bytes | None, headers: dict):
+        calls.append((method, headers.get("X-Scope-OrgID", "")))
+        return (404, "") if method == "GET" else (202, "")
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", ruler)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0
+    assert any(method == "POST" for method, _tenant in calls)
+    assert {tenant for _m, tenant in calls} == {"dev-cluster"}
+    out = capsys.readouterr().out.strip().splitlines()
+    # scrape, alerts, slo, sync-rules, dashboards
+    assert out[-1].startswith("ARGUS_SUMMARY observed clips-api/dev: 5 steps applied, 0 skipped")
+
+
+def test_job_mode_fails_when_the_ruler_cannot_be_reached(monkeypatch, capsys):
+    """Operator mode tolerates an unreachable ruler (a laptop cannot route to the
+    in-cluster URL). A job runs INSIDE the cluster, where that name resolves, and nobody
+    is reading a note: it ends as the failure it is, through the same summary path as
+    every other failed step."""
+    from argus.feedback.ruler import RulerUnreachable
+
+    def unreachable(*_args):
+        raise RulerUnreachable("Connection refused")
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", unreachable)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    gojira_text = (FIXTURES / "web.yaml").read_text()
+    for k, v in _job_env(gojira_text).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 1
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out[-1].startswith("ARGUS_SUMMARY observe failed: sync-rules: ")
+    assert "Connection refused" in out[-1]
+    # The summary line is the whole of a job's output that anyone reads, and a resolver
+    # error on its own ("Name or service not known") does not say which name failed.
+    assert "http://argus-mimir-gateway.argus.svc:80/prometheus" in out[-1]
+
+
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
     """GojiraApp.environment() raises a bare KeyError, whose str() wraps the message
     in quotes; the summary must read the message plainly instead."""

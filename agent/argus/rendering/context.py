@@ -34,6 +34,11 @@ def solo_endpoints(namespace: str = "argus") -> dict[str, str]:
     `argus-tempo` (the monolithic tempo chart's one service, port 4317 for its OTLP
     gRPC receiver), and `argus-perses` (port 8080). All five matched the spec
     unchanged; nothing here needed correcting against the chart.
+
+    `alertmanager_url` targets `alertmanager-operated`, the operator's own governing
+    Service, rather than the helm release's Alertmanager service - the release's own
+    service name (`argus-kube-prometheus-stac-alertmanager`) is truncated by the chart
+    at 63 characters, exactly the kind of name not to hardcode.
     """
     return {
         "mimir_otlp_http": f"http://argus-mimir-gateway.{namespace}.svc:80/otlp",
@@ -41,6 +46,10 @@ def solo_endpoints(namespace: str = "argus") -> dict[str, str]:
         "tempo_otlp_grpc": f"argus-tempo.{namespace}.svc:4317",
         "mimir_query_url": f"http://argus-mimir-gateway.{namespace}.svc:80/prometheus",
         "perses_url": f"http://argus-perses.{namespace}.svc:8080",
+        # A bare URL against this headless Service reaches ONE Alertmanager pod, which is
+        # right for the single replica this platform runs; a scaled Alertmanager needs
+        # Mimir's `dnssrvnoa+` discovery form here so the ruler notifies every replica.
+        "alertmanager_url": f"http://alertmanager-operated.{namespace}.svc:9093",
     }
 
 

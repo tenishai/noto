@@ -7,6 +7,10 @@ SLO burn-rate alerts are NOT here - Sloth generates those (see slo.py).
 
 from collections.abc import Mapping
 
+# The platform's own name, imported rather than re-typed: it is this document's own name
+# below, the ruler namespace its group is filed under, and the `app` label the cluster-wide
+# groups carry. One spelling, so a rename cannot leave two of them disagreeing.
+from argus.feedback.ruler import PLATFORM_RULE_GROUP
 from argus.profiles.models import ResolvedProfile
 from argus.rendering.context import Context
 
@@ -41,6 +45,14 @@ _COLLECTOR_HEALTH_RULES = [
         "annotations": {"summary": "Collector exporter {{ $labels.exporter }} failing sends"},
     },
 ]
+
+
+def _owned(rule: dict, owner: dict[str, str]) -> dict:
+    """The rule with the owner's labels under its own: a rule's own label wins, so a
+    pack can still say something different on purpose."""
+    if "alert" not in rule:
+        return rule
+    return {**rule, "labels": {**owner, **rule.get("labels", {})}}
 
 
 def _cardinality_rules(p: ResolvedProfile, ctx: Context) -> list[dict]:
@@ -124,7 +136,7 @@ def render_platform_rules(
         "apiVersion": "monitoring.coreos.com/v1",
         "kind": "PrometheusRule",
         "metadata": {
-            "name": "argus-platform",
+            "name": PLATFORM_RULE_GROUP,
             "namespace": namespace,
             "labels": {"argus.dev/managed": "true", "argus.dev/class": "platform"},
         },
@@ -137,7 +149,9 @@ def render_platform_rules(
                             "alert": "ArgusRetentionWindowShort",
                             "expr": expr,
                             "for": "1h",
-                            "labels": {"severity": "warning"},
+                            # Nothing else owns this alert: it names itself so it can be
+                            # routed the same way every per-app alert can (design Part 1.3).
+                            "labels": {"severity": "warning", "app": PLATFORM_RULE_GROUP},
                             "annotations": {
                                 "summary": (
                                     f"Metrics older than {days - 1}d are gone, but the "
@@ -164,6 +178,7 @@ def render_platform_rules(
 def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
     if not ctx.app or not ctx.namespace:
         raise ValueError("alert packs are per-app: Context.app and Context.namespace are required")
+    app_group = f"argus-app-{ctx.app}"
     groups = [
         {"name": "argus-collector-health", "rules": list(_COLLECTOR_HEALTH_RULES)},
         {"name": "argus-cardinality", "rules": _cardinality_rules(p, ctx)},
@@ -173,7 +188,7 @@ def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
     if p.app_scrape:
         groups.append(
             {
-                "name": f"argus-app-{ctx.app}",
+                "name": app_group,
                 "rules": [
                     {
                         "alert": "ArgusScrapeDown",
@@ -187,6 +202,30 @@ def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
                 ],
             }
         )
+    # The app's own alerts say whose they are (design Part 1.3), so they can be routed by
+    # owner later. These are rule labels: they are attached after evaluation and override a
+    # series label of the same name, which is harmless here because for `up{job="<app>"}`
+    # the series' own job and namespace carry exactly these values. Recording rules (no
+    # `alert` key) are untouched by `_owned`.
+    owner = {
+        "app": ctx.app,
+        "namespace": ctx.namespace,
+        "class": p.class_name,
+        "environment": ctx.environment,
+    }
+    # The other two groups are cluster-wide conditions, not this app's: collector health
+    # belongs to the shared collector tier and the cardinality budget to the whole tenant.
+    # Every app renders them identically into its own pack, so they carry one added label
+    # and it is the platform's. Owner labels here would make each app's copy a distinct
+    # alert - N notifications for one fault, and later, every team paged for it.
+    shared = {"app": PLATFORM_RULE_GROUP}
+    groups = [
+        {
+            "name": g["name"],
+            "rules": [_owned(r, owner if g["name"] == app_group else shared) for r in g["rules"]],
+        }
+        for g in groups
+    ]
     return {
         "apiVersion": "monitoring.coreos.com/v1",
         "kind": "PrometheusRule",

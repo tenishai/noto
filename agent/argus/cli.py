@@ -19,7 +19,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +26,8 @@ import yaml
 
 from argus.engine.engine import ProvisionEngine, RunResult
 from argus.engine.ledger import Ledger
+from argus.feedback.ruler import PLATFORM_RULE_GROUP
+from argus.feedback.ruler import Http as RulerHttp
 from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
 from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
@@ -55,6 +56,7 @@ from argus.steps import (
     PlatformInfoUnreadable,
     ProvisionPerses,
     StepContext,
+    SyncRules,
     ValidateRoundTrip,
     WaitForCollectors,
     helm_set_values,
@@ -110,6 +112,10 @@ def real_runner(cmd: list[str], stdin_text: str | None) -> tuple[int, str]:
 # `real_runner` above, monkeypatched by tests the same way. Production leaves it
 # None, so PersesClient falls back to real `urllib`.
 default_perses_opener: Opener | None = None
+
+# The same seam for SyncRules's ruler calls, monkeypatched by tests the same way.
+# Production leaves it None, so the step uses the real transport.
+default_ruler_http: RulerHttp | None = None
 
 
 def _resolved(class_name: str, override: dict | None):
@@ -424,6 +430,14 @@ def _step_context(
     args: argparse.Namespace,
     rendered: dict | None = None,
     annotations: dict[str, str] | None = None,
+    *,
+    # The ruler fields default to "no ruler work": `cmd_platform` builds its context
+    # before anything app-shaped exists and pushes its own group by another path. Only
+    # `_run_observe` fills them in, and only once the app and tenant are resolved.
+    ruler_url: str | None = None,
+    tenant: str = "",
+    ruler_namespace: str | None = None,
+    ruler_required: bool = False,
 ) -> StepContext:
     pins = yaml.safe_load((REPO_ROOT / "helm" / "pins.yaml").read_text())
     perses_url = (
@@ -442,19 +456,32 @@ def _step_context(
         annotations=annotations or {},
         perses_url=perses_url,
         perses_opener=default_perses_opener,
+        ruler_url=ruler_url,
+        tenant=tenant,
+        ruler_namespace=ruler_namespace,
+        ruler_http=default_ruler_http,
+        ruler_required=ruler_required,
     )
 
 
 _RULER_NOTE = (
     "note: PrometheusRule objects are inert in this stack (kube-prometheus-stack ships the\n"
     "operator, not a Prometheus) - rules are only evaluated once they reach Mimir's ruler.\n"
-    "`argus platform` pushes its own group (argus-platform); each app's groups are pushed by\n"
-    '`argus rules-sync --gojira <app> --env <env>` (README, "Rules reach Mimir\'s ruler").'
+    "`argus platform` pushes its own group (argus-platform); each app's groups are pushed and\n"
+    "pruned by `argus observe` on every run, and `argus rules-sync --gojira <app> --env <env>`\n"
+    're-pushes them without re-observing (README, "Rules reach Mimir\'s ruler").'
 )
 
-# The ruler namespace the platform's own group is filed under. It is the PrometheusRule's
-# own name, so the group is as easy to find in the ruler as it is in the cluster.
-PLATFORM_RULE_GROUP = "argus-platform"
+
+def _port_forward_hint(namespace: str) -> str:
+    """What to do about a ruler URL that does not resolve from here. One spelling, because
+    two commands print it and an operator who follows one of them must reach the same
+    place as one who follows the other."""
+    return (
+        f"port-forward with `kubectl -n {namespace} port-forward "
+        "svc/argus-mimir-gateway 9009:80` and re-run with "
+        "--mimir-url http://localhost:9009/prometheus"
+    )
 
 
 def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str) -> str | None:
@@ -482,18 +509,16 @@ def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str
         )
     try:
         count = ruler.sync_rules(url, tenant, PLATFORM_RULE_GROUP, docs)
-    except ruler.RulerSyncError as exc:  # a ruler that answered and said no
-        print(f"FAILED: {exc}", file=sys.stderr)
-        return None
-    except urllib.error.URLError as exc:
+    except ruler.RulerUnreachable as exc:
         print(
             f"note: the platform alert group was not pushed: {url} is unreachable from here "
-            f"({exc.reason}); port-forward with `kubectl -n {args.namespace} port-forward "
-            "svc/argus-mimir-gateway 9009:80` and re-run with "
-            "--mimir-url http://localhost:9009/prometheus",
+            f"({exc}); {_port_forward_hint(args.namespace)}",
             file=sys.stderr,
         )
         return f"platform alert group not pushed: {url} is unreachable from here"
+    except ruler.RulerSyncError as exc:  # a ruler that answered and said no
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return None
     return f"platform alert group pushed to the ruler: {count} group(s), tenant {tenant}"
 
 
@@ -551,7 +576,14 @@ def cmd_platform(args: argparse.Namespace) -> int:
                 extra_sets=(
                     # The profile budget becomes the tenant series limit (soft
                     # enforcement, issue #44); numbers are inputs, never constants.
-                    {"mimir.structuredConfig.limits.max_global_series_per_user": str(budget)}
+                    {
+                        "mimir.structuredConfig.limits.max_global_series_per_user": str(budget),
+                        # Without this the ruler evaluates a rule and drops any alert it
+                        # fires: nothing tells it where Alertmanager is.
+                        "mimir.structuredConfig.ruler.alertmanager_url": solo_endpoints(
+                            args.namespace
+                        )["alertmanager_url"],
+                    }
                     if c == "mimir"
                     else {}
                 )
@@ -634,6 +666,7 @@ def _run_observe(
     annotations: dict[str, str] | None = None,
     *,
     strict_record: bool = False,
+    ruler_required: bool = False,
 ) -> tuple[RunResult, Context, TenantResolution]:
     """The one observe step sequence, shared by the operator command and job mode.
 
@@ -659,12 +692,29 @@ def _run_observe(
         assert ctx.namespace is not None
         rendered["slo"] = _generate_slo_rules(rendered["slo"][0], ctx.namespace)
         steps.append(ApplyRendered(family="slo"))
+    # The rules applied above are inert until they reach the ruler, so this runs after
+    # both rule families and before the dashboards that chart them.
+    steps.append(SyncRules())
     # Dashboards land last: they chart the alerts/SLOs applied above, so they must
     # exist first, or a dashboard-provisioning failure would still leave rules and
     # alerts wired.
     steps.append(ProvisionPerses())
     result = ProvisionEngine(steps).run(
-        ledger, f"wire@{ctx.app}", _step_context(args, rendered, annotations)
+        ledger,
+        f"wire@{ctx.app}",
+        _step_context(
+            args,
+            rendered,
+            annotations,
+            ruler_url=_resolve_mimir_url(args),
+            # Both resolved by `_app_context` above and not before it: the tenant comes
+            # from the platform's own record, and the ruler namespace is the app's name
+            # from the contract - the same namespace `rules-sync` files groups under, so
+            # the command and the step converge on one set of groups.
+            tenant=ctx.tenant,
+            ruler_namespace=ctx.app or "argus",
+            ruler_required=ruler_required,
+        ),
     )
     return result, ctx, resolution
 
@@ -700,6 +750,9 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
             # A job has nobody reading its stderr: a record it could not read is a failure
             # here, not a warning (see `_resolve_tenant`).
             strict_record=True,
+            # And it runs inside the cluster, where the ruler's own Service DNS resolves:
+            # a ruler it cannot reach is a real failure, not an operator's port-forward.
+            ruler_required=True,
         )
     except Exception as exc:  # job mode must always end with a summary line, not a traceback
         print(failure_summary(None, _exception_reason(exc)), flush=True)
@@ -771,7 +824,7 @@ def cmd_feedback(args: argparse.Namespace) -> int:
 
 
 def cmd_rules_sync(args: argparse.Namespace) -> int:
-    from argus.feedback.ruler import sync_rules
+    from argus.feedback import ruler
     from argus.rendering.slo import render_sloth
 
     try:
@@ -781,12 +834,46 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
     except TenantMismatch as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
+    base = _resolve_mimir_url(args)
+    namespace = ctx.app or "argus"
     docs = [render_alert_rules(p, ctx)]
     sloth_doc = render_sloth(p, ctx)
     if sloth_doc is not None:
         docs.extend(_generate_slo_rules(sloth_doc, ctx.namespace or "default"))
-    count = sync_rules(_resolve_mimir_url(args), ctx.tenant, ctx.app or "argus", docs)
-    print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
+    try:
+        # The same refusal the step makes, before anything is sent: an app named after the
+        # platform would prune the platform's own alarm out of the ruler.
+        ruler.refuse_platform_namespace(namespace)
+        # This command deletes as well as pushes, so a dry run has to stop HERE, not at
+        # the transport: `--dry-run` promises a run that changes nothing, and reaching the
+        # ruler at all would prune for real.
+        if args.dry_run:
+            print(
+                f"would push {ruler.rendered_group_count(docs)} group(s) to {base} as tenant "
+                f"{ctx.tenant}, namespace {namespace}, and prune any others"
+            )
+            return 0
+        count = ruler.sync_rules(base, ctx.tenant, namespace, docs)
+        print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
+        # The same prune the `observe` step does, so the command and the step cannot leave
+        # the ruler in two different states for the same app: a group nobody renders any
+        # more evaluates forever otherwise (issue #57).
+        pruned = ruler.prune_groups(base, ctx.tenant, namespace, ruler.rendered_group_names(docs))
+    except ruler.RulerUnreachable as exc:
+        # Every ruler failure ends in the CLI's own shape rather than as a traceback, the
+        # way `argus platform` already reports its own push. Unreachable is the laptop
+        # case, so it carries the way out of it.
+        print(
+            f"FAILED: {base} is unreachable from here ({exc}); "
+            f"{_port_forward_hint(args.namespace)}",
+            file=sys.stderr,
+        )
+        return 1
+    except ruler.RulerSyncError as exc:  # a ruler that answered and said no, to push or delete
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
+    if pruned:
+        print(f"pruned {len(pruned)} stale group(s): {', '.join(pruned)}")
     return 0
 
 
@@ -909,6 +996,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Perses API base for the dashboards step; env ARGUS_PERSES_URL, else "
         "derived from --namespace, unless given. Port-forward form: "
         "--perses-url http://localhost:8080",
+    )
+    # `observe` pushes the app's rule groups into the ruler (SyncRules), so it takes the
+    # same endpoint the other ruler commands take, derived the same way. Without the flag
+    # an operator whose laptop cannot route to the in-cluster URL would be told to
+    # port-forward by a message naming an option this command did not have.
+    p_observe.add_argument(
+        "--mimir-url",
+        default=None,
+        help="Mimir Prometheus API base for pushing the app's rule groups; derived from "
+        "--namespace unless given. Port-forward form: "
+        "--mimir-url http://localhost:9009/prometheus",
     )
     p_observe.set_defaults(func=cmd_observe)
 

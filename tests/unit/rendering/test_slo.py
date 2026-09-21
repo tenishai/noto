@@ -65,3 +65,17 @@ def test_latency_slo_uses_le_bucket() -> None:
     latency = next(s for s in doc["spec"]["slos"] if s["name"] == "latency-p99-500ms")
     assert 'le="0.5"' in latency["sli"]["events"]["errorQuery"]
     assert "availability-99.9" in names  # class SLO still present
+
+
+def test_every_slo_carries_owner_labels_sloth_puts_on_its_recording_rules() -> None:
+    """Sloth copies each SLO's own `labels` onto the RECORDING rules it generates (checked
+    against the pinned sloth 0.16.0). They reach a firing alert because the burn-rate
+    expressions aggregate those series `without (sloth_window)`, which keeps every other
+    label - so this is still the only place an SLO alert picks up who owns it."""
+    p = _profile()
+    doc = render_sloth(p, _ctx())
+    assert doc is not None
+    for slo in doc["spec"]["slos"]:
+        assert slo["labels"]["app"] == "clips"
+        assert slo["labels"]["namespace"] == "clips"
+        assert slo["labels"]["class"] == p.class_name

@@ -32,7 +32,12 @@ def test_solo_endpoints_default_values_are_todays_constants() -> None:
         "tempo_otlp_grpc": "argus-tempo.argus.svc:4317",
         "mimir_query_url": "http://argus-mimir-gateway.argus.svc:80/prometheus",
         "perses_url": "http://argus-perses.argus.svc:8080",
+        "alertmanager_url": "http://alertmanager-operated.argus.svc:9093",
     }
+
+
+def test_solo_endpoints_alertmanager_url_for_custom_namespace() -> None:
+    assert solo_endpoints("obs")["alertmanager_url"] == "http://alertmanager-operated.obs.svc:9093"
 
 
 def test_solo_endpoints_custom_namespace_changes_every_host() -> None:
@@ -51,6 +56,7 @@ def test_solo_endpoints_custom_namespace_exact_values() -> None:
         "tempo_otlp_grpc": "argus-tempo.obs.svc:4317",
         "mimir_query_url": "http://argus-mimir-gateway.obs.svc:80/prometheus",
         "perses_url": "http://argus-perses.obs.svc:8080",
+        "alertmanager_url": "http://alertmanager-operated.obs.svc:9093",
     }
 
 

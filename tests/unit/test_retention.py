@@ -142,3 +142,10 @@ def test_the_annotations_say_what_it_means_and_what_to_check() -> None:
 def test_a_metrics_promise_that_is_not_days_is_refused() -> None:
     with pytest.raises(ValueError, match="retention"):
         render_platform_rules({"metrics": "forever"}, BORN)
+
+
+def test_the_retention_alert_says_it_belongs_to_the_platform() -> None:
+    """Nothing else owns this alert, so it carries its own name as its `app` rather than
+    going unlabeled while every per-app alert says whose it is."""
+    rule = _only_rule(render_platform_rules(BASELINE, BORN))
+    assert rule["labels"]["app"] == "argus-platform"

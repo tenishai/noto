@@ -93,6 +93,47 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- **The ruler knows where Alertmanager is.** Mimir's ruler had no `alertmanager_url`, so it
+  evaluated every rule and then dropped whatever fired: an alarm that reached nothing.
+  `solo_endpoints` gains `alertmanager_url` (the operator's own `alertmanager-operated`
+  Service, whose name does not depend on a helm release name the chart truncates), and
+  `argus platform` sets it on the mimir release through the same `--set` passthrough the
+  cardinality budget and the retention promises already use.
+
+- **`argus observe` pushes the app's rules to the ruler, and prunes what it no longer
+  renders (closes #57).** A `PrometheusRule` is inert in this stack, so an app provisioned
+  by a job had alert rules nothing evaluated until somebody remembered to run `rules-sync`
+  by hand. A new `sync-rules` step runs after the alert and SLO families are applied and
+  before the dashboards: it pushes every rendered group under a ruler namespace named after
+  the app, as the tenant the platform recorded, and then deletes any group the ruler still
+  holds in THAT namespace which this run did not render - which is what left a renamed SLO's
+  old group evaluating forever. Push first, prune second, always: a failed push never
+  deletes the groups that were working, and no run can reach another app's namespace or the
+  platform's own. An unreachable ruler is a note in operator mode (a laptop cannot route to
+  the in-cluster URL; `observe` now takes `--mimir-url` for that) and a failed run in job
+  mode, where the job runs inside the cluster and nobody reads a note. `argus rules-sync`
+  stays as the way to re-push without re-observing, and prunes the same way, so the command
+  and the step cannot leave the ruler in two different states. Because both now delete,
+  both refuse to act on `argus-platform` (a legal app name, whose run would prune the
+  platform's own retention alarm), a `--dry-run` of either says what it would push and
+  prune without opening a socket, and every ruler failure - refused, or unreachable with
+  the port-forward way out of it - is reported as a `FAILED:` line and exit 1 rather than a
+  traceback.
+
+- **Every per-app alert says whose it is.** Rules carried one label, `severity`, so nothing
+  could route an alert to the app that owns it. Every rule in the app's own group
+  (`argus-app-<app>`) now carries `app`, `namespace`, `class` and `environment` beside it (a
+  rule's own label still wins, so a pack can say something different on purpose; recording
+  rules are untouched), and each SLO in the Sloth spec carries `app`, `namespace` and
+  `class` - Sloth puts those on the recording rules it generates, and its burn-rate alerts
+  aggregate those series `without (sloth_window)`, so a firing SLO alert carries them too.
+  The two cluster-wide groups every app renders (`argus-collector-health`,
+  `argus-cardinality`) get one label and it is not the app's: `app: argus-platform`, the
+  same label the platform's own retention alert carries. Their labelsets stay identical
+  across apps, which is what lets Alertmanager collapse one collector fault into one
+  notification instead of one per app. Routing on those labels is the next piece and is not
+  in this change.
+
 - **`argus observe` runs as a one-shot Job, and the launcher reads one line.** A
   provisioner (gojira) launches `observe` in the cluster instead of running the CLI:
   the app's contract arrives in `GOJIRA_CONTRACT_YAML` with a `GOJIRA_CONTRACT_SHA256`
