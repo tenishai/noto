@@ -551,7 +551,14 @@ def cmd_platform(args: argparse.Namespace) -> int:
                 extra_sets=(
                     # The profile budget becomes the tenant series limit (soft
                     # enforcement, issue #44); numbers are inputs, never constants.
-                    {"mimir.structuredConfig.limits.max_global_series_per_user": str(budget)}
+                    {
+                        "mimir.structuredConfig.limits.max_global_series_per_user": str(budget),
+                        # Without this the ruler evaluates a rule and drops any alert it
+                        # fires: nothing tells it where Alertmanager is.
+                        "mimir.structuredConfig.ruler.alertmanager_url": solo_endpoints(
+                            args.namespace
+                        )["alertmanager_url"],
+                    }
                     if c == "mimir"
                     else {}
                 )

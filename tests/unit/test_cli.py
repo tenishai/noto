@@ -534,6 +534,40 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
     assert {"ServiceAccount", "Role", "RoleBinding"} <= all_kinds
 
 
+def test_cli_platform_tells_the_ruler_where_alertmanager_is(tmp_path: Path, monkeypatch) -> None:
+    """Mimir's ruler evaluates a rule and then drops any alert it fires unless it knows
+    where Alertmanager is. `argus platform` passes that URL through the same --set
+    passthrough as the cardinality budget and retention sets, derived from the
+    platform's own --namespace so it agrees with the operator's Service."""
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--namespace",
+            "obs",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 0
+    upgrades = {
+        c[3]: c for c, _ in runner.calls if c[0] == "helm" and c[1] == "upgrade"
+    }  # argus-<component> -> argv
+    mimir = " ".join(upgrades["argus-mimir"])
+    assert (
+        "mimir.structuredConfig.ruler.alertmanager_url="
+        "http://alertmanager-operated.obs.svc:9093" in mimir
+    )
+    for release, argv in upgrades.items():
+        if release != "argus-mimir":
+            assert "alertmanager_url" not in " ".join(argv)
+
+
 def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
     """collectors apply -> wait_collectors -> validate, in that order: the collector
     apply has no --wait, so validate must not race the operator standing up pods."""
