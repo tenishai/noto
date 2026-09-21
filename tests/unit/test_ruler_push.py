@@ -6,12 +6,12 @@ the operator, not a Prometheus), so a group is live only once it reaches Mimir's
 pushes each app's groups to the tenant the platform recorded as its own.
 """
 
-import urllib.error
 from pathlib import Path
 
 from tests.support.fake_cluster import RECORDED, InfoRunner
 
 from argus import cli
+from argus.feedback.ruler import RulerUnreachable
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gojira"
 
@@ -30,9 +30,27 @@ class SyncSpy:
         return len(docs)
 
 
+class PruneSpy:
+    """Stands in for `argus.feedback.ruler.prune_groups`; reports `deletes` as deleted."""
+
+    def __init__(self, deletes: list[str] | None = None) -> None:
+        self.calls: list[tuple] = []
+        self.deletes = deletes or []
+
+    def __call__(self, base: str, tenant: str, namespace: str, keep: set[str]) -> list[str]:
+        self.calls.append((base, tenant, namespace, keep))
+        return list(self.deletes)
+
+
 def _spy(monkeypatch, raises: BaseException | None = None) -> SyncSpy:
     spy = SyncSpy(raises)
     monkeypatch.setattr("argus.feedback.ruler.sync_rules", spy)
+    return spy
+
+
+def _prune_spy(monkeypatch, deletes: list[str] | None = None) -> PruneSpy:
+    spy = PruneSpy(deletes)
+    monkeypatch.setattr("argus.feedback.ruler.prune_groups", spy)
     return spy
 
 
@@ -73,7 +91,7 @@ def test_an_unreachable_ruler_is_a_note_not_a_failed_platform_run(
 ) -> None:
     """The laptop case: everything in the cluster succeeded, and the in-cluster ruler URL
     simply is not routable from here. Saying so is right; failing the run is not."""
-    spy = _spy(monkeypatch, urllib.error.URLError("Connection refused"))
+    spy = _spy(monkeypatch, RulerUnreachable("Connection refused"))
     assert _platform(tmp_path, monkeypatch, InfoRunner(None)) == 0
     assert spy.calls  # it did try
     captured = capsys.readouterr()
@@ -133,8 +151,35 @@ def test_rules_sync_pushes_to_the_tenant_the_platform_recorded(tmp_path: Path, m
     """The gojira contract names the cluster one thing and the platform writes as another;
     a group filed under the contract's name would evaluate over an empty tenant."""
     spy = _spy(monkeypatch)
+    _prune_spy(monkeypatch)
     assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 0
     assert spy.calls[0][1] == "real-name"
+
+
+def test_rules_sync_prunes_the_groups_it_no_longer_renders(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Issue #57: a renamed SLO left its old group in the ruler, evaluating forever.
+    `rules-sync` prunes the same way the `observe` step does, against the same namespace,
+    so the command and the step cannot leave the ruler in two different states."""
+    _spy(monkeypatch)
+    prune = _prune_spy(monkeypatch, deletes=["gone-with-the-rename"])
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 0
+    base, tenant, namespace, keep = prune.calls[0]
+    assert (tenant, namespace) == ("real-name", "clips-api")
+    assert base == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+    # the keep-set is what this run rendered, so nothing it just pushed can be deleted
+    assert "argus-collector-health" in keep
+    assert "pruned 1 stale group(s): gone-with-the-rename" in capsys.readouterr().out
+
+
+def test_rules_sync_says_nothing_about_pruning_when_there_is_nothing_stale(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    _spy(monkeypatch)
+    _prune_spy(monkeypatch)
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 0
+    assert "pruned" not in capsys.readouterr().out
 
 
 def test_rules_sync_fails_loudly_on_an_explicit_tenant_that_disagrees(

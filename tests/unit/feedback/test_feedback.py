@@ -133,8 +133,8 @@ def test_ruler_sync_pushes_groups() -> None:
 
     calls = []
 
-    def fake_http(url, data, headers):
-        calls.append((url, data, headers))
+    def fake_http(method, url, data, headers):
+        calls.append((method, url, data, headers))
         return 202, ""
 
     docs = [
@@ -151,7 +151,8 @@ def test_ruler_sync_pushes_groups() -> None:
     ]
     n = sync_rules("http://mimir/prometheus", "t1", "podinfo", docs, http=fake_http)
     assert n == 2
-    url, data, headers = calls[0]
+    method, url, data, headers = calls[0]
+    assert method == "POST"
     assert url == "http://mimir/prometheus/config/v1/rules/podinfo"
     assert headers["X-Scope-OrgID"] == "t1"
     assert b"name: g1" in data

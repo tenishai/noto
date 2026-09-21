@@ -52,6 +52,26 @@ def _fake_perses_opener(req) -> tuple[int, bytes]:
     return (404, b"") if req.get_method() == "GET" else (200, b"{}")
 
 
+def _exploding_ruler_http(method: str, url: str, data: bytes | None, headers: dict):
+    raise AssertionError(f"--dry-run opened a socket: {method} {url}")
+
+
+class RulerSpy:
+    """Records every ruler call an `observe` run makes; accepts the pushes, and reports
+    a namespace holding one group nothing renders any more."""
+
+    def __init__(self, holds: tuple[str, ...] = ()) -> None:
+        self.calls: list[tuple[str, str, dict]] = []
+        self.holds = holds
+
+    def __call__(self, method: str, url: str, data: bytes | None, headers: dict):
+        self.calls.append((method, url, headers))
+        if method == "GET":
+            namespace = url.rsplit("/", 1)[-1]
+            return 200, yaml.safe_dump({namespace: [{"name": n, "rules": []} for n in self.holds]})
+        return 202, ""
+
+
 def _ctx(runner: FakeRunner, **kw) -> StepContext:
     pins = yaml.safe_load((REPO / "helm" / "pins.yaml").read_text())
     return StepContext(runner=runner, pins=pins, repo_root=REPO, **kw)
@@ -740,6 +760,7 @@ def test_cli_observe_dry_run_opens_no_sockets(tmp_path: Path, monkeypatch) -> No
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
     monkeypatch.setattr(cli, "default_perses_opener", exploding_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", _exploding_ruler_http)
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -884,6 +905,9 @@ def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path
         return 0
 
     monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    # `rules-sync` prunes against the same endpoint right after pushing; this test is
+    # about which endpoint that is, not about pruning.
+    monkeypatch.setattr("argus.feedback.ruler.prune_groups", lambda *_a: [])
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -908,6 +932,9 @@ def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None
         return 0
 
     monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    # `rules-sync` prunes against the same endpoint right after pushing; this test is
+    # about which endpoint that is, not about pruning.
+    monkeypatch.setattr("argus.feedback.ruler.prune_groups", lambda *_a: [])
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -1202,6 +1229,152 @@ def test_observe_step_order_ends_with_provision_perses_operator_mode(
     assert code == 0
     assert captured
     assert captured[0][-1] == "provision-perses"
+
+
+def _spy_engine(monkeypatch, captured: list[list[str]]):
+    from argus.engine.engine import ProvisionEngine as RealEngine
+
+    class SpyEngine(RealEngine):
+        def __init__(self, steps):
+            captured.append([s.name for s in steps])
+            super().__init__(steps)
+
+    monkeypatch.setattr(cli, "ProvisionEngine", SpyEngine)
+
+
+def test_observe_pushes_the_apps_groups_to_the_ruler_after_applying_them(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The applied PrometheusRule objects are inert; only the ruler evaluates them. The
+    push must come after both rule families are applied and before the dashboards that
+    chart them, and it must land under the app's own ruler namespace as the resolved
+    tenant - the same namespace `rules-sync` uses."""
+    captured: list[list[str]] = []
+    _spy_engine(monkeypatch, captured)
+    ruler = RulerSpy(holds=("gone-with-the-rename",))
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", ruler)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+
+    assert code == 0
+    names = captured[0]
+    assert names.index("apply_alerts") < names.index("sync-rules") < names.index("provision-perses")
+    assert names.index("apply_slo") < names.index("sync-rules")
+    base = "http://argus-mimir-gateway.argus.svc:80/prometheus/config/v1/rules/clips-api"
+    posts = [u for m, u, _h in ruler.calls if m == "POST"]
+    assert posts and set(posts) == {base}
+    # pushed first, pruned second: a failed push must never delete the working groups
+    methods = [m for m, _u, _h in ruler.calls]
+    assert methods == ["POST"] * len(posts) + ["GET", "DELETE"]
+    assert ruler.calls[-1][1] == f"{base}/gone-with-the-rename"
+    assert {h["X-Scope-OrgID"] for _m, _u, h in ruler.calls} == {"dev-cluster"}
+
+
+def test_observe_dry_run_lists_the_sync_rules_step_and_calls_no_ruler(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    captured: list[list[str]] = []
+    _spy_engine(monkeypatch, captured)
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", _exploding_ruler_http)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+        ]
+    )
+
+    assert code == 0
+    assert "sync-rules" in captured[0]
+
+
+def test_observe_mimir_url_flag_wins_over_the_derived_endpoint(tmp_path: Path, monkeypatch) -> None:
+    """The operator's port-forward habit: the note a failed push prints names
+    `--mimir-url`, so `observe` has to honor it."""
+    ruler = RulerSpy()
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", ruler)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--mimir-url",
+            "http://localhost:9009/prometheus",
+        ]
+    )
+
+    assert code == 0
+    assert all(u.startswith("http://localhost:9009/prometheus/") for _m, u, _h in ruler.calls)
+
+
+def test_observe_in_operator_mode_survives_a_ruler_it_cannot_reach(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """A laptop cannot route to the in-cluster ruler URL. Everything else in the run
+    succeeded, so the run succeeds and the step is reported as applied rather than
+    failing the whole `observe` (the step's own wording is pinned in
+    test_sync_rules_step.py)."""
+    from argus.feedback.ruler import RulerUnreachable
+
+    def unreachable(*_args):
+        raise RulerUnreachable("Connection refused")
+
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "default_ruler_http", unreachable)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "applied  sync-rules" in out
+    assert "FAILED" not in out
 
 
 def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monkeypatch) -> None:

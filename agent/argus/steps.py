@@ -18,6 +18,14 @@ from pathlib import Path
 
 import yaml
 
+from argus.feedback.ruler import (
+    Http,
+    RulerUnreachable,
+    prune_groups,
+    rendered_group_names,
+    sync_rules,
+    urllib_http,
+)
 from argus.perses_client import UNFETCHED, Opener, PersesClient
 
 # The one spelling of the platform's own record. It is imported, not re-typed: the
@@ -54,6 +62,20 @@ class StepContext:
     # None here, so PersesClient falls back to real `urllib`) - the HTTP-call analogue
     # of `runner` above, for the one step that speaks HTTP instead of shelling out.
     perses_opener: Opener | None = None
+    # Mimir's Prometheus API base (`--mimir-url`, else derived from `namespace`) and the
+    # tenant every ruler call carries, consumed by SyncRules.
+    ruler_url: str | None = None
+    tenant: str = ""
+    # The ruler namespace the app's groups are filed under: the app's own name, resolved
+    # from the contract, so it can only be set once `observe` knows which app it is.
+    ruler_namespace: str | None = None
+    # Injectable seam for the ruler's HTTP transport, the same role as `perses_opener`
+    # (tests only; real runs leave it None and SyncRules uses `urllib_http`).
+    ruler_http: Http | None = None
+    # Whether a ruler that cannot be REACHED fails the run. False for an operator, whose
+    # laptop usually cannot route to the in-cluster URL; True in job mode, which runs
+    # inside the cluster where it does resolve, and where nobody reads a note.
+    ruler_required: bool = False
 
     def kubectl(self, *args: str, request_timeout: str = "30s") -> list[str]:
         """Every kubectl argv argus builds, bounded.
@@ -668,6 +690,77 @@ class ValidateRoundTrip:
         if not_ready:
             raise RuntimeError(f"pods not ready: {not_ready}")
         return f"healthy/{len(pods)} pods"
+
+
+@dataclass
+class SyncRules:
+    """Push the app's rendered rule groups into Mimir's ruler, then delete the ones it
+    still holds that this run did not render.
+
+    The `PrometheusRule` objects ApplyRendered just applied are inert in this stack: the
+    operator is installed for its CRDs and Alertmanager, no Prometheus runs, and Mimir's
+    ruler is the only thing that evaluates a rule. Before this step existed only `argus
+    platform` (its own group) and the separate `argus rules-sync` command ever pushed, so
+    an app provisioned by job mode had alert rules nothing evaluated - an alarm nobody
+    armed - until a human remembered to run a second command. Pruning is the other half:
+    a group the ruler holds that nobody renders any more keeps evaluating forever, which
+    is how a renamed SLO outlives its rename (issue #57).
+
+    Pushes first, prunes second, always: a failed push must never have deleted the groups
+    that were working. `ephemeral = True` for the same reason as ApplyRendered - the
+    ruler's contents must reconcile every run, never ledger-skip.
+    """
+
+    name: str = "sync-rules"
+    tooling: str = "mimir-ruler"
+    ephemeral: bool = True
+
+    def _docs(self, ctx: StepContext) -> list[dict]:
+        """Both rule-bearing families. By the time this runs, `slo` holds the
+        PrometheusRule documents sloth generated, not the Sloth spec `observe` rendered."""
+        return [
+            doc
+            for family in ("alerts", "slo")
+            for doc in ctx.rendered.get(family, [])
+            if doc.get("kind") == "PrometheusRule"
+        ]
+
+    def _target(self, ctx: StepContext) -> tuple[str, str]:
+        if not ctx.ruler_url or not ctx.ruler_namespace:
+            raise RuntimeError("sync-rules: no ruler_url/ruler_namespace on the step context")
+        return ctx.ruler_url, ctx.ruler_namespace
+
+    def check(self, ctx: StepContext) -> str | None:
+        """Only ever a skip for an app that renders no rules at all. A run that does
+        render rules always pushes: the ruler's own listing says which groups exist, not
+        whether their contents still match, and a POST of an unchanged group is a no-op.
+
+        Asks the ruler nothing, so a dry run opens no socket here either.
+        """
+        if not self._docs(ctx):
+            return "no rules rendered"
+        return None
+
+    def apply(self, ctx: StepContext) -> str:
+        docs = self._docs(ctx)
+        url, namespace = self._target(ctx)
+        names = rendered_group_names(docs)
+        if ctx.dry_run:
+            return (
+                f"would push {len(names)} group(s) to {url} as tenant {ctx.tenant}, "
+                f"namespace {namespace}"
+            )
+        http = ctx.ruler_http or urllib_http
+        try:
+            pushed = sync_rules(url, ctx.tenant, namespace, docs, http=http)
+            pruned = prune_groups(url, ctx.tenant, namespace, names, http=http)
+        except RulerUnreachable:
+            if ctx.ruler_required:
+                raise
+            return f"not pushed: {url} is unreachable from here (port-forward and use --mimir-url)"
+        if pruned:
+            return f"pushed {pushed} group(s); pruned {len(pruned)} ({', '.join(pruned)})"
+        return f"pushed {pushed} group(s); pruned 0"
 
 
 # Perses document kind -> the collection it upserts into, and the order the smoke

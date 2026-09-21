@@ -138,16 +138,28 @@ engine. Rules become live only once they are pushed into Mimir's ruler.
   failure of the run, so the push is skipped with one note on stderr naming the URL and the
   port-forward form. Pass `--mimir-url` to push it from there. A ruler that IS reachable and rejects
   the rules fails the run.
-- **Each app's groups** are pushed by `argus rules-sync --gojira <app> --env <env>`, which now
-  resolves its tenant from the platform's record exactly the way `observe` does.
+- **Each app's groups** are pushed by `argus observe` itself, on every run, in a `sync-rules` step
+  that comes after the app's alert and SLO rules are applied and before its dashboards. The groups
+  are filed under a ruler namespace named after the app, as the tenant the platform recorded, and
+  the same step deletes any group the ruler still holds in that namespace that this run did not
+  render (a renamed or removed SLO used to keep evaluating forever). It only ever touches the app's
+  own namespace, never another app's and never `argus-platform`. When the ruler cannot be REACHED,
+  an operator run reports it and carries on (the laptop case again; pass `--mimir-url`), while a job
+  run fails, because a job runs inside the cluster where that name resolves and nobody is reading
+  its stderr. A ruler that answers and rejects the rules fails either way.
+- **`argus rules-sync --gojira <app> --env <env>`** stays, as the way to re-push (and re-prune)
+  without re-observing. It resolves its tenant from the platform's record exactly the way `observe`
+  does, and prunes exactly the way the step does, so the command and the step cannot leave the ruler
+  in two different states.
 
 ### Endpoints: in-cluster by default, port-forward on request
 
 Argus was always run by an operator through port-forwards, so `--mimir-url` used to default to
 `localhost`. Running `observe` as a one-shot in-cluster Job changes that: the right default is the
 platform's own Service DNS names in the platform's own namespace, not `localhost` (there is no
-port-forward inside the cluster). `--mimir-url` (on `rules-sync`, `cardinality`, and `feedback`) and
-`--perses-url` (on `observe`) now derive from `--namespace` (env `ARGUS_NAMESPACE`, default `argus`)
+port-forward inside the cluster). `--mimir-url` (on `observe`, `rules-sync`, `cardinality`, and
+`feedback`) and `--perses-url` (on `observe`) derive from `--namespace` (env `ARGUS_NAMESPACE`,
+default `argus`)
 unless given explicitly - an explicit flag always wins.
 
 An operator's port-forward habit keeps working exactly as before; just say so explicitly:
