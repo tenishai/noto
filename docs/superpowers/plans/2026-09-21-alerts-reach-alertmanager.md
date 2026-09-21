@@ -46,9 +46,9 @@
 - Test: `tests/unit/rendering/` alert and slo tests; goldens regenerated
 
 **Interfaces:**
-- Produces: every rule with an `alert` key in `render_alert_rules` output has labels `app`, `namespace`, `class`, `environment` (values `ctx.app`, `ctx.namespace`, `p.class_name`, `ctx.environment`) in addition to its existing `severity`. Recording rules (no `alert` key) are untouched.
+- AMENDED IN REVIEW: only the app's own group (`argus-app-<app>`) gets the four owner labels; the two shared groups get `app: argus-platform` alone (see the spec, Part 1.3). As first written: every rule with an `alert` key in `render_alert_rules` output has labels `app`, `namespace`, `class`, `environment` (values `ctx.app`, `ctx.namespace`, `p.class_name`, `ctx.environment`) in addition to its existing `severity`. Recording rules (no `alert` key) are untouched.
 - Produces: the platform retention alert has `app: argus-platform`.
-- Produces: each SLO in the Sloth spec has `labels` containing `app`, `namespace`, `class` (Sloth copies SLO labels onto its generated alerts).
+- Produces: each SLO in the Sloth spec has `labels` containing `app`, `namespace`, `class` (Sloth puts SLO labels on its recording rules; its alerts aggregate those series `without (sloth_window)`, so a firing alert carries them).
 
 - [ ] **Step 1: Failing tests.** One property-style test: render alert rules for a profile with `app_scrape` on, walk every group and rule, and for each rule with `alert` assert the four labels equal the context values and `severity` is still present. One test that a recording rule, if any group has one, gains no labels. One test for the platform rule's `app` label. One test that every SLO in the rendered Sloth doc has the three labels.
 - [ ] **Step 2: Run, confirm failure.**
