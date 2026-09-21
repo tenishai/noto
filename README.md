@@ -294,9 +294,13 @@ record, which is the authority: with no override, `observe` adopts the tenant th
 with and says so. Set `ARGUS_CLUSTER` only when you mean to assert a tenant, and it must match the
 recorded one or the job fails with `tenant mismatch: ...` as its summary line.
 
-The provisioner itself needs far less than `observe` does: only `create` and `get` on `Jobs`
-in the platform namespace. It does not need the `argus-observe` ServiceAccount's own RBAC -
-that identity belongs to the Job it launches, not to the thing launching the Job.
+The provisioner itself needs far less than `observe` does, all of it in the platform namespace:
+`create` and `get` on `jobs` (launch the Job, poll its conditions), plus `get` and `list` on
+`pods` and `get` on `pods/log`, because the summary line is read from the Job's pod log
+(`kubectl logs job/<name>` lists the Job's pods, then reads one). Without the pod and log
+verbs the Job still runs and the verdict is still the exit condition, but the ledger row
+loses argus's one-line explanation. It does not need the `argus-observe` ServiceAccount's own
+RBAC - that identity belongs to the Job it launches, not to the thing launching the Job.
 
 ## The image
 
