@@ -12,10 +12,13 @@ import pytest
 import yaml
 
 from argus.feedback.ruler import (
+    PLATFORM_RULE_GROUP,
     RulerSyncError,
     RulerUnreachable,
     list_groups,
     prune_groups,
+    refuse_platform_namespace,
+    rendered_group_count,
     rendered_group_names,
     sync_rules,
     urllib_http,
@@ -69,13 +72,23 @@ def test_list_groups_returns_the_namespaces_group_names() -> None:
 
 
 def test_list_groups_is_empty_when_the_namespace_holds_nothing() -> None:
-    """A 404 is the ruler's answer for a namespace it has never been given a group for -
-    the first run of every app - and an empty body is what it answers once one has been
-    deleted. Neither is an error."""
+    """What the pinned Mimir answers for a namespace holding no groups, read off a live
+    ruler: 200 with the body `{}`. A 404 and an empty body are tolerated too, because the
+    status a ruler picks for "nothing here" is not something to depend on."""
+    http = FakeHttp({("GET", f"{BASE}/config/v1/rules/app"): (200, "{}")})
+    assert list_groups(BASE, "t1", "app", http=http) == []
     http = FakeHttp({("GET", f"{BASE}/config/v1/rules/app"): (404, "namespace not found")})
     assert list_groups(BASE, "t1", "app", http=http) == []
     http = FakeHttp({("GET", f"{BASE}/config/v1/rules/app"): (200, "")})
     assert list_groups(BASE, "t1", "app", http=http) == []
+
+
+def test_list_groups_skips_an_entry_with_no_name() -> None:
+    """A group the ruler lists without a name is nothing this can address: `str(None)`
+    would make it the literal group "None" and the next prune would try to DELETE it."""
+    listing = yaml.safe_dump({"app": [{"name": "g1", "rules": []}, {"rules": []}]})
+    http = FakeHttp({("GET", f"{BASE}/config/v1/rules/app"): (200, listing)})
+    assert list_groups(BASE, "t1", "app", http=http) == ["g1"]
 
 
 def test_list_groups_raises_on_any_other_status() -> None:
@@ -143,6 +156,36 @@ def test_a_delete_the_ruler_refuses_raises() -> None:
 def test_rendered_group_names_reads_every_prometheusrule_doc() -> None:
     docs = [*_docs("g1", "g2"), {"kind": "ServiceMonitor"}]
     assert rendered_group_names(docs) == {"g1", "g2"}
+
+
+def test_rendered_group_names_skips_a_group_with_no_name() -> None:
+    """A nameless group cannot be a keep-set entry: as the literal "None" it would match
+    nothing the ruler holds, and worse, it would protect a group actually called None."""
+    docs = [
+        {"kind": "PrometheusRule", "spec": {"groups": [{"name": "g1", "rules": []}, {"rules": []}]}}
+    ]
+    assert rendered_group_names(docs) == {"g1"}
+
+
+def test_the_dry_run_count_is_the_count_a_real_push_makes() -> None:
+    """Two documents may define the same group name (an app pack and a generated SLO pack
+    that collide). The names are a set; the pushes are not, so a dry run that counted
+    names would promise one push where a real run makes two."""
+    docs = [*_docs("same"), *_docs("same"), *_docs("other")]
+    http = FakeHttp({("POST", f"{BASE}/config/v1/rules/app"): (202, "")})
+    assert rendered_group_count(docs) == sync_rules(BASE, "t1", "app", docs, http=http)
+    assert rendered_group_count(docs) == 3
+
+
+# --- the platform's own namespace is not an app's to use ---------------------
+
+
+def test_the_platforms_own_namespace_is_refused() -> None:
+    """`argus-platform` is a legal app name, and an app run there would prune the
+    platform's retention alarm: its groups are not rendered by an app's run."""
+    with pytest.raises(RulerSyncError, match="the platform's own ruler namespace"):
+        refuse_platform_namespace(PLATFORM_RULE_GROUP)
+    assert refuse_platform_namespace("clips-api") is None
 
 
 # --- sync_rules on the method-first signature --------------------------------

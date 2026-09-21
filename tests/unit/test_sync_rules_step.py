@@ -73,6 +73,27 @@ def test_a_dry_run_sends_nothing_and_says_what_it_would_push() -> None:
     assert result == f"would push 1 group(s) to {BASE} as tenant t1, namespace demo"
 
 
+def test_the_dry_run_count_is_the_count_the_real_push_reports() -> None:
+    """The number in the preview and the number in the result must be the same quantity,
+    or a dry run says one thing and the run that follows it says another."""
+    rendered = {"alerts": [_rule_doc("g1")], "slo": [_rule_doc("g1", "g2")]}
+    assert SyncRules().apply(_ctx(_exploding, rendered=rendered, dry_run=True)) == (
+        f"would push 3 group(s) to {BASE} as tenant t1, namespace demo"
+    )
+    http = FakeHttp({("POST", NS_URL): (202, ""), ("GET", NS_URL): (200, _listing("g1", "g2"))})
+    assert SyncRules().apply(_ctx(http, rendered=rendered)) == "pushed 3 group(s); pruned 0"
+
+
+def test_an_app_cannot_target_the_platforms_own_ruler_namespace() -> None:
+    """`argus-platform` is a legal app name. An app run filed there would prune every
+    group it did not render - which is the platform's retention alarm, rendered only by
+    `argus platform`. Refused before a single call, in every mode including a dry run."""
+    ctx = _ctx(_exploding, dry_run=True)
+    ctx.ruler_namespace = "argus-platform"
+    with pytest.raises(RulerSyncError, match="the platform's own ruler namespace"):
+        SyncRules().apply(ctx)
+
+
 def test_both_rendered_families_are_pushed_under_the_apps_namespace() -> None:
     """The `slo` family holds Sloth's generated PrometheusRule documents by the time this
     step runs, so an app's SLO alerts reach the ruler with its own alert pack."""
@@ -158,13 +179,45 @@ def test_an_unreachable_ruler_is_a_note_when_nothing_requires_it() -> None:
 
 def test_an_unreachable_ruler_fails_the_step_when_the_run_requires_it() -> None:
     """Job mode: the run is INSIDE the cluster, where that URL resolves. Unreachable
-    there is a real failure, and nobody is reading a note."""
+    there is a real failure, and nobody is reading a note. The failure names the URL:
+    a job's whole output is one summary line, and `Name or service not known` alone
+    does not say which name."""
 
     def unreachable(*_args) -> tuple[int, str]:
-        raise RulerUnreachable("Connection refused")
+        raise RulerUnreachable("Name or service not known")
 
-    with pytest.raises(RulerUnreachable):
+    with pytest.raises(RulerUnreachable) as raised:
         SyncRules().apply(_ctx(unreachable, required=True))
+    assert str(raised.value) == f"ruler {BASE} unreachable: Name or service not known"
+
+
+def _unreachable_only_on(method: str, http):
+    """The ruler answers every verb but one, which nothing can reach."""
+
+    def transport(m: str, url: str, data: bytes | None, headers: dict) -> tuple[int, str]:
+        if m == method:
+            raise RulerUnreachable("Connection refused")
+        return http(m, url, data, headers)
+
+    return transport
+
+
+def test_a_prune_that_cannot_reach_the_ruler_does_not_claim_the_push_failed() -> None:
+    """Push and prune are two trips. If the second one loses the ruler, everything this
+    run renders IS in the ruler; reporting `not pushed` would send an operator looking
+    for rules that are already there."""
+    http = FakeHttp({("POST", NS_URL): (202, "")})
+    result = SyncRules().apply(_ctx(_unreachable_only_on("GET", http)))
+    assert result == f"pushed 1 group(s); stale groups not pruned: {BASE} became unreachable"
+
+
+def test_a_prune_that_cannot_reach_the_ruler_still_fails_a_job() -> None:
+    """Job mode does not tolerate an unreachable ruler in either half: a stale group left
+    evaluating is the thing the prune exists to stop."""
+    http = FakeHttp({("POST", NS_URL): (202, "")})
+    ctx = _ctx(_unreachable_only_on("GET", http), required=True)
+    with pytest.raises(RulerUnreachable, match=BASE):
+        SyncRules().apply(ctx)
 
 
 def test_the_step_refuses_to_guess_a_namespace_it_was_not_given() -> None:

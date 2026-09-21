@@ -55,9 +55,9 @@ def test_no_scrape_class_ships_no_scrape_down_group() -> None:
     assert names == ["argus-collector-health", "argus-cardinality"]
 
 
-def test_every_alert_rule_says_whose_it_is() -> None:
-    """Every rule with an `alert` key (collector health, cardinality, scrape-down) must
-    carry who owns it, beside the severity it already had, so it can be routed later."""
+def test_every_alert_in_the_apps_own_group_says_whose_it_is() -> None:
+    """The app's own group (`argus-app-<app>`) is the one whose alerts belong to the app,
+    so those carry who owns them, beside the severity they already had."""
     p = resolve(
         load_baseline(FIXTURES / "baseline.yaml"),
         load_class(FIXTURES / "classes" / "web.yaml"),
@@ -65,18 +65,62 @@ def test_every_alert_rule_says_whose_it_is() -> None:
     )
     ctx = Context(topology="solo", cluster="c1", environment="dev", app="clips", namespace="clips")
     doc = render_alert_rules(p, ctx)
+    app_group = next(g for g in doc["spec"]["groups"] if g["name"] == "argus-app-clips")
     seen_alert = False
-    for group in doc["spec"]["groups"]:
-        for rule in group["rules"]:
-            if "alert" not in rule:
-                continue
-            seen_alert = True
-            assert rule["labels"]["app"] == "clips"
-            assert rule["labels"]["namespace"] == "clips"
-            assert rule["labels"]["class"] == p.class_name
-            assert rule["labels"]["environment"] == "dev"
-            assert "severity" in rule["labels"]
+    for rule in app_group["rules"]:
+        if "alert" not in rule:
+            continue
+        seen_alert = True
+        assert rule["labels"]["app"] == "clips"
+        assert rule["labels"]["namespace"] == "clips"
+        assert rule["labels"]["class"] == p.class_name
+        assert rule["labels"]["environment"] == "dev"
+        assert "severity" in rule["labels"]
     assert seen_alert
+
+
+_SHARED_GROUPS = ("argus-collector-health", "argus-cardinality")
+
+
+def _rendered_for(app: str, namespace: str, class_file: str = "web"):
+    p = resolve(
+        load_baseline(FIXTURES / "baseline.yaml"),
+        load_class(FIXTURES / "classes" / f"{class_file}.yaml"),
+        load_override(None),
+    )
+    ctx = Context(topology="solo", cluster="c1", environment="dev", app=app, namespace=namespace)
+    return p, render_alert_rules(p, ctx)
+
+
+def test_the_shared_groups_carry_one_label_and_it_is_the_platforms() -> None:
+    """Collector health and the cardinality budget are conditions of the shared collector
+    tier and of the whole tenant. They are not the app's, and labelling them with the app
+    would make the app's team the one paged for a cluster-wide fault."""
+    _p, doc = _rendered_for("clips", "clips")
+    for group in doc["spec"]["groups"]:
+        if group["name"] not in _SHARED_GROUPS:
+            continue
+        for rule in group["rules"]:
+            assert rule["labels"]["app"] == "argus-platform"
+            assert set(rule["labels"]) == {"severity", "app"}
+
+
+def test_a_shared_alert_has_the_same_labelset_in_every_apps_pack() -> None:
+    """Every app renders these two groups identically, and every copy is pushed to the
+    same tenant. Identical labelsets are what lets Alertmanager collapse them into ONE
+    notification; an owner label per app would turn one collector fault into N pages."""
+    _p, mine = _rendered_for("clips", "clips")
+    _q, theirs = _rendered_for("other-app", "other-ns")
+
+    def shared_rules(doc):
+        return [
+            (rule["alert"], rule["labels"])
+            for group in doc["spec"]["groups"]
+            if group["name"] in _SHARED_GROUPS
+            for rule in group["rules"]
+        ]
+
+    assert shared_rules(mine) == shared_rules(theirs)
 
 
 def test_owned_leaves_a_recording_rule_untouched() -> None:

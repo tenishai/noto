@@ -1420,3 +1420,18 @@ def test_generate_slo_rules_via_real_sloth() -> None:
     rules = cli._generate_slo_rules(doc, "s")
     assert rules and rules[0]["kind"] == "PrometheusRule"
     assert rules[0]["metadata"]["namespace"] == "s"
+    # Where the owner labels actually land: on the recording rules, not on the alerts.
+    # The burn-rate alerts aggregate these series `without (sloth_window)`, so the labels
+    # survive into the firing alert's labelset.
+    recordings = [
+        rule
+        for d in rules
+        for group in d["spec"]["groups"]
+        for rule in group["rules"]
+        if "record" in rule
+    ]
+    assert recordings
+    for rule in recordings:
+        assert rule["labels"]["app"] == "web1"
+        assert rule["labels"]["namespace"] == "s"
+        assert rule["labels"]["class"] == p.class_name

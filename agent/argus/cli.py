@@ -26,6 +26,7 @@ import yaml
 
 from argus.engine.engine import ProvisionEngine, RunResult
 from argus.engine.ledger import Ledger
+from argus.feedback.ruler import PLATFORM_RULE_GROUP
 from argus.feedback.ruler import Http as RulerHttp
 from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
@@ -471,9 +472,16 @@ _RULER_NOTE = (
     're-pushes them without re-observing (README, "Rules reach Mimir\'s ruler").'
 )
 
-# The ruler namespace the platform's own group is filed under. It is the PrometheusRule's
-# own name, so the group is as easy to find in the ruler as it is in the cluster.
-PLATFORM_RULE_GROUP = "argus-platform"
+
+def _port_forward_hint(namespace: str) -> str:
+    """What to do about a ruler URL that does not resolve from here. One spelling, because
+    two commands print it and an operator who follows one of them must reach the same
+    place as one who follows the other."""
+    return (
+        f"port-forward with `kubectl -n {namespace} port-forward "
+        "svc/argus-mimir-gateway 9009:80` and re-run with "
+        "--mimir-url http://localhost:9009/prometheus"
+    )
 
 
 def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str) -> str | None:
@@ -504,9 +512,7 @@ def _push_platform_rules(args: argparse.Namespace, docs: list[dict], tenant: str
     except ruler.RulerUnreachable as exc:
         print(
             f"note: the platform alert group was not pushed: {url} is unreachable from here "
-            f"({exc}); port-forward with `kubectl -n {args.namespace} port-forward "
-            "svc/argus-mimir-gateway 9009:80` and re-run with "
-            "--mimir-url http://localhost:9009/prometheus",
+            f"({exc}); {_port_forward_hint(args.namespace)}",
             file=sys.stderr,
         )
         return f"platform alert group not pushed: {url} is unreachable from here"
@@ -818,7 +824,7 @@ def cmd_feedback(args: argparse.Namespace) -> int:
 
 
 def cmd_rules_sync(args: argparse.Namespace) -> int:
-    from argus.feedback.ruler import prune_groups, rendered_group_names, sync_rules
+    from argus.feedback import ruler
     from argus.rendering.slo import render_sloth
 
     try:
@@ -828,18 +834,44 @@ def cmd_rules_sync(args: argparse.Namespace) -> int:
     except TenantMismatch as exc:
         print(f"FAILED: {exc}", file=sys.stderr)
         return 1
+    base = _resolve_mimir_url(args)
+    namespace = ctx.app or "argus"
     docs = [render_alert_rules(p, ctx)]
     sloth_doc = render_sloth(p, ctx)
     if sloth_doc is not None:
         docs.extend(_generate_slo_rules(sloth_doc, ctx.namespace or "default"))
-    base = _resolve_mimir_url(args)
-    namespace = ctx.app or "argus"
-    count = sync_rules(base, ctx.tenant, namespace, docs)
-    print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
-    # The same prune the `observe` step does, so the command and the step cannot leave
-    # the ruler in two different states for the same app: a group nobody renders any
-    # more evaluates forever otherwise (issue #57).
-    pruned = prune_groups(base, ctx.tenant, namespace, rendered_group_names(docs))
+    try:
+        # The same refusal the step makes, before anything is sent: an app named after the
+        # platform would prune the platform's own alarm out of the ruler.
+        ruler.refuse_platform_namespace(namespace)
+        # This command deletes as well as pushes, so a dry run has to stop HERE, not at
+        # the transport: `--dry-run` promises a run that changes nothing, and reaching the
+        # ruler at all would prune for real.
+        if args.dry_run:
+            print(
+                f"would push {ruler.rendered_group_count(docs)} group(s) to {base} as tenant "
+                f"{ctx.tenant}, namespace {namespace}, and prune any others"
+            )
+            return 0
+        count = ruler.sync_rules(base, ctx.tenant, namespace, docs)
+        print(f"synced {count} rule groups to the ruler (tenant {ctx.tenant})")
+        # The same prune the `observe` step does, so the command and the step cannot leave
+        # the ruler in two different states for the same app: a group nobody renders any
+        # more evaluates forever otherwise (issue #57).
+        pruned = ruler.prune_groups(base, ctx.tenant, namespace, ruler.rendered_group_names(docs))
+    except ruler.RulerUnreachable as exc:
+        # Every ruler failure ends in the CLI's own shape rather than as a traceback, the
+        # way `argus platform` already reports its own push. Unreachable is the laptop
+        # case, so it carries the way out of it.
+        print(
+            f"FAILED: {base} is unreachable from here ({exc}); "
+            f"{_port_forward_hint(args.namespace)}",
+            file=sys.stderr,
+        )
+        return 1
+    except ruler.RulerSyncError as exc:  # a ruler that answered and said no, to push or delete
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 1
     if pruned:
         print(f"pruned {len(pruned)} stale group(s): {', '.join(pruned)}")
     return 0

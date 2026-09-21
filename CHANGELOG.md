@@ -113,15 +113,26 @@ All notable changes to Argus are documented here. The format is based on
   the in-cluster URL; `observe` now takes `--mimir-url` for that) and a failed run in job
   mode, where the job runs inside the cluster and nobody reads a note. `argus rules-sync`
   stays as the way to re-push without re-observing, and prunes the same way, so the command
-  and the step cannot leave the ruler in two different states.
+  and the step cannot leave the ruler in two different states. Because both now delete,
+  both refuse to act on `argus-platform` (a legal app name, whose run would prune the
+  platform's own retention alarm), a `--dry-run` of either says what it would push and
+  prune without opening a socket, and every ruler failure - refused, or unreachable with
+  the port-forward way out of it - is reported as a `FAILED:` line and exit 1 rather than a
+  traceback.
 
 - **Every per-app alert says whose it is.** Rules carried one label, `severity`, so nothing
-  could route an alert to the app that owns it. Every rule with an `alert` key now carries
-  `app`, `namespace`, `class` and `environment` beside it (a rule's own label still wins, so
-  a pack can say something different on purpose; recording rules are untouched), each SLO in
-  the Sloth spec carries `app`, `namespace` and `class` so Sloth's generated page and ticket
-  alerts inherit them, and the platform's own retention alert carries `app: argus-platform`.
-  Routing on those labels is the next piece and is not in this change.
+  could route an alert to the app that owns it. Every rule in the app's own group
+  (`argus-app-<app>`) now carries `app`, `namespace`, `class` and `environment` beside it (a
+  rule's own label still wins, so a pack can say something different on purpose; recording
+  rules are untouched), and each SLO in the Sloth spec carries `app`, `namespace` and
+  `class` - Sloth puts those on the recording rules it generates, and its burn-rate alerts
+  aggregate those series `without (sloth_window)`, so a firing SLO alert carries them too.
+  The two cluster-wide groups every app renders (`argus-collector-health`,
+  `argus-cardinality`) get one label and it is not the app's: `app: argus-platform`, the
+  same label the platform's own retention alert carries. Their labelsets stay identical
+  across apps, which is what lets Alertmanager collapse one collector fault into one
+  notification instead of one per app. Routing on those labels is the next piece and is not
+  in this change.
 
 - **`argus observe` runs as a one-shot Job, and the launcher reads one line.** A
   provisioner (gojira) launches `observe` in the cluster instead of running the CLI:

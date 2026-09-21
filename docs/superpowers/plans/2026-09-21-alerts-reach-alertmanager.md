@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Ruler API base is the Mimir query URL ending in `/prometheus`; rule paths are `{base}/config/v1/rules/{namespace}` (POST one group as YAML, GET lists the namespace's groups as a YAML map `{namespace: [group, ...]}`, a 404 on GET means "no groups"), and `{base}/config/v1/rules/{namespace}/{group}` (DELETE, 202 on success). Every call carries `X-Scope-OrgID: <tenant>`.
+- Ruler API base is the Mimir query URL ending in `/prometheus`; rule paths are `{base}/config/v1/rules/{namespace}` (POST one group as YAML, GET lists the namespace's groups as a YAML map `{namespace: [group, ...]}`; a namespace holding no groups answers 200 with the body `{}` on the pinned Mimir, read off a live ruler, and a 404 is tolerated for the same thing), and `{base}/config/v1/rules/{namespace}/{group}` (DELETE, 202 on success). Every call carries `X-Scope-OrgID: <tenant>`.
 - The ruler namespace for an app's groups is the app name, exactly what `cmd_rules_sync` uses today (`ctx.app or "argus"`). The platform's own namespace `argus-platform` is never pruned by an app run.
 - A dry run opens no socket. This is a lived rule in this repo (see `ProvisionPerses.check`).
 - HTTP in steps is injected, never patched: follow the `perses_opener` precedent with a field on `StepContext`.

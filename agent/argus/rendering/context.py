@@ -46,6 +46,9 @@ def solo_endpoints(namespace: str = "argus") -> dict[str, str]:
         "tempo_otlp_grpc": f"argus-tempo.{namespace}.svc:4317",
         "mimir_query_url": f"http://argus-mimir-gateway.{namespace}.svc:80/prometheus",
         "perses_url": f"http://argus-perses.{namespace}.svc:8080",
+        # A bare URL against this headless Service reaches ONE Alertmanager pod, which is
+        # right for the single replica this platform runs; a scaled Alertmanager needs
+        # Mimir's `dnssrvnoa+` discovery form here so the ruler notifies every replica.
         "alertmanager_url": f"http://alertmanager-operated.{namespace}.svc:9093",
     }
 

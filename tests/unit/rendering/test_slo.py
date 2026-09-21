@@ -67,9 +67,11 @@ def test_latency_slo_uses_le_bucket() -> None:
     assert "availability-99.9" in names  # class SLO still present
 
 
-def test_every_slo_carries_owner_labels_sloth_copies_onto_its_alerts() -> None:
-    """Sloth copies each SLO's own `labels` onto the alerts it generates, so this is the
-    only place an SLO-driven page/ticket alert can pick up who owns it."""
+def test_every_slo_carries_owner_labels_sloth_puts_on_its_recording_rules() -> None:
+    """Sloth copies each SLO's own `labels` onto the RECORDING rules it generates (checked
+    against the pinned sloth 0.16.0). They reach a firing alert because the burn-rate
+    expressions aggregate those series `without (sloth_window)`, which keeps every other
+    label - so this is still the only place an SLO alert picks up who owns it."""
     p = _profile()
     doc = render_sloth(p, _ctx())
     assert doc is not None

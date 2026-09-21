@@ -572,6 +572,9 @@ def test_job_mode_fails_when_the_ruler_cannot_be_reached(monkeypatch, capsys):
     out = capsys.readouterr().out.strip().splitlines()
     assert out[-1].startswith("ARGUS_SUMMARY observe failed: sync-rules: ")
     assert "Connection refused" in out[-1]
+    # The summary line is the whole of a job's output that anyone reads, and a resolver
+    # error on its own ("Name or service not known") does not say which name failed.
+    assert "http://argus-mimir-gateway.argus.svc:80/prometheus" in out[-1]
 
 
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):

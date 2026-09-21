@@ -182,6 +182,98 @@ def test_rules_sync_says_nothing_about_pruning_when_there_is_nothing_stale(
     assert "pruned" not in capsys.readouterr().out
 
 
+def test_rules_sync_dry_run_opens_no_socket_and_says_what_it_would_do(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """`--dry-run` is on every subcommand, and this one now DELETES. A dry run that
+    reached the ruler would prune for real from a command whose whole promise is that it
+    changes nothing."""
+
+    def exploding(method: str, url: str, data: bytes | None, headers: dict):
+        raise AssertionError(f"a dry run opened a socket: {method} {url}")
+
+    monkeypatch.setattr("argus.feedback.ruler.urllib_http", exploding)
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED)), "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert "would push" in out
+    assert "as tenant real-name, namespace clips-api, and prune any others" in out
+
+
+def test_rules_sync_refuses_the_platforms_own_ruler_namespace(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """An app called `argus-platform` would file its groups where the platform files its
+    retention alarm, and then prune everything it did not render - the alarm included."""
+    spy = _spy(monkeypatch)
+    _prune_spy(monkeypatch)
+    contract = tmp_path / "gojira.yaml"
+    contract.write_text(
+        (FIXTURES / "web.yaml").read_text().replace("app: clips-api", "app: argus-platform")
+    )
+    monkeypatch.setattr(cli, "real_runner", InfoRunner(dict(RECORDED)))
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    code = cli.main(
+        [
+            "rules-sync",
+            "--gojira",
+            str(contract),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+        ]
+    )
+    assert code == 1
+    assert spy.calls == []
+    err = capsys.readouterr().err
+    assert "FAILED: 'argus-platform' is the platform's own ruler namespace" in err
+
+
+def test_rules_sync_reports_an_unreachable_ruler_the_way_every_failure_is_reported(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The laptop case reaches `rules-sync` too, and used to end in a traceback. It is
+    the CLI's own failure shape, with the port-forward hint `platform` already prints."""
+    _spy(monkeypatch, RulerUnreachable("Name or service not known"))
+    _prune_spy(monkeypatch)
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 1
+    err = capsys.readouterr().err
+    assert "FAILED: http://argus-mimir-gateway.argus.svc:80/prometheus is unreachable" in err
+    assert "port-forward" in err
+    assert "--mimir-url http://localhost:9009/prometheus" in err
+    assert "Traceback" not in err
+
+
+def test_rules_sync_reports_a_ruler_that_refuses_without_a_traceback(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    from argus.feedback.ruler import RulerSyncError
+
+    _spy(monkeypatch, RulerSyncError("ruler rejected group argus-cardinality: 400 bad"))
+    _prune_spy(monkeypatch)
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 1
+    err = capsys.readouterr().err
+    assert "FAILED: ruler rejected group argus-cardinality: 400 bad" in err
+    assert "Traceback" not in err
+
+
+def test_rules_sync_reports_a_prune_the_ruler_refuses(tmp_path: Path, monkeypatch, capsys) -> None:
+    """The delete half raises the same error type from a different call; it must not
+    escape as a traceback either."""
+    from argus.feedback.ruler import RulerSyncError
+
+    _spy(monkeypatch)
+
+    def refusing_prune(*_args, **_kw):
+        raise RulerSyncError("ruler refused to delete group stale: 500 boom")
+
+    monkeypatch.setattr("argus.feedback.ruler.prune_groups", refusing_prune)
+    assert _rules_sync(tmp_path, monkeypatch, InfoRunner(dict(RECORDED))) == 1
+    err = capsys.readouterr().err
+    assert "FAILED: ruler refused to delete group stale: 500 boom" in err
+    assert "Traceback" not in err
+
+
 def test_rules_sync_fails_loudly_on_an_explicit_tenant_that_disagrees(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

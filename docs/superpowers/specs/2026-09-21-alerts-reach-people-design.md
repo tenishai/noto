@@ -60,11 +60,21 @@ pruning, so the command and the step cannot disagree.
 
 ### 3. Every per-app alert says whose it is
 
-Every rule in an app's rendered `PrometheusRule` (collector health, cardinality, scrape
-down) gains the labels `app`, `namespace`, `class` and `environment`, beside the existing
-`severity`. The Sloth spec's SLO-level `labels` gain `app`, `namespace` and `class`, so
-Sloth's generated page and ticket alerts carry them too. The platform's own retention
-alert gains `app: argus-platform`.
+Every rule in the app's own group (`argus-app-<app>`, the scrape-down pack) gains the
+labels `app`, `namespace`, `class` and `environment`, beside the existing `severity`. The
+Sloth spec's SLO-level `labels` gain `app`, `namespace` and `class`; Sloth puts those on
+the recording rules it generates, and its burn-rate alerts aggregate those series
+`without (sloth_window)`, which keeps every other label, so a firing SLO alert carries
+them too.
+
+The other two groups are not the app's. `argus-collector-health` is a condition of the
+shared collector tier and `argus-cardinality` a condition of the whole tenant, and every
+app renders both identically into its own pack. They gain exactly one label,
+`app: argus-platform`, so every app's copy of one of these alerts has the same labelset
+and Alertmanager collapses them into a single notification. Owner labels there would make
+each copy a distinct alert: N notifications for one collector fault, and once routing
+exists, every team paged for it. The platform's own retention alert carries the same
+`app: argus-platform`.
 
 `team` is deliberately not added here. The contract does not carry a team today, and
 adding a contract field is a change to agree with the deploy platform's owners (Part 2).

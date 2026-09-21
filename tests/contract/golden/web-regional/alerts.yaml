@@ -16,10 +16,7 @@ spec:
       expr: otelcol_process_memory_rss / otelcol_process_memory_limit > 0.85
       for: 10m
       labels:
-        app: sample-web
-        class: web
-        environment: prod
-        namespace: sample
+        app: argus-platform
         severity: ticket
     - alert: ArgusCollectorRefusing
       annotations:
@@ -28,10 +25,7 @@ spec:
         + rate(otelcol_receiver_refused_log_records[5m])) > 0
       for: 5m
       labels:
-        app: sample-web
-        class: web
-        environment: prod
-        namespace: sample
+        app: argus-platform
         severity: page
     - alert: ArgusExporterFailing
       annotations:
@@ -41,10 +35,7 @@ spec:
         > 0
       for: 5m
       labels:
-        app: sample-web
-        class: web
-        environment: prod
-        namespace: sample
+        app: argus-platform
         severity: page
   - name: argus-cardinality
     rules:
@@ -54,10 +45,7 @@ spec:
       expr: sum(cortex_ingester_active_series) > 800000
       for: 15m
       labels:
-        app: sample-web
-        class: web
-        environment: prod
-        namespace: sample
+        app: argus-platform
         severity: ticket
     - alert: ArgusCardinalityBudgetExceeded
       annotations:
@@ -66,10 +54,7 @@ spec:
       expr: sum(cortex_ingester_active_series) > 1000000
       for: 5m
       labels:
-        app: sample-web
-        class: web
-        environment: prod
-        namespace: sample
+        app: argus-platform
         severity: page
   - name: argus-app-sample-web
     rules:

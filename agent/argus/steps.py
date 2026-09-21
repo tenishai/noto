@@ -22,6 +22,8 @@ from argus.feedback.ruler import (
     Http,
     RulerUnreachable,
     prune_groups,
+    refuse_platform_namespace,
+    rendered_group_count,
     rendered_group_names,
     sync_rules,
     urllib_http,
@@ -728,6 +730,9 @@ class SyncRules:
     def _target(self, ctx: StepContext) -> tuple[str, str]:
         if not ctx.ruler_url or not ctx.ruler_namespace:
             raise RuntimeError("sync-rules: no ruler_url/ruler_namespace on the step context")
+        # Before anything is sent, and in a dry run too: an app named after the platform
+        # would prune the platform's own retention alarm, which no app run renders.
+        refuse_platform_namespace(ctx.ruler_namespace)
         return ctx.ruler_url, ctx.ruler_namespace
 
     def check(self, ctx: StepContext) -> str | None:
@@ -744,20 +749,28 @@ class SyncRules:
     def apply(self, ctx: StepContext) -> str:
         docs = self._docs(ctx)
         url, namespace = self._target(ctx)
-        names = rendered_group_names(docs)
         if ctx.dry_run:
             return (
-                f"would push {len(names)} group(s) to {url} as tenant {ctx.tenant}, "
-                f"namespace {namespace}"
+                f"would push {rendered_group_count(docs)} group(s) to {url} as tenant "
+                f"{ctx.tenant}, namespace {namespace}"
             )
         http = ctx.ruler_http or urllib_http
+        # Two trips, two meanings, so they are caught apart. Losing the ruler on the push
+        # means nothing reached it; losing it on the prune means everything this run
+        # renders is already there and only the stale groups outlived the run. Reporting
+        # the second as the first sends an operator looking for rules that are in place.
         try:
             pushed = sync_rules(url, ctx.tenant, namespace, docs, http=http)
-            pruned = prune_groups(url, ctx.tenant, namespace, names, http=http)
-        except RulerUnreachable:
+        except RulerUnreachable as exc:
             if ctx.ruler_required:
-                raise
+                raise RulerUnreachable(f"ruler {url} unreachable: {exc}") from exc
             return f"not pushed: {url} is unreachable from here (port-forward and use --mimir-url)"
+        try:
+            pruned = prune_groups(url, ctx.tenant, namespace, rendered_group_names(docs), http=http)
+        except RulerUnreachable as exc:
+            if ctx.ruler_required:
+                raise RulerUnreachable(f"ruler {url} unreachable: {exc}") from exc
+            return f"pushed {pushed} group(s); stale groups not pruned: {url} became unreachable"
         if pruned:
             return f"pushed {pushed} group(s); pruned {len(pruned)} ({', '.join(pruned)})"
         return f"pushed {pushed} group(s); pruned 0"
