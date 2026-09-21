@@ -137,8 +137,9 @@ contract.
     created dynamically. Three kinds, no secrets, no workloads.
   - Nothing else. Perses and Mimir are reached over HTTP inside the cluster
     and need no Kubernetes permissions.
-- Gojira needs create and get on Jobs in the platform namespace and nothing
-  more.
+- Gojira needs, in the platform namespace only: create and get on Jobs, plus get and
+  list on pods and get on pods/log, because it reads the summary line from the Job's
+  pod log. Nothing more.
 
 ### 5. A published, pinnable image
 
