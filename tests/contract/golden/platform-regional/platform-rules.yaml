@@ -21,4 +21,5 @@ spec:
       expr: absent_over_time(up[1h] offset 29d) and on() (vector(time()) > 1769817600)
       for: 1h
       labels:
+        app: argus-platform
         severity: warning

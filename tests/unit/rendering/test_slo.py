@@ -65,3 +65,15 @@ def test_latency_slo_uses_le_bucket() -> None:
     latency = next(s for s in doc["spec"]["slos"] if s["name"] == "latency-p99-500ms")
     assert 'le="0.5"' in latency["sli"]["events"]["errorQuery"]
     assert "availability-99.9" in names  # class SLO still present
+
+
+def test_every_slo_carries_owner_labels_sloth_copies_onto_its_alerts() -> None:
+    """Sloth copies each SLO's own `labels` onto the alerts it generates, so this is the
+    only place an SLO-driven page/ticket alert can pick up who owns it."""
+    p = _profile()
+    doc = render_sloth(p, _ctx())
+    assert doc is not None
+    for slo in doc["spec"]["slos"]:
+        assert slo["labels"]["app"] == "clips"
+        assert slo["labels"]["namespace"] == "clips"
+        assert slo["labels"]["class"] == p.class_name

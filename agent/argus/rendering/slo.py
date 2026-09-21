@@ -60,6 +60,14 @@ def render_sloth(p: ResolvedProfile, ctx: Context) -> dict | None:
                     "objective": slo.objective,
                     "description": f"Argus {p.class_name} profile SLO {slo.name} for {ctx.app}",
                     "sli": _sli(slo, ctx.app, ctx.namespace),
+                    # Sloth copies an SLO's own `labels` onto every alert it generates, so
+                    # this is the one place a page/ticket alert can pick up who owns it
+                    # (design Part 1.3).
+                    "labels": {
+                        "app": ctx.app,
+                        "namespace": ctx.namespace,
+                        "class": p.class_name,
+                    },
                     "alerting": {
                         "name": f"ArgusSLO-{ctx.app}-{slo.name}",
                         "pageAlert": {"labels": {"severity": "page"}},

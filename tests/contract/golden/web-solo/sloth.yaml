@@ -21,6 +21,10 @@ spec:
         labels:
           severity: ticket
     description: Argus web profile SLO availability-99.9 for sample-web
+    labels:
+      app: sample-web
+      class: web
+      namespace: sample
     name: availability-99.9
     objective: 99.9
     sli:
@@ -37,6 +41,10 @@ spec:
         labels:
           severity: ticket
     description: Argus web profile SLO latency-p99-500ms for sample-web
+    labels:
+      app: sample-web
+      class: web
+      namespace: sample
     name: latency-p99-500ms
     objective: 99.0
     sli:

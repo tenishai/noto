@@ -43,6 +43,14 @@ _COLLECTOR_HEALTH_RULES = [
 ]
 
 
+def _owned(rule: dict, owner: dict[str, str]) -> dict:
+    """The rule with the owner's labels under its own: a rule's own label wins, so a
+    pack can still say something different on purpose."""
+    if "alert" not in rule:
+        return rule
+    return {**rule, "labels": {**owner, **rule.get("labels", {})}}
+
+
 def _cardinality_rules(p: ResolvedProfile, ctx: Context) -> list[dict]:
     budget = p.budgets.cardinality[ctx.environment]
     total = "sum(cortex_ingester_active_series)"
@@ -137,7 +145,9 @@ def render_platform_rules(
                             "alert": "ArgusRetentionWindowShort",
                             "expr": expr,
                             "for": "1h",
-                            "labels": {"severity": "warning"},
+                            # Nothing else owns this alert: it names itself so it can be
+                            # routed the same way every per-app alert can (design Part 1.3).
+                            "labels": {"severity": "warning", "app": "argus-platform"},
                             "annotations": {
                                 "summary": (
                                     f"Metrics older than {days - 1}d are gone, but the "
@@ -187,6 +197,15 @@ def render_alert_rules(p: ResolvedProfile, ctx: Context) -> dict:
                 ],
             }
         )
+    # Every alert says whose it is (design Part 1.3), so it can be routed by owner later.
+    # Recording rules (no `alert` key) are untouched by `_owned`.
+    owner = {
+        "app": ctx.app,
+        "namespace": ctx.namespace,
+        "class": p.class_name,
+        "environment": ctx.environment,
+    }
+    groups = [{"name": g["name"], "rules": [_owned(r, owner) for r in g["rules"]]} for g in groups]
     return {
         "apiVersion": "monitoring.coreos.com/v1",
         "kind": "PrometheusRule",
