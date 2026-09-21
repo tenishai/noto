@@ -3,7 +3,7 @@
 > **Status:** Draft / design plan (pre-Phase-1)
 > **Date:** 2026-06-16 (revised 2026-07-08: family alignment - license, real gojira contract,
 > transport/routing, daedalus, rightsizing feedback)
-> **Authors:** Kyle Greiner (kyle@example.com)
+> **Authors:** Kyle Greiner (kylematthewgreiner@gmail.com)
 > **License:** AGPL-3.0-or-later (the tenishai family license)
 > **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
 > **Home:** [tenishai/argus](https://github.com/tenishai/argus) (transferred into the org
