@@ -13,7 +13,10 @@ permissions:
 jobs:
   solo-dod:
     name: kind solo platform - definition of done
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    # A self-hosted runner must never run a fork's code: this repository's own pull
+    # requests and pushes only. Harmless on GitHub-hosted runners.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
@@ -26,4 +29,4 @@ jobs:
       - name: Fetch pinned tools (sloth for SLO generation)
         run: bash -c 'source /dev/stdin <<< "$(sed -n "/^fetch/,/^$/p" scripts/validate-rendered.sh)" 2>/dev/null || true; make validate || true'
       - name: Run the smoke test
-        run: make smoke
+        run: bash tests/smoke/run-smoke.sh

@@ -23,7 +23,10 @@ permissions:
 jobs:
   build-and-validate:
     name: ocb build + validate against own binary
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    # A self-hosted runner must never run a fork's code: this repository's own pull
+    # requests and pushes only. Harmless on GitHub-hosted runners.
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -35,9 +38,13 @@ jobs:
           version: "0.11.28"
       - name: Fetch pinned ocb
         run: |
-          curl -sSfL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.154.0/ocb_0.154.0_linux_amd64" -o /usr/local/bin/ocb
-          chmod +x /usr/local/bin/ocb
-          ocb version
+          # Into the runner's own temp dir, not /usr/local/bin: a self-hosted runner
+          # user does not own system paths, and the tool only needs to be on PATH.
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sSfL "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.154.0/ocb_0.154.0_linux_amd64" -o "$RUNNER_TEMP/bin/ocb"
+          chmod +x "$RUNNER_TEMP/bin/ocb"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/ocb" version
       - name: Build the distro
         run: cd distro && ocb --config manifest.yaml
       - name: Validate rendered configs against the built binary
@@ -45,11 +52,19 @@ jobs:
           KUBE_NODE_NAME: validation-node
           POD_NAME: validation-pod
         run: |
-          sudo mkdir -p /var/run/secrets/kubernetes.io/serviceaccount
-          openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out /tmp/ca.crt -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
-          sudo cp /tmp/ca.crt /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          echo placeholder | sudo tee /var/run/secrets/kubernetes.io/serviceaccount/token >/dev/null
-          sudo chmod -R a+rX /var/run/secrets
+          # The collector's kubernetes components read the pod service-account
+          # files at validate time. A hosted runner has none, so a placeholder is
+          # written with sudo; a self-hosted runner that is itself a pod already
+          # has real ones mounted there and has no sudo, so nothing is written.
+          SA=/var/run/secrets/kubernetes.io/serviceaccount
+          if [ ! -r "$SA/token" ]; then
+            AS_ROOT=""; command -v sudo >/dev/null && AS_ROOT=sudo
+            $AS_ROOT mkdir -p "$SA"
+            openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out /tmp/ca.crt -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
+            $AS_ROOT cp /tmp/ca.crt "$SA/ca.crt"
+            echo placeholder | $AS_ROOT tee "$SA/token" >/dev/null
+            $AS_ROOT chmod -R a+rX /var/run/secrets
+          fi
           uv run python scripts/render-for-validation.py .argus/rendered
           for cfg in .argus/rendered/otelcol/*.yaml; do
             ./distro/_build/argus-otelcol validate --config="$cfg"
