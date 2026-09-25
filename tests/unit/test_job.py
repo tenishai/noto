@@ -13,10 +13,12 @@ from argus.job import (
     JobInputError,
     contract_fingerprint,
     failure_summary,
+    in_cluster_kubeconfig,
     job_inputs,
     success_summary,
     summary_line,
 )
+from argus.steps import StepContext
 
 A = "app: demo\nclass: web\nenvironments:\n  dev: {cluster: c1, namespace: demo}\n"
 
@@ -594,3 +596,152 @@ def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
     out = capsys.readouterr().out.strip().splitlines()
     assert "no environment 'qa'" in out[-1]
     assert 'observe failed: "' not in out[-1]
+
+
+# --- the in-cluster kubeconfig: kubectl's fallback cannot be relied on with a bound ----
+
+
+def _sa_dir(tmp_path: Path, *, token: bool = True, ca: bool = True) -> Path:
+    d = tmp_path / "sa"
+    d.mkdir(parents=True)
+    if token:
+        (d / "token").write_text("eyJ.fake")
+    if ca:
+        (d / "ca.crt").write_text("-----BEGIN CERTIFICATE-----\nfake\n")
+    return d
+
+
+def test_in_cluster_kubeconfig_names_the_server_and_the_token_by_path(tmp_path: Path):
+    """The file says the cluster outright, and names the token FILE, never its value:
+    the kubelet rotates the token in place and nothing about it may reach argv."""
+    import yaml
+
+    sa = _sa_dir(tmp_path)
+    env = {"KUBERNETES_SERVICE_HOST": "10.140.4.1", "KUBERNETES_SERVICE_PORT": "443"}
+    out = in_cluster_kubeconfig(tmp_path / "kubeconfig", env, sa_dir=sa)
+    assert out == tmp_path / "kubeconfig"
+    doc = yaml.safe_load(out.read_text())
+    assert doc["current-context"] == "in-cluster"
+    assert doc["clusters"][0]["cluster"] == {
+        "server": "https://10.140.4.1:443",
+        "certificate-authority": str(sa / "ca.crt"),
+    }
+    assert doc["users"][0]["user"] == {"tokenFile": str(sa / "token")}
+    assert "eyJ.fake" not in out.read_text()
+
+
+def test_in_cluster_kubeconfig_brackets_an_ipv6_host(tmp_path: Path):
+    import yaml
+
+    sa = _sa_dir(tmp_path)
+    env = {"KUBERNETES_SERVICE_HOST": "fd00::1", "KUBERNETES_SERVICE_PORT": "443"}
+    doc = yaml.safe_load(in_cluster_kubeconfig(tmp_path / "k", env, sa_dir=sa).read_text())
+    assert doc["clusters"][0]["cluster"]["server"] == "https://[fd00::1]:443"
+
+
+def test_in_cluster_kubeconfig_is_none_outside_a_pod(tmp_path: Path):
+    """No env, or env but no mounted token: nothing is written and the caller leaves
+    kubectl to the operator's own kubeconfig, exactly as before this existed."""
+    sa = _sa_dir(tmp_path)
+    assert in_cluster_kubeconfig(tmp_path / "k1", {}, sa_dir=sa) is None
+    assert (
+        in_cluster_kubeconfig(tmp_path / "k2", {"KUBERNETES_SERVICE_HOST": "10.0.0.1"}, sa_dir=sa)
+        is None
+    )  # port missing
+    no_token = _sa_dir(tmp_path / "other", token=False)
+    env = {"KUBERNETES_SERVICE_HOST": "10.0.0.1", "KUBERNETES_SERVICE_PORT": "443"}
+    assert in_cluster_kubeconfig(tmp_path / "k3", env, sa_dir=no_token) is None
+    assert not (tmp_path / "k1").exists() and not (tmp_path / "k3").exists()
+
+
+def test_step_context_puts_the_kubeconfig_on_kubectl_and_helm_alike():
+    """Both tools must agree about which cluster a run targets (the #65 lesson, again):
+    a kubeconfig set on the context reaches every argv, alongside the bound."""
+    ctx = StepContext(runner=lambda c, s: (0, ""), kubeconfig="/tmp/kc", kube_context="dev")
+    assert ctx.kubectl("get", "pods") == [
+        "kubectl",
+        "--kubeconfig",
+        "/tmp/kc",
+        "--context",
+        "dev",
+        "get",
+        "pods",
+        "--request-timeout=30s",
+    ]
+    assert ctx.helm("status", "x")[:5] == [
+        "helm",
+        "--kubeconfig",
+        "/tmp/kc",
+        "--kube-context",
+        "dev",
+    ]
+    bare = StepContext(runner=lambda c, s: (0, ""))
+    assert "--kubeconfig" not in bare.kubectl("get", "pods")
+
+
+def test_job_mode_every_kubectl_call_carries_the_in_cluster_kubeconfig(
+    monkeypatch, tmp_path: Path, capsys
+):
+    """The regression the first live run found: --request-timeout is on every argv (the
+    bound stays), so the cluster has to be on every argv too, or kubectl dials
+    localhost:8080 and the run ends in `platform record unreadable`."""
+    from argus import job
+
+    sa = _sa_dir(tmp_path)
+    monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", sa)
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.140.4.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "443")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+    for k, v in _job_env((FIXTURES / "web.yaml").read_text()).items():
+        monkeypatch.setenv(k, v)
+
+    code = cli.main(["observe"])
+
+    assert code == 0, capsys.readouterr().out
+    kubectls = [c for c, _ in runner.calls if c[0] == "kubectl"]
+    assert kubectls
+    paths = set()
+    for c in kubectls:
+        assert "--kubeconfig" in c and any(a.startswith("--request-timeout=") for a in c)
+        paths.add(c[c.index("--kubeconfig") + 1])
+    (path,) = paths  # one file, written once, for the whole run
+    assert path.endswith("/kubeconfig") and "argus-job-" in path
+    assert "https://10.140.4.1:443" in Path(path).read_text()
+
+
+def test_operator_mode_never_writes_or_passes_a_kubeconfig(monkeypatch, tmp_path: Path):
+    """An operator on a laptop that happens to carry the in-cluster env (a devcontainer,
+    a CI pod) keeps their own kubeconfig and --kube-context: job mode's file is job
+    mode's alone."""
+    from argus import job
+
+    monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
+    monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", _sa_dir(tmp_path))
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.140.4.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "443")
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
+    monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
+
+    code = cli.main(
+        [
+            "observe",
+            "--gojira",
+            str(FIXTURES / "web.yaml"),
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--kube-context",
+            "laptop",
+        ]
+    )
+
+    assert code == 0
+    for c, _ in runner.calls:
+        if c[0] == "kubectl":
+            assert "--kubeconfig" not in c and c[1:3] == ["--context", "laptop"]

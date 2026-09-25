@@ -16,6 +16,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import yaml
 
@@ -180,3 +181,53 @@ def failure_summary(step: str | None, reason: str) -> str:
     if step is None:
         return summary_line(f"observe failed: {reason}")
     return summary_line(f"observe failed: {step}: {reason}")
+
+
+# Where the kubelet mounts a pod's service-account credentials. Module-level so a
+# test can point it at a directory it made.
+SERVICE_ACCOUNT_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
+
+
+def in_cluster_kubeconfig(
+    dest: Path, environ: Mapping[str, str], sa_dir: Path | None = None
+) -> Path | None:
+    """Write a kubeconfig that says the in-cluster API server outright, or None when
+    this process is not in a pod.
+
+    kubectl would find the same server, token and CA on its own, but only on one
+    condition: its merged client config must equal its built-in default. Every argv
+    argus builds carries `--request-timeout` (StepContext.kubectl), and that override
+    alone makes the merged config unequal, so kubectl skips the in-cluster fallback
+    and dials the default `localhost:8080` instead, silently. The first live job run
+    ended that way (2026-09-25, "platform record unreadable"). Job mode therefore
+    hands kubectl the cluster explicitly and stops depending on the fallback.
+
+    The file names the token by path (`tokenFile`), never by value, so the kubelet's
+    rotation keeps working and the token never lands in argv or a log. Outside a
+    pod (no `KUBERNETES_SERVICE_HOST`, or no mounted token) nothing is written and
+    the caller leaves kubectl to the operator's own kubeconfig, as before.
+    """
+    sa_dir = sa_dir or SERVICE_ACCOUNT_DIR
+    host = environ.get("KUBERNETES_SERVICE_HOST", "").strip()
+    port = environ.get("KUBERNETES_SERVICE_PORT", "").strip()
+    token = sa_dir / "token"
+    if not host or not port or not token.is_file():
+        return None
+    if ":" in host and not host.startswith("["):  # a bare IPv6 literal
+        host = f"[{host}]"
+    cluster: dict[str, str] = {"server": f"https://{host}:{port}"}
+    ca = sa_dir / "ca.crt"
+    if ca.is_file():
+        cluster["certificate-authority"] = str(ca)
+    doc = {
+        "apiVersion": "v1",
+        "kind": "Config",
+        "clusters": [{"name": "in-cluster", "cluster": cluster}],
+        "users": [{"name": "in-cluster", "user": {"tokenFile": str(token)}}],
+        "contexts": [
+            {"name": "in-cluster", "context": {"cluster": "in-cluster", "user": "in-cluster"}}
+        ],
+        "current-context": "in-cluster",
+    }
+    dest.write_text(yaml.safe_dump(doc, sort_keys=False))
+    return dest

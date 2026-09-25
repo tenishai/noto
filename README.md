@@ -189,6 +189,17 @@ the cluster. That is accepted scope for a platform provisioner, not an oversight
 narrowing that matters is the verb and kind list, and who may create Jobs in the platform
 namespace.
 
+**How the Job reaches the API server.** Every kubectl argv argus builds carries
+`--request-timeout` (the bounded call). kubectl has an unadvertised side effect there: its
+loader only falls back to the in-cluster service-account config when the merged config equals
+kubectl's built-in default, and a timeout override alone makes it unequal, so a pod running
+nothing but `kubectl ... --request-timeout=30s` quietly dials `localhost:8080`. Job mode does
+not rely on the fallback. It writes a kubeconfig into its temp directory from the same
+`KUBERNETES_SERVICE_HOST`/`KUBERNETES_SERVICE_PORT` and the mounted token and CA (by path, so
+rotation still works and the token never appears in argv), and passes `--kubeconfig` on every
+kubectl call. An operator run sees none of this: no service-account mount means no file is
+written and the operator's own kubeconfig and `--kube-context` apply exactly as before.
+
 A ready-to-copy Job manifest for the provisioner to create:
 
 ```yaml
