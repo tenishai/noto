@@ -48,6 +48,11 @@ Runner = Callable[[list[str], str | None], tuple[int, str]]
 class StepContext:
     runner: Runner
     kube_context: str | None = None
+    # An explicit kubeconfig for every kubectl/helm call. Job mode sets it to the file
+    # `in_cluster_kubeconfig` wrote (see argus/job.py for why the in-cluster fallback
+    # cannot be relied on once `--request-timeout` is on the argv); operator mode
+    # leaves it None and the operator's own kubeconfig and context apply.
+    kubeconfig: str | None = None
     namespace: str = "argus"
     pins: dict = field(default_factory=dict)  # helm/pins.yaml, loaded
     repo_root: Path = Path(".")
@@ -94,8 +99,15 @@ class StepContext:
         --request-timeout bounds the watch request underneath it, so a flat 30s here
         would abort a healthy rollout that simply takes longer. That caller passes its
         own remaining deadline (see WaitForCollectors).
+
+        The bound has one side effect worth knowing: with any override on the argv,
+        kubectl no longer treats its merged config as "the default" and never tries
+        the in-cluster service-account fallback, so a pod with nothing but this flag
+        dials localhost:8080. That is why job mode sets `kubeconfig` explicitly.
         """
         cmd = ["kubectl"]
+        if self.kubeconfig:
+            cmd += ["--kubeconfig", self.kubeconfig]
         if self.kube_context:
             cmd += ["--context", self.kube_context]
         return [*cmd, *args, f"--request-timeout={request_timeout}"]
@@ -109,6 +121,8 @@ class StepContext:
         tools must never disagree about which cluster a run targets.
         """
         cmd = ["helm"]
+        if self.kubeconfig:
+            cmd += ["--kubeconfig", self.kubeconfig]
         if self.kube_context:
             cmd += ["--kube-context", self.kube_context]
         return [*cmd, *args]

@@ -30,7 +30,14 @@ from argus.feedback.ruler import PLATFORM_RULE_GROUP
 from argus.feedback.ruler import Http as RulerHttp
 from argus.gojira.reader import read_gojira_yaml
 from argus.integrations.catalog import load_catalog
-from argus.job import JobInputError, JobInputs, failure_summary, job_inputs, success_summary
+from argus.job import (
+    JobInputError,
+    JobInputs,
+    failure_summary,
+    in_cluster_kubeconfig,
+    job_inputs,
+    success_summary,
+)
 from argus.perses_client import Opener
 from argus.profiles.loader import load_baseline, load_class, load_override
 from argus.profiles.models import ClassProfile, DropRule, ResolvedProfile
@@ -448,6 +455,7 @@ def _step_context(
     return StepContext(
         runner=real_runner,
         kube_context=args.kube_context,
+        kubeconfig=getattr(args, "kubeconfig", None),
         namespace=args.namespace,
         pins=pins,
         repo_root=REPO_ROOT,
@@ -742,6 +750,11 @@ def _observe_job(inputs: JobInputs, args: argparse.Namespace) -> int:
     args.cluster = inputs.cluster or args.cluster
     args.namespace = inputs.namespace
     args.ledger = str(tmpdir / "argus.db")
+    # The cluster, said outright. In a pod kubectl would normally find it by itself,
+    # but not with `--request-timeout` on the argv (argus/job.py, in_cluster_kubeconfig):
+    # the first live run dialed localhost:8080 for exactly that reason.
+    kubeconfig = in_cluster_kubeconfig(tmpdir / "kubeconfig", os.environ)
+    args.kubeconfig = str(kubeconfig) if kubeconfig else None
 
     try:
         result, ctx, resolution = _run_observe(
