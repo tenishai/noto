@@ -224,6 +224,12 @@ spec:
       restartPolicy: Never
       securityContext:
         runAsNonRoot: true
+        # The uid the image runs as (Dockerfile: USER 10001), stated on the pod as every
+        # other pod in the platform does: the kubelet sets ownership on the projected
+        # token from these, and an admission policy that wants an explicit uid passes.
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       volumes:
