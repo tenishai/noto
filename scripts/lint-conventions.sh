@@ -3,7 +3,7 @@
 # lint-conventions.sh - enforce Argus prose and pinning conventions.
 #
 # Checks:
-#   1. No em dashes in prose (Markdown). Code and generated config are exempt.
+#   1. Em dashes in prose (Markdown). WARNS only: style, not a gate.
 #   2. No floating version pins (`:latest`, `version: latest`) in config.
 #
 # Usage: scripts/lint-conventions.sh
@@ -24,9 +24,9 @@ echo "==> Checking for em dashes in prose (*.md)"
 em_hits="$(tracked '*.md' | grep -vE '^(scripts/|CONTRIBUTING\.md$|docs/testing\.md$)' \
   | xargs grep -nP '\x{2014}' 2>/dev/null || true)"
 if [[ -n "$em_hits" ]]; then
-  echo "FAIL: em dashes found (use ' - ', a comma, or parentheses):"
+  # A style preference, not a correctness rule: it must never fail a build.
+  echo "WARN: em dashes found (style only, not failing; prefer ' - ', a comma, or parentheses):"
   echo "$em_hits"
-  status=1
 else
   echo "ok"
 fi

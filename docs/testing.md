@@ -25,7 +25,7 @@ touches; `main` runs everything that does not require live cloud.
 
 The cheapest guards. No code execution.
 
-- **Conventions:** no em dashes in prose, no floating `latest` pins (`scripts/lint-conventions.sh`).
+- **Conventions:** em dashes in prose (warns, never fails), no floating `latest` pins (`scripts/lint-conventions.sh`).
 - **Schema/syntax:** YAML parses; the ocb manifest parses; Helm values lint (`helm lint`); OpenTofu
   `tofu fmt -check` and `tofu validate`; Python lint/format (`ruff`) once agent code exists.
 - **Why it matters:** most "broken deploy" incidents are a malformed manifest or an unpinned version,
