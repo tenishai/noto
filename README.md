@@ -396,10 +396,12 @@ tag, is what a provisioner's Job config pins (see the Job manifest above).
 
 ## Status
 
-Argus is in **design / pre-Phase-1**, with foundations in place and **Phase 1 (Observe)** as the
-current focus. See the [roadmap](ROADMAP.md) for the phase plan and the
+**Phase 1 (Observe) is complete**, released as v0.1.0 on 2026-07-11 and deployed. **Phase 2
+(Curate) is the current focus**, and parts of it have landed: the integrations catalog and the
+cardinality skill. See the [roadmap](ROADMAP.md) for the phase plan, the
+[changelog](CHANGELOG.md) for what has shipped since the tag, and the
 [design document](docs/design.md) for architecture, opinionated defaults, and the deployment order of
-operations. Code scaffolding is in progress.
+operations.
 
 ## Documentation
 

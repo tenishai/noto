@@ -1,6 +1,6 @@
 # Argus - Design Document
 
-> **Status:** Draft / design plan (pre-Phase-1)
+> **Status:** Design plan. Phase 1 is built and released (v0.1.0); see the roadmap for the current phase.
 > **Date:** 2026-06-16 (revised 2026-07-08: family alignment - license, real gojira contract,
 > transport/routing, daedalus, rightsizing feedback)
 > **Authors:** Kyle Greiner (kylematthewgreiner@gmail.com)

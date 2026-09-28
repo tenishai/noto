@@ -4,9 +4,9 @@ Where Argus is going, at a glance. This is the short version; the
 [design document](docs/design.md) is the source of truth for architecture, decisions, and the
 detailed phase plan. Phases are ordered, and each builds on the last.
 
-> **Status:** pre-Phase-1 (design complete, foundations in place). **Current focus: Phase 1 - Observe.**
+> **Status:** Phase 1 is complete (v0.1.0, 2026-07-11). **Current focus: Phase 2 - Curate.**
 
-## Phase 1 - Observe (current)
+## Phase 1 - Observe (complete, v0.1.0)
 
 Take a gojira-managed cluster from zero to a full open-source observability platform, automatically.
 
@@ -23,7 +23,7 @@ Take a gojira-managed cluster from zero to a full open-source observability plat
 auto-observed by class, and a real metric and trace are queryable in Perses with a default dashboard and
 golden-signal SLO - no hand-written YAML, applied directly via CLI/SDK/Helm.
 
-## Phase 2 - Curate
+## Phase 2 - Curate (current)
 
 Make new kinds of workloads light up automatically.
 
