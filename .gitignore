@@ -31,3 +31,7 @@ crash.log
 .DS_Store
 .idea/
 .vscode/
+
+# Local scratch
+scratch*.txt
+CLAUDE.local.md
