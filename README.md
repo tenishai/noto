@@ -377,10 +377,7 @@ drift apart.
   `.argus` is otherwise runtime scratch and is never copied into the image wholesale (see
   `.dockerignore`) - this one binary is the sole exception, placed there deliberately.
 
-The image is `linux/amd64` only. A `push to main` publishes it (`.github/workflows/image.yml`)
-only once it exists as a repository/organization variable (`ARGUS_IMAGE`); the workflow writes
-the resulting `<image>@sha256:<digest>` to the job summary, and that digest, never a mutable
-tag, is what a provisioner's Job config pins (see the Job manifest above).
+The image is `linux/amd64` only. It is built by an operator from a commit and pushed to the registry their platform reads; this repository publishes nothing. A provisioner's Job config pins the resulting `<image>@sha256:<digest>`, never a mutable tag (see the Job manifest above).
 
 ## The stack
 
