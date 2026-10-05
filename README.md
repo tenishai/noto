@@ -35,6 +35,28 @@ Argus is opinionated by design. Its goals:
 - **Agent-driven** - operated by a self-contained agent and a set of Agent Skills, not a web UI.
 - **gojira-native** - reads gojira's contract and state as the source of truth; it does not duplicate it.
 
+## Quickstart
+
+Render what argus would install for a sample app, with no cluster. The only prerequisite is
+[uv](https://docs.astral.sh/uv/); it fetches Python 3.14 for you.
+
+```
+git clone https://github.com/tenishai/argus && cd argus
+uv sync --frozen
+uv run argus render --gojira tests/smoke/gojira.yaml --env dev
+ls .argus/rendered-app
+```
+
+`render` reads a gojira deploy contract (the sample describes `podinfo`, a `web` class app) and
+writes the four families argus derives from the workload class: `scrape.yaml` (the collection
+config), `perses.yaml` (the dashboard), `alerts.yaml` (the alert rules) and `slo.yaml` (the SLO
+spec). It touches nothing else; `observe` is the command that applies them to a cluster.
+
+To see the whole thing run, `make smoke` creates a [kind](https://kind.sigs.k8s.io/) cluster,
+installs the platform (collector, Mimir, Loki, Tempo, Perses), deploys the sample app, observes it
+and checks the result. It needs Docker, kind and kubectl, and takes about 15 minutes. `make test`
+runs the conventions lint and the unit and contract tests, the same gates CI runs.
+
 ## Part of a larger platform
 
 Argus is one piece of a shared, opinionated SRE/agent platform - sibling projects that each own one
