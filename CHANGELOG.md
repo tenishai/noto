@@ -6,6 +6,17 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Removed
+
+- **docs/target-fleet.md.** It described one real production estate, the first
+  deployment's instance parameters. The design keeps its scale posture (size each
+  deployment from its own measurements); the estate itself is not part of the project.
+
+### Changed
+
+- Author contact in `pyproject.toml`, the design doc and the sizing-agent proposal patch
+  is the maintainer's GitHub noreply address.
+
 ### Fixed
 
 - **helm targets the same cluster as kubectl.** Every kubectl argv honored
@@ -555,7 +566,7 @@ All notable changes to Argus are documented here. The format is based on
   content-work check. Reproduction manifests committed; operational gotchas recorded (config mount
   must not mask /etc/perses plugins; Loki OTLP structured-metadata config; native OTLP ingest paths).
 
-- [docs/target-fleet.md](docs/target-fleet.md): the first concrete deployment target - 11 production
+- docs/target-fleet.md (removed 2026-10-05): the first concrete deployment target - 11 production
   GKE clusters, ~2,200 logs/sec fleet-wide, 1 week raw retention then aggregation, Go/Python. Adapted
   from a teammate's earlier fleet roadmap; preserves its Datadog parallel-run migration strategy
   (instrument once with OTel, dual-ship during the window, deprecate per signal per service), its

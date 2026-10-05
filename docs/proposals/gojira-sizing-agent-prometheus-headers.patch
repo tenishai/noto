@@ -1,5 +1,5 @@
 From 4c4903c09b6c0bb9c44eb234869c9d875e4ea98c Mon Sep 17 00:00:00 2001
-From: Kyle Greiner <kylematthewgreiner@gmail.com>
+From: Kyle Greiner <kmgreiner3@users.noreply.github.com>
 Date: Sun, 12 Jul 2026 22:42:24 -0400
 Subject: [PATCH] =?UTF-8?q?feat:=20PROMETHEUS=5FHEADERS=20=E2=80=94=20extr?=
  =?UTF-8?q?a=20query=20headers,=20plus=20the=20Argus=20Mimir=20recipe?=
