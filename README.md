@@ -415,4 +415,4 @@ operations.
 
 [AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).
 
-Copyright (C) 2026 tenishai.
+Copyright (C) 2026 tenish and the argus contributors
