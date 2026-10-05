@@ -6,7 +6,7 @@
 Take a deployment from zero to a full, end-to-end open-source observability platform - automatically.
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-design-orange.svg)](docs/design.md)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](docs/design.md)
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
 [![Stack: Mimir · Loki · Tempo · Perses](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Perses-1f6feb.svg)](docs/design.md)
 
