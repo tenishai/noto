@@ -1,7 +1,7 @@
 ---
 card: repo-card:argus
-updated: 2026-09-28
-anchor: pyproject.toml sha=7816c7910347a13a688cb8d2248c518eb3879e2f
+updated: 2026-10-05
+anchor: pyproject.toml sha=7babe527268a8a2f1ec228273ba79c039c936866
 anchor: agent/argus/cli.py sha=5505091e45dd99447eabf31fdac124c4b2d95339
 ---
 # argus — repo card

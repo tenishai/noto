@@ -3,7 +3,7 @@
 > **Status:** PASS - Perses stands. Run 2026-07-09 on kind, closes issue #11.
 > **What was tested:** Perses 0.53.1 against Mimir 3.1.1, Loki 3.7.2, Tempo 2.10.7 (pinned images,
 > monolithic single-process for the spike), synthetic OTLP telemetry via telemetrygen v0.154.0 at
-> fleet-realistic rates (see [target-fleet.md](../../target-fleet.md)). Manifests in this directory
+> rates matching the first deployment's measured fleet volume. Manifests in this directory
 > reproduce it: `backends.yaml`, `perses.yaml`, `telemetrygen.yaml`.
 
 ## Verdict

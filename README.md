@@ -425,8 +425,6 @@ operations.
 ## Documentation
 
 - [Roadmap](ROADMAP.md) - the phased plan (Observe -> Curate -> Guard -> Reason) at a glance
-- [Target fleet](docs/target-fleet.md) - the first real deployment: scale parameters, the Datadog
-  parallel-run migration, correlation acceptance checks, and remediation guardrails
 - [Design document](docs/design.md) - architecture, decisions, deployment model, roadmap
 - [OpenTelemetry Collector Enablement Guide](docs/otel-collector-enablement-guide.md) - the collector
   patterns and pipeline opinions Argus ships as defaults

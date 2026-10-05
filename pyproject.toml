@@ -5,7 +5,7 @@ description = "Argus - the observability arm of gojira. Takes a deployment from 
 readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.14,<3.15"
-authors = [{ name = "Kyle Greiner", email = "kylematthewgreiner@gmail.com" }]
+authors = [{ name = "Kyle Greiner", email = "kmgreiner3@users.noreply.github.com" }]
 # Runtime dependencies land with the code that needs them (Jinja2 with the renderers,
 # PyYAML with the gojira-reader, anthropic with the agent) - each pinned in docs/versions.md
 # at introduction time.
