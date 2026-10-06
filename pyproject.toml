@@ -10,14 +10,14 @@ authors = [{ name = "Kyle Greiner", email = "kmgreiner3@users.noreply.github.com
 # PyYAML with the gojira-reader, anthropic with the agent) - each pinned in docs/versions.md
 # at introduction time.
 dependencies = [
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
     "pyyaml==6.0.3",
 ]
 
 [dependency-groups]
 dev = [
     "pytest==9.1.1",
-    "ruff==0.15.20",
+    "ruff==0.16.10",
 ]
 
 [project.scripts]
