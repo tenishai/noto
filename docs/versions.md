@@ -32,6 +32,8 @@ exactly why we pin exact versions and back them with the contract-test layer
 | Component | Version | Helm chart | Source | Notes |
 |---|---|---|---|---|
 | Grafana Mimir | 3.1.2 | mimir-distributed 6.1.0 | [mimir releases](https://github.com/grafana/mimir/releases) | re-verified 2026-07-11 (chart 6.1.0 carries app 3.1.2) |
+| MinIO (solo object store, `images/minio/`) | RELEASE.2024-12-18T13-15-44Z | pinned by mimir-distributed 6.1.0's minio subchart 5.4.0 | [minio releases](https://github.com/minio/minio/releases) | rebuilt from the GitHub RPM: quay.io/minio/minio has no tags since 2026 (#90) |
+| MinIO client mc (`images/minio/`) | RELEASE.2024-11-21T17-21-54Z | same subchart's `mcImage` | [mc releases](https://github.com/minio/mc/releases) | runs the chart's make-buckets hook |
 | Grafana Loki | 3.7.3 | loki 18.4.4 (grafana-community) | [loki releases](https://github.com/grafana/loki/releases) | re-verified 2026-07-11; SingleBinary mode for solo |
 | Grafana Tempo | 2.10.7 | tempo 2.2.3 (grafana-community, monolithic) | [tempo releases](https://github.com/grafana/tempo/releases) | re-verified 2026-07-11; tempo-distributed when regional scale demands |
 | Perses (visualization) | 0.53.1 | 0.22.0 (perses/helm-charts) | [perses releases](https://github.com/perses/perses/releases) | re-verified 2026-07-11; chart 0.22.0 carries exactly the spike-verified app v0.53.1 |

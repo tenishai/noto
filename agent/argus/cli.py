@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -545,7 +546,35 @@ def _born_epoch(born: str) -> int:
         return int(datetime.datetime.now(datetime.UTC).timestamp())
 
 
+def platform_sets(args: Sequence[str], components: Sequence[str]) -> dict[str, dict[str, str]]:
+    """`--set COMPONENT:KEY=VALUE` arguments -> {component: {key: value}}.
+
+    The component must be one the platform installs (helm/pins.yaml); anything else
+    is a typo that would otherwise be dropped silently, which is the one failure mode
+    a deployment override must not have. Only the first `:` and the first `=` split,
+    so a value may carry either character (an image reference carries both).
+    """
+    out: dict[str, dict[str, str]] = {}
+    for raw in args:
+        component, sep, rest = raw.partition(":")
+        key, eq, value = rest.partition("=")
+        if not sep or not eq or not component or not key:
+            raise ValueError(f"--set expects COMPONENT:KEY=VALUE, got {raw!r}")
+        if component not in components:
+            raise ValueError(
+                f"--set names component {component!r}, which the platform does not "
+                f"install; one of: {', '.join(components)}"
+            )
+        out.setdefault(component, {})[key] = value
+    return out
+
+
 def cmd_platform(args: argparse.Namespace) -> int:
+    try:
+        overrides = platform_sets(getattr(args, "sets", []) or [], PLATFORM_ORDER)
+    except ValueError as exc:
+        print(f"FAILED: {exc}", file=sys.stderr)
+        return 2
     ledger = Ledger(Path(args.ledger))
     baseline = load_baseline(REPO_ROOT / "profiles" / "baseline.yaml")
     budget = baseline.budgets.cardinality[args.env]
@@ -596,8 +625,10 @@ def cmd_platform(args: argparse.Namespace) -> int:
                     else {}
                 )
                 # ... and the profile's retention promise becomes each backend's own
-                # retention setting, the same way (see retention_helm_sets).
-                | helm_set_values(retention_sets.get(c, [])),
+                # retention setting, the same way (see retention_helm_sets) ...
+                | helm_set_values(retention_sets.get(c, []))
+                # ... and the deployment's own --set overrides last, so they win.
+                | overrides.get(c, {}),
             )
             for c in PLATFORM_ORDER
         ],
@@ -995,6 +1026,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Mimir Prometheus API base for pushing the platform's own alert group; "
         "derived from --namespace unless given. Port-forward form: "
         "--mimir-url http://localhost:9009/prometheus",
+    )
+    # Deployment-side values for a chart, without naming anything of the deployment's
+    # in this repository (tenishai/argus#90): `--set mimir:minio.image.repository=<reg>/minio`
+    # is passed to that component's helm upgrade as `--set minio.image.repository=...`.
+    # The component is the helm/pins.yaml name; the key is the chart's own. Repeatable,
+    # and part of the install's drift fingerprint, so a changed override re-applies.
+    p_platform.add_argument(
+        "--set",
+        dest="sets",
+        action="append",
+        default=[],
+        metavar="COMPONENT:KEY=VALUE",
+        help="a helm --set for one pinned component, e.g. "
+        "mimir:minio.image.repository=<registry>/minio; repeatable",
     )
     p_platform.set_defaults(func=cmd_platform)
 
