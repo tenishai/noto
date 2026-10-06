@@ -15,3 +15,7 @@ updates:
     groups:
       python:
         patterns: ["*"]
+    ignore:
+      # Majors by hand, with a changelog entry; the weekly group stays mergeable.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
