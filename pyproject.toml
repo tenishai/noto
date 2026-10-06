@@ -1,5 +1,5 @@
 [project]
-name = "argus"
+name = "tenish-argus"
 version = "0.1.0.dev0"
 description = "Argus - the observability arm of gojira. Takes a deployment from zero to a full open-source observability platform, automatically."
 readme = "README.md"
