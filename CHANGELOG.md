@@ -8,6 +8,8 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Changed
 
+- CI runs `scripts/check_arch_cards.py`, so a seam changed without its card fails the PR.
+  Dependabot's uv group skips semver-major bumps; majors are a person's PR.
 - **The README is a two-screen read.** The operator's material (collector tier, platform
   record, retention, ruler sync, endpoints, the observe Job, the image) moved verbatim to
   `docs/operating.md`. A live CI badge joins the header.
