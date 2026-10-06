@@ -19,6 +19,8 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Removed
 
+- **docs/kickoff.md.** A Claude Code session prompt from July, not documentation; the
+  AGENTS.md and the architecture cards carry what an agent needs now.
 - **docs/target-fleet.md.** It described one real production estate, the first
   deployment's instance parameters. The design keeps its scale posture (size each
   deployment from its own measurements); the estate itself is not part of the project.
