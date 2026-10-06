@@ -6,6 +6,17 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The README is a two-screen read.** The operator's material (collector tier, platform
+  record, retention, ruler sync, endpoints, the observe Job, the image) moved verbatim to
+  `docs/operating.md`. A live CI badge joins the header.
+
+### Added
+
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 3.0) and Dependabot updates for the Python
+  lock, not only GitHub Actions.
+
 ### Removed
 
 - **docs/target-fleet.md.** It described one real production estate, the first
