@@ -313,3 +313,20 @@ drift apart.
   `.dockerignore`) - this one binary is the sole exception, placed there deliberately.
 
 The image is `linux/amd64` only. It is built by an operator from a commit and pushed to the registry their platform reads; this repository publishes nothing. A provisioner's Job config pins the resulting `<image>@sha256:<digest>`, never a mutable tag (see the Job manifest above).
+
+## Deployment overrides for a chart
+
+`argus platform --set COMPONENT:KEY=VALUE` passes one helm `--set` to one pinned
+component (`mimir:minio.image.repository=<registry>/minio`), repeatable. It is the way a
+deployment names its own registry, image or size for a bundled chart without that
+name entering this repository, and it is part of the install's drift fingerprint, so a
+changed override re-applies. A component the platform does not install is refused.
+
+It exists because of `images/minio/`: MinIO withdrew its public images and binaries in
+2026, the Mimir chart's bundled MinIO (the solo topology's object store) pins one of
+them, and a node recreation then left the whole metrics path down for eleven hours
+(tenishai/argus#90). That directory rebuilds the pinned release from MinIO's
+checksum-verified GitHub RPMs, laid out like the official image; a deployment builds it
+into its own registry and passes four overrides: `mimir:minio.image.repository`,
+`mimir:minio.image.tag`, `mimir:minio.mcImage.repository`, `mimir:minio.mcImage.tag`.
+

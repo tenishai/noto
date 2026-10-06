@@ -6,6 +6,18 @@ All notable changes to Argus are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **`argus platform --set COMPONENT:KEY=VALUE`**, a deployment's own helm `--set` for one
+  pinned component, repeatable, validated against the components the platform installs,
+  and part of the install's drift fingerprint. **`images/minio/`** rebuilds the Mimir
+  chart's bundled MinIO (the solo topology's object store) and its `mc` at the pinned
+  releases from MinIO's checksum-verified GitHub RPMs, because MinIO withdrew its public
+  images and binaries in 2026 and a node recreation then took a deployment's metrics
+  path down for eleven hours while logs kept flowing (tenishai/argus#90). A deployment
+  builds that image into its own registry and names it with four `--set`s; nothing in
+  this repository names a registry.
+
 ### Changed
 
 - CI runs `scripts/check_arch_cards.py`, so a seam changed without its card fails the PR.

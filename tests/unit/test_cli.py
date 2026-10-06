@@ -1435,3 +1435,72 @@ def test_generate_slo_rules_via_real_sloth() -> None:
         assert rule["labels"]["app"] == "web1"
         assert rule["labels"]["namespace"] == "s"
         assert rule["labels"]["class"] == p.class_name
+
+
+# --- platform --set COMPONENT:KEY=VALUE (tenishai/argus#90) ------------------------
+
+
+def test_platform_sets_parse_per_component_and_keep_image_references_whole() -> None:
+    from argus.cli import platform_sets
+
+    out = platform_sets(
+        [
+            "mimir:minio.image.repository=us-east4-docker.pkg.dev/p/r/minio",
+            "mimir:minio.image.tag=RELEASE.2024-12-18T13-15-44Z",
+            "loki:a.b=c=d",
+        ],
+        ["cert-manager", "mimir", "loki"],
+    )
+    assert out == {
+        "mimir": {
+            "minio.image.repository": "us-east4-docker.pkg.dev/p/r/minio",
+            "minio.image.tag": "RELEASE.2024-12-18T13-15-44Z",
+        },
+        "loki": {"a.b": "c=d"},
+    }
+
+
+def test_platform_sets_refuse_an_unknown_component_and_a_malformed_argument() -> None:
+    import pytest
+
+    from argus.cli import platform_sets
+
+    with pytest.raises(ValueError, match="does not install"):
+        platform_sets(["minio:image.tag=x"], ["mimir"])
+    with pytest.raises(ValueError, match="COMPONENT:KEY=VALUE"):
+        platform_sets(["mimir.minio.image.tag=x"], ["mimir"])
+
+
+def test_cli_platform_set_reaches_the_component_helm_upgrade_and_only_that_one(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runner = FakeRunner()
+    monkeypatch.setattr(cli, "real_runner", runner)
+    code = cli.main(
+        [
+            "platform",
+            "--cluster",
+            "c1",
+            "--env",
+            "dev",
+            "--ledger",
+            str(tmp_path / "l.db"),
+            "--dry-run",
+            "--set",
+            "mimir:minio.image.repository=reg/minio",
+            "--set",
+            "mimir:minio.image.tag=RELEASE.x",
+        ]
+    )
+    assert code == 0
+    upgrades = {
+        c[c.index("--install") + 1]: c
+        for c, _ in runner.calls
+        if c[0] == "helm" and c[1] == "upgrade"
+    }
+    mimir = upgrades["argus-mimir"]
+    assert "minio.image.repository=reg/minio" in mimir
+    assert "minio.image.tag=RELEASE.x" in mimir
+    for name, cmd in upgrades.items():
+        if name != "argus-mimir":
+            assert not any(a.startswith("minio.image") for a in cmd)
