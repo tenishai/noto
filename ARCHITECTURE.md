@@ -1,9 +1,11 @@
 ---
 card: repo-card:argus
 updated: 2026-10-06
-anchor: pyproject.toml sha=d2ea03364ec6b14dcfb9bd497d75f86cac719353
 anchor: agent/argus/cli.py sha=a49ddfec539df88b71ce231f17e1869efa7851ae
 ---
+<!-- pyproject.toml is deliberately not anchored: Dependabot moves its pins weekly and the
+     CI card check would fail every one of those PRs. The version named under STATE is kept
+     by hand; the entry points and seams the card describes are anchored by their own files. -->
 # argus — repo card
 
 WHAT: the observability arm of gojira. Reads a gojira-managed cluster's deployed apps and their workload class, then stands up an OSS observability platform (OTel Collector + Mimir/Loki/Tempo + Perses) and auto-wires each app into it (dashboards, SLOs, alerts) — no hand-rolled collector YAML, applied directly via kubectl/helm/HTTP, no GitOps controller in the path.
