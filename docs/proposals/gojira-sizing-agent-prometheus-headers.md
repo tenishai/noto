@@ -1,6 +1,6 @@
 # Proposed upstream: PROMETHEUS_HEADERS + the Argus Mimir recipe
 
-**Target repo:** [tenishai/gojira-sizing-agent](https://github.com/tenishai/gojira-sizing-agent)
+**Target repo:** `gojira-sizing-agent`, a private tenishai repository; this proposal and its patch are kept here as the record
 (read-only for Argus, so this ships as a proposal, not a push)
 **Patch:** [gojira-sizing-agent-prometheus-headers.patch](gojira-sizing-agent-prometheus-headers.patch)
 (git-am-able onto `main` @ `e060ff2`; verified: applies clean, 16/16 tests pass, ruff clean)

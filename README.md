@@ -142,6 +142,16 @@ operations.
 - [Architecture cards](ARCHITECTURE.md) - the repo card and its seams under docs/arch/
 - [Changelog](CHANGELOG.md), [Contributing](CONTRIBUTING.md), [Testing](docs/testing.md)
 
+## How this was built
+
+tenishai is a small team of engineers who build with AI coding agents. Most of
+this code was written in pairing sessions with Claude models in Claude Code: a
+person set the design, directed the work and reviewed what landed, and the
+agent wrote much of the code and docs. Many commits name the agent in a
+`Co-Authored-By:` trailer, either a Claude model or Poe (earlier Raven), the
+name of the agent one of us pairs with. A commit without a trailer may still
+have had AI help.
+
 ## License
 
 [AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).
