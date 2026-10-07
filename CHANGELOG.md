@@ -8,6 +8,10 @@ All notable changes to Argus are documented here. The format is based on
 
 ### Added
 
+- README "How this was built" and CONTRIBUTING "Using AI tools" (the texts approved in
+  tenishai/agora discussion 42); a test that every self-hosted pull-request job keeps its
+  fork guard; historical banners on `docs/superpowers/`, `docs/proposals/` and `docs/spikes/`.
+  Package metadata names tenish as the author, per the 2026-10-05 copyright decision.
 - **`argus platform --set COMPONENT:KEY=VALUE`**, a deployment's own helm `--set` for one
   pinned component, repeatable, validated against the components the platform installs,
   and part of the install's drift fingerprint. **`images/minio/`** rebuilds the Mimir
