@@ -77,7 +77,7 @@ class PersesClient:
         return json.loads(body)
 
     def upsert(
-        self, collection_path: str, doc: dict, existing: dict | None | _Unfetched = UNFETCHED
+        self, collection_path: str, doc: dict, existing: dict | _Unfetched | None = UNFETCHED
     ) -> str:
         """Create or update `doc` in `collection_path`, matching the smoke script's
         proven dance: POST, falling back to PUT when the server says 409 (already
