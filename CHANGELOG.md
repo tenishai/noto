@@ -6,6 +6,8 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-12
+
 ### Changed
 
 - **Renamed: Argus is now Noto.** The repository is `tenishai/noto`, the
