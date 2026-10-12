@@ -1,6 +1,6 @@
 [project]
 name = "tenish-noto"
-version = "0.1.0.dev0"
+version = "0.2.0"
 description = "Noto - the observability arm of gojira. Takes a deployment from zero to a full open-source observability platform, automatically."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
