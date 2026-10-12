@@ -44,7 +44,7 @@ WORKDIR /app
 # repo root (never the dev group) - tests/unit/test_dockerfile_pins.py keeps this pip
 # install line from drifting away from pyproject.toml's pins.
 COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir "pydantic==2.13.4" "pyyaml==6.0.3"
+RUN pip install --no-cache-dir "pydantic==2.14.0" "pyyaml==6.0.3"
 
 # The repo layout, preserved verbatim - see the file header and test_layout.py.
 COPY agent ./agent
