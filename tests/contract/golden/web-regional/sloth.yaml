@@ -2,9 +2,9 @@ apiVersion: sloth.slok.dev/v1
 kind: PrometheusServiceLevel
 metadata:
   labels:
-    argus.dev/class: web
-    argus.dev/managed: 'true'
-  name: argus-slo-sample-web
+    noto.dev/class: web
+    noto.dev/managed: 'true'
+  name: noto-slo-sample-web
   namespace: sample
 spec:
   labels:
@@ -13,14 +13,14 @@ spec:
   service: sample-web
   slos:
   - alerting:
-      name: ArgusSLO-sample-web-availability-99.9
+      name: NotoSLO-sample-web-availability-99.9
       pageAlert:
         labels:
           severity: page
       ticketAlert:
         labels:
           severity: ticket
-    description: Argus web profile SLO availability-99.9 for sample-web
+    description: Noto web profile SLO availability-99.9 for sample-web
     labels:
       app: sample-web
       class: web
@@ -33,14 +33,14 @@ spec:
           status=~"5.."}[{{.window}}]))
         totalQuery: sum(rate(http_requests_total{job="sample-web", namespace="sample"}[{{.window}}]))
   - alerting:
-      name: ArgusSLO-sample-web-latency-p99-500ms
+      name: NotoSLO-sample-web-latency-p99-500ms
       pageAlert:
         labels:
           severity: page
       ticketAlert:
         labels:
           severity: ticket
-    description: Argus web profile SLO latency-p99-500ms for sample-web
+    description: Noto web profile SLO latency-p99-500ms for sample-web
     labels:
       app: sample-web
       class: web

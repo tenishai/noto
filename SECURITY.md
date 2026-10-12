@@ -34,13 +34,13 @@ testing.
 
 ## Supported versions
 
-argus is pre-1.0. Security fixes go into the **latest release** only; older
+noto is pre-1.0. Security fixes go into the **latest release** only; older
 releases are not patched. If you're running an older version, upgrade to get
 fixes.
 
 ## Scope
 
-argus is the observability tier: it installs the metrics and logs stack and
+noto is the observability tier: it installs the metrics and logs stack and
 observes each deployed app from its deploy contract. In scope:
 
 - the observe job: anything that lets it reach, read or change more in a

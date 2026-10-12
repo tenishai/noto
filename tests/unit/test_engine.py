@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from argus.engine.engine import ProvisionEngine, StepStatus
-from argus.engine.ledger import Ledger
+from noto.engine.engine import ProvisionEngine, StepStatus
+from noto.engine.ledger import Ledger
 
 
 def _ledger(tmp_path: Path) -> Ledger:
     ticks = iter(f"2026-07-11T00:00:{i:02d}Z" for i in range(100))
-    return Ledger(tmp_path / "argus.db", now_fn=lambda: next(ticks))
+    return Ledger(tmp_path / "noto.db", now_fn=lambda: next(ticks))
 
 
 @dataclass

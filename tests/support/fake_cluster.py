@@ -17,7 +17,7 @@ CONTRACT_CLUSTER = "dev-cluster"
 RECORDED = {"born": "2026-01-01T00:00:00Z", "tenant": "real-name", "environment": "dev"}
 
 
-CONFIGMAP = "argus-platform-info"
+CONFIGMAP = "noto-platform-info"
 _NOT_FOUND = f'Error from server (NotFound): configmaps "{CONFIGMAP}" not found'
 _ALREADY_EXISTS = f'Error from server (AlreadyExists): configmaps "{CONFIGMAP}" already exists'
 

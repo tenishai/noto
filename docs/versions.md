@@ -1,6 +1,6 @@
 # Pinned Versions (canonical reference)
 
-Argus pins everything (a hard convention - see [CLAUDE.md](../CLAUDE.md) and
+Noto pins everything (a hard convention - see [CLAUDE.md](../CLAUDE.md) and
 [docs/versioning.md](versioning.md)). This file is the **single source of truth** for the versions we
 pin to. When we author the ocb manifest, Helm value pins, and OpenTofu provider constraints, the
 versions come from here, and this file is updated as a deliberate, reviewed change (never floated).
@@ -20,7 +20,7 @@ exactly why we pin exact versions and back them with the contract-test layer
 
 | Component | Version | Helm chart | Source | Notes |
 |---|---|---|---|---|
-| OTel Collector core / builder (`ocb`) | 1.60.0 (stable) / 0.154.0 (beta train) | n/a | [collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) | ocb + distro binaries ship at tag `v0.154.0`; assembled collector is 0.x. Argus distro manifest: [distro/manifest.yaml](../distro/manifest.yaml), all components at v0.154.0, gomods sourced from the official contrib manifest |
+| OTel Collector core / builder (`ocb`) | 1.60.0 (stable) / 0.154.0 (beta train) | n/a | [collector-releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) | ocb + distro binaries ship at tag `v0.154.0`; assembled collector is 0.x. Noto distro manifest: [distro/manifest.yaml](../distro/manifest.yaml), all components at v0.154.0, gomods sourced from the official contrib manifest |
 | Go toolchain (distro build only) | 1.26.5 | [go.dev](https://go.dev/dl/) | verified 2026-07-11 at introduction; hard floor >= 1.26: the 0.154 train's generics hit linker relocation bugs on 1.23/1.25.0 (observed) |
 | OTel Collector Contrib | 0.154.0 | n/a | [contrib releases](https://github.com/open-telemetry/opentelemetry-collector-contrib/releases) | same 2-week train, 0.x |
 | OTel Operator | 0.154.0 (app) | 0.119.0 | [otel helm charts](https://github.com/open-telemetry/opentelemetry-helm-charts) | re-verified 2026-07-11; same train as the distro |
@@ -59,7 +59,7 @@ exactly why we pin exact versions and back them with the contract-test layer
 
 ## Agent runtime (Python)
 
-The Argus agent is built in **Python** for consistency with the sibling repos (gojira, techne, liminal,
+The Noto agent is built in **Python** for consistency with the sibling repos (gojira, techne, liminal,
 cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 [docs/design.md](design.md).
 

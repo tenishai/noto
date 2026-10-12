@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"

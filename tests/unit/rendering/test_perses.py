@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
-from argus.rendering.context import Context
-from argus.rendering.perses import render_perses
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
+from noto.rendering.context import Context
+from noto.rendering.perses import render_perses
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "profiles"
 

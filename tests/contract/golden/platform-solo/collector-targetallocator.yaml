@@ -2,17 +2,17 @@ apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   labels:
-    argus.dev/cluster: golden-cluster
-    argus.dev/managed: 'true'
-    argus.dev/role: scraper
-  name: argus-scraper
-  namespace: argus
+    noto.dev/cluster: golden-cluster
+    noto.dev/managed: 'true'
+    noto.dev/role: scraper
+  name: noto-scraper
+  namespace: noto
 spec:
   config:
     exporters:
       otlp/gateway:
         compression: zstd
-        endpoint: argus-gateway-collector.argus.svc:4317
+        endpoint: noto-gateway-collector.noto.svc:4317
         tls:
           insecure: true
     extensions:
@@ -40,7 +40,7 @@ spec:
           scrape_configs: []
         target_allocator:
           collector_id: ${env:POD_NAME}
-          endpoint: http://argus-scraper-targetallocator
+          endpoint: http://noto-scraper-targetallocator
           interval: 30s
     service:
       extensions:
@@ -64,4 +64,4 @@ spec:
       enabled: true
       podMonitorSelector: {}
       serviceMonitorSelector: {}
-    serviceAccount: argus-targetallocator
+    serviceAccount: noto-targetallocator

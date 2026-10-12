@@ -1,7 +1,7 @@
 # Observability Platform - Architecture Notes
 
 > **Status:** Reference / background. Captures the Kubernetes observability architecture and the
-> collector-evolution reasoning that inform Argus's design. See [design.md](design.md) for Argus's
+> collector-evolution reasoning that inform Noto's design. See [design.md](design.md) for Noto's
 > actual decisions.
 
 These notes walk the canonical Kubernetes observability architecture - from cluster fundamentals
@@ -260,11 +260,11 @@ Diagram mirrors the Datadog layout but substitutes OTel components. **Cluster** 
 8. **Traces** are routed directly to the **Otel Collector Gateway**, typically bypassing the
    local **Otel Collector Daemonset**.
 
-### OTEL Collector Architecture → Argus
+### OTEL Collector Architecture → Noto
 
-Same diagram, now egressing to an external **Argus** backend (large green
-**"Argus"** circle outside the cluster). The Otel Collector Gateway / Service ships
-the enriched telemetry out to **the Argus backend**.
+Same diagram, now egressing to an external **Noto** backend (large green
+**"Noto"** circle outside the cluster). The Otel Collector Gateway / Service ships
+the enriched telemetry out to **the Noto backend**.
 
 > **Net:** OTel model = **Otel Collector DaemonSet** (node agent) + **Otel Collector Gateway
 > Deployment** (cluster agent / enrichment + egress), with the Datadog Node Agent still
@@ -272,7 +272,7 @@ the enriched telemetry out to **the Argus backend**.
 
 ---
 
-## Part 7 - argus-collector
+## Part 7 - noto-collector
 
 ### Why did we outgrow the Otel Collector? (Part 1 - the problem)
 
@@ -296,7 +296,7 @@ revealed critical gaps that required rapid, purpose-built evolution.
 
 **Why Not Just Fix OTel?** Upstreaming fixes to the OTel collector was too slow for OpenAI's
 cadence. Furthermore, OTel's approach required tedious, manual configuration for massive
-deployments. Argus-collector provided a frictionless, out-of-the-box DaemonSet solution.
+deployments. Noto-collector provided a frictionless, out-of-the-box DaemonSet solution.
 
 **The Rapid Release Arc (v0.108 – v0.115):**
 - **Scale & Reliability:** Added multi-socket UDP listeners, auto-growing buffers, and
@@ -307,39 +307,39 @@ deployments. Argus-collector provided a frictionless, out-of-the-box DaemonSet s
   extraction directly from annotations.
 
 **Current State & Next Steps:**
-- **The Legacy:** This "trial by fire" battle-hardened the Argus-collector, making it the
+- **The Legacy:** This "trial by fire" battle-hardened the Noto-collector, making it the
   bedrock for all current Datadog migration customers.
-- **Next-Gen Integration:** These lessons are actively shaping the **`argus-collector-ng`**,
+- **Next-Gen Integration:** These lessons are actively shaping the **`noto-collector-ng`**,
   building DogStatsD capabilities directly into OTel `metric` types to get the best of both
   worlds.
 
-### argus-collector Architecture
+### noto-collector Architecture
 
-Diagram (same cluster layout) egressing to **Argus**, with the right-hand legend:
+Diagram (same cluster layout) egressing to **Noto**, with the right-hand legend:
 
-> The Argus-collector architecture is a hybrid model, combining elements of both the Datadog
+> The Noto-collector architecture is a hybrid model, combining elements of both the Datadog
 > Agent and OpenTelemetry (OTel) Collector deployment patterns.
 
 - **Datadog Node Agent:** Remains active in this setup. It is responsible for forwarding
   local DogStatsD metrics from application pods to the **OTel Collector DaemonSet**.
 - **OTel Collector Gateway:** Retained with a highly specific scope. Because the
-  Argus-collector does not natively support Datadog trace ingestion, this gateway's sole
+  Noto-collector does not natively support Datadog trace ingestion, this gateway's sole
   role is to receive Datadog traces directly from the **Datadog Node Agent**.
-- **Argus-collector DaemonSet:** Functions similarly to the standard Datadog Agent by
-  egressing its telemetry directly to the Argus backend, bypassing the need for a
+- **Noto-collector DaemonSet:** Functions similarly to the standard Datadog Agent by
+  egressing its telemetry directly to the Noto backend, bypassing the need for a
   centralized gateway for its own data stream.
 
 ---
 
-## Part 8 - argus-collector-ng (Next-Gen)
+## Part 8 - noto-collector-ng (Next-Gen)
 
-### Why did we outgrow the argus-collector?
+### Why did we outgrow the noto-collector?
 
-**The Challenge: The Datadog Integrations Gap** - While Argus-collector solved the DogStatsD
+**The Challenge: The Datadog Integrations Gap** - While Noto-collector solved the DogStatsD
 ingestion problem, it couldn't solve the integration scale problem. Datadog boasts a massive
 library of integrations that "just work."
 
-**The Solution: The `argus-integrations` Framework.**
+**The Solution: The `noto-integrations` Framework.**
 
 **How the New Framework Scales:**
 - **Declarative Catalog:** Integrations (like MySQL or NGINX) are now defined in lightweight
@@ -354,20 +354,20 @@ library of integrations that "just work."
 - **Global Enrichment:** Kubernetes metadata enrichment is applied globally as a shared
   layer: New integrations automatically inherit rich K8s metadata without redeclaring it.
 
-### argus-collector-ng Architecture
+### noto-collector-ng Architecture
 
-Diagram (same cluster layout) egressing to **Argus**, with right-hand legend:
+Diagram (same cluster layout) egressing to **Noto**, with right-hand legend:
 
-> The **argus-collector-ng** architecture closely resembles a standard OTel Collector deployment
+> The **noto-collector-ng** architecture closely resembles a standard OTel Collector deployment
 > (it IS a (modified) OTel collector), utilizing a centralized gateway for telemetry
 > enrichment and egress.
 
 - **Datadog Node Agent:** Remains active in this setup. It is responsible for forwarding
-  local DogStatsD metrics from application pods to the **argus-collector-ng** DaemonSet.
-- **Direct Trace Ingestion:** The **argus-collector-ng** now natively supports Datadog trace
+  local DogStatsD metrics from application pods to the **noto-collector-ng** DaemonSet.
+- **Direct Trace Ingestion:** The **noto-collector-ng** now natively supports Datadog trace
   ingestion, eliminating the need for a separate OTel Collector.
-- **Centralized Gateway:** The argus-collector-ng Gateway receives all downstream telemetry,
-  enriches it with Kubernetes metadata, and egresses the final data to the Argus backend.
+- **Centralized Gateway:** The noto-collector-ng Gateway receives all downstream telemetry,
+  enriches it with Kubernetes metadata, and egresses the final data to the Noto backend.
 
 ---
 
@@ -376,15 +376,15 @@ Diagram (same cluster layout) egressing to **Argus**, with right-hand legend:
 ### Recap
 
 1. **Surviving the "Trial by Fire":** Standard OTel couldn't handle real-world Datadog
-   metrics at OpenAI's scale. We built and rapidly evolved the Argus-collector to solve the
+   metrics at OpenAI's scale. We built and rapidly evolved the Noto-collector to solve the
    ingestion crisis, adding full DogStatsD spec support, high-volume reliability, and
    critical pod-level metadata.
-2. **Hitting the Integration Ceiling:** Argus-collector perfected custom metric ingestion,
+2. **Hitting the Integration Ceiling:** Noto-collector perfected custom metric ingestion,
    but it couldn't solve the broader ecosystem challenge. Customers expect Datadog's massive
    library of plug-and-play integrations, while OTel forced them into tedious, manual
    scrape-job configurations.
-3. **The Next-Gen Solution - `argus-integrations`:** To achieve true Datadog parity at scale,
-   we outgrew the Argus-collector and built a new declarative framework. By combining
+3. **The Next-Gen Solution - `noto-integrations`:** To achieve true Datadog parity at scale,
+   we outgrew the Noto-collector and built a new declarative framework. By combining
    Datadog-style autodiscovery, global metadata enrichment, and YAML-based catalog
    definitions, we turned massive integration rollouts from a code problem into a simple
    configuration update.
@@ -400,10 +400,10 @@ K8s fundamentals  ─►  Node/Cluster agent split  ─►  Datadog Agent  ─�
         (the "why" of the two-tier agent pattern)      (vendor)         (open standard)
                                                                               │
                                                                               ▼
-                                              argus-collector (DogStatsD-hardened OTel DaemonSet)
+                                              noto-collector (DogStatsD-hardened OTel DaemonSet)
                                                                               │
                                                                               ▼
-                                              argus-collector-ng (declarative integrations + native
+                                              noto-collector-ng (declarative integrations + native
                                                               trace ingest, centralized gateway)
 ```
 
@@ -411,16 +411,16 @@ K8s fundamentals  ─►  Node/Cluster agent split  ─►  Datadog Agent  ─�
 
 1. Every model reduces to the **Node Agent (DaemonSet) + Cluster Agent (Deployment +
    Service)** pattern. This is the opinionated topology to standardize on.
-2. **OTel is the open-source convergence point** - both argus-collector and argus-collector-ng
+2. **OTel is the open-source convergence point** - both noto-collector and noto-collector-ng
    "are (modified) OTel collectors." An open-source platform should standardize on the OTel
    Collector (DaemonSet + Gateway) as the substrate.
 3. The hard problems are not "collect telemetry" but: **DogStatsD/protocol parity, K8s
    metadata enrichment, tag cardinality / resource safety, and integration autodiscovery.**
    These are exactly where an opinionated framework (and a support agent) adds value.
-4. The argus-collector-ng's **declarative YAML integration catalog + autodiscovery** is the
+4. The noto-collector-ng's **declarative YAML integration catalog + autodiscovery** is the
    model for "opinionated, configuration-not-code" - the same philosophy as gojira's
    `gojira.yaml` workload classes. An observability-specialization agent can own generating,
    validating, and reconciling these declarative integration definitions.
 
-These notes inform the scope of the open-source observability specialization agent (Argus) and how it
+These notes inform the scope of the open-source observability specialization agent (Noto) and how it
 fits the broader platform.

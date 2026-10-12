@@ -2,15 +2,15 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   labels:
-    argus.dev/class: platform
-    argus.dev/managed: 'true'
-  name: argus-platform
-  namespace: argus
+    noto.dev/class: platform
+    noto.dev/managed: 'true'
+  name: noto-platform
+  namespace: noto
 spec:
   groups:
-  - name: argus-platform-retention
+  - name: noto-platform-retention
     rules:
-    - alert: ArgusRetentionWindowShort
+    - alert: NotoRetentionWindowShort
       annotations:
         description: Nothing was stored at the far edge of the retention window, so
           queries over the promised 30d now return less than they should. Check Mimir's
@@ -21,5 +21,5 @@ spec:
       expr: absent_over_time(up[1h] offset 29d) and on() (vector(time()) > 1769817600)
       for: 1h
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: warning

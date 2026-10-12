@@ -1,6 +1,6 @@
-# Argus workload-identity seam, GCP implementation: GKE Workload Identity from the
+# Noto workload-identity seam, GCP implementation: GKE Workload Identity from the
 # backend KSAs to their buckets. One GSA per backend, objectAdmin on its own bucket
-# only, workloadIdentityUser bound to the argus-namespace KSA of the same name.
+# only, workloadIdentityUser bound to the noto-namespace KSA of the same name.
 
 terraform {
   required_version = "~> 1.12"
@@ -19,15 +19,15 @@ variable "buckets" {
 }
 variable "namespace" {
   type    = string
-  default = "argus"
+  default = "noto"
 }
 
 resource "google_service_account" "backend" {
   for_each = var.buckets
 
   project      = var.project
-  account_id   = "argus-${each.key}"
-  display_name = "Argus ${each.key} backend"
+  account_id   = "noto-${each.key}"
+  display_name = "Noto ${each.key} backend"
 }
 
 resource "google_storage_bucket_iam_member" "object_admin" {
@@ -43,7 +43,7 @@ resource "google_service_account_iam_member" "workload_identity" {
 
   service_account_id = google_service_account.backend[each.key].name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "serviceAccount:${var.project}.svc.id.goog[${var.namespace}/argus-${each.key}]"
+  member             = "serviceAccount:${var.project}.svc.id.goog[${var.namespace}/noto-${each.key}]"
 }
 
 output "service_accounts" {

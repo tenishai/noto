@@ -13,7 +13,7 @@ import time
 import urllib.parse
 import urllib.request
 
-PROXY = "http://localhost:8080/proxy/projects/argus-smoke/datasources"
+PROXY = "http://localhost:8080/proxy/projects/noto-smoke/datasources"
 DEADLINE = time.time() + 15 * 60
 
 
@@ -56,7 +56,7 @@ def logs_flowing() -> bool:
 
 
 def dashboard_present() -> bool:
-    data = get("http://localhost:8080/api/v1/projects/argus-smoke/dashboards")
+    data = get("http://localhost:8080/api/v1/projects/noto-smoke/dashboards")
     return any(d["metadata"]["name"] == "web-red" for d in data)
 
 
@@ -64,7 +64,7 @@ def ruler_evaluating() -> bool:
     """#44: the ruler holds and evaluates our synced groups (SLOs + budget alerts)."""
     data = get(f"{PROXY}/mimir/api/v1/rules")
     groups = [g for grp in data["data"]["groups"] for g in [grp["name"]]]
-    return "argus-cardinality" in groups and any("sloth" in g or "slo" in g for g in groups)
+    return "noto-cardinality" in groups and any("sloth" in g or "slo" in g for g in groups)
 
 
 def redis_autodiscovered() -> bool:
@@ -92,7 +92,7 @@ def slo_rules_present() -> bool:
         [
             "kubectl",
             "--context",
-            "kind-argus-smoke",
+            "kind-noto-smoke",
             "-n",
             "sample",
             "get",
@@ -103,7 +103,7 @@ def slo_rules_present() -> bool:
         capture_output=True,
         text=True,
     ).stdout
-    return "sloth-slo" in out or "argus-slo" in out
+    return "sloth-slo" in out or "noto-slo" in out
 
 
 def main() -> None:

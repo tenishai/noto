@@ -3,8 +3,8 @@ enabled: false filters, inputs never mutated."""
 
 from pathlib import Path
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
 
 FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 

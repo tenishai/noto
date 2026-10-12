@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Something argus should do, or do differently
+about: Something noto should do, or do differently
 labels: enhancement
 ---
 

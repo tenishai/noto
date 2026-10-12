@@ -5,9 +5,9 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-CLUSTER=argus-smoke
+CLUSTER=noto-smoke
 CTX=kind-$CLUSTER
-LEDGER="$REPO/.argus/smoke.db"
+LEDGER="$REPO/.noto/smoke.db"
 # Python 3.14 site ignores underscore .pth files -> hatchling editable installs break
 # console scripts (see memory/pyproject note). PYTHONPATH is the deterministic fix.
 export PYTHONPATH="$REPO/agent"
@@ -18,37 +18,37 @@ step() { echo; echo "=== [$((($(date +%s)-START)/60))m] $*"; }
 step "kind cluster"
 kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || kind create cluster --name "$CLUSTER" --wait 120s
 
-step "argus platform (step engine; resumable)"
+step "noto platform (step engine; resumable)"
 rm -f "$LEDGER"
-uv run argus platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER"
+uv run noto platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER"
 
 step "sample apps (podinfo + traffic; exemplar-demo for the #47 exemplar assertion)"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/sample-app.yaml"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/exemplar-app.yaml"
 
 step "perses port-forward (observe provisions dashboards through it, no separate script)"
-kubectl --context "$CTX" -n argus rollout status statefulset/argus-perses --timeout=300s
-kubectl --context "$CTX" -n argus port-forward svc/argus-perses 8080:8080 >/dev/null 2>&1 &
+kubectl --context "$CTX" -n noto rollout status statefulset/noto-perses --timeout=300s
+kubectl --context "$CTX" -n noto port-forward svc/noto-perses 8080:8080 >/dev/null 2>&1 &
 PF_PERSES=$!
 for i in $(seq 1 30); do
   curl -sf http://localhost:8080/api/v1/health >/dev/null 2>&1 && break
   sleep 2
 done
 
-step "argus observe (wire podinfo by class: collection, alerts, and dashboards together)"
-uv run argus observe --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
+step "noto observe (wire podinfo by class: collection, alerts, and dashboards together)"
+uv run noto observe --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
   --kube-context "$CTX" --ledger "$LEDGER" --perses-url http://localhost:8080
 
 step "rules-sync (Mimir ruler, tenant-scoped) + cardinality report"
-kubectl --context "$CTX" -n argus port-forward svc/argus-mimir-gateway 9009:80 >/dev/null 2>&1 &
+kubectl --context "$CTX" -n noto port-forward svc/noto-mimir-gateway 9009:80 >/dev/null 2>&1 &
 PF_MIMIR=$!
 for i in $(seq 1 15); do
-  curl -sf -m 2 -H "X-Scope-OrgID: argus-smoke" http://localhost:9009/prometheus/api/v1/labels >/dev/null 2>&1 && break
+  curl -sf -m 2 -H "X-Scope-OrgID: noto-smoke" http://localhost:9009/prometheus/api/v1/labels >/dev/null 2>&1 && break
   sleep 2
 done
-uv run argus rules-sync --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
+uv run noto rules-sync --gojira "$REPO/tests/smoke/gojira.yaml" --env dev \
   --mimir-url http://localhost:9009/prometheus --ledger "$LEDGER"
-uv run argus cardinality --tenant argus-smoke --mimir-url http://localhost:9009/prometheus --limit 8
+uv run noto cardinality --tenant noto-smoke --mimir-url http://localhost:9009/prometheus --limit 8
 
 step "wait for telemetry, then assert the DoD through the Perses proxy"
 uv run python "$REPO/tests/smoke/assert_dod.py"

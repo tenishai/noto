@@ -1,7 +1,7 @@
 """The platform writes down what it is, and enforces the retention promise it makes.
 
-`argus platform` records `born` (once, forever), `tenant` and `environment` in the
-`argus-platform-info` ConfigMap, passes the profile's retention promise to each backend,
+`noto platform` records `born` (once, forever), `tenant` and `environment` in the
+`noto-platform-info` ConfigMap, passes the profile's retention promise to each backend,
 and applies the platform-level alert that catches a window shorter than the promise.
 What `observe` then DOES with that record lives in test_observe_tenant.py.
 """
@@ -11,10 +11,10 @@ from pathlib import Path
 import yaml
 from tests.support.fake_cluster import InfoRunner
 
-from argus import cli
-from argus.engine.engine import ProvisionEngine
-from argus.engine.ledger import Ledger
-from argus.steps import (
+from noto import cli
+from noto.engine.engine import ProvisionEngine
+from noto.engine.ledger import Ledger
+from noto.steps import (
     EnsurePlatformInfo,
     StepContext,
     read_platform_info,
@@ -77,7 +77,7 @@ def test_the_strict_read_separates_an_absent_record_from_an_unreadable_one() -> 
     unknown, and an unknown must never be mistaken for an unborn platform."""
     import pytest as _pytest
 
-    from argus.steps import PlatformInfoUnreadable
+    from noto.steps import PlatformInfoUnreadable
 
     assert read_platform_info_strict(_step_ctx(InfoRunner(None))) == {}
     with _pytest.raises(PlatformInfoUnreadable) as exc_info:
@@ -120,8 +120,8 @@ def test_a_first_run_creates_the_birth_instant_and_then_patches_the_rest(tmp_pat
     assert runner.applies == []
     (create,) = runner.creates
     assert create[1:3] == ["create", "configmap"]
-    assert create[3] == "argus-platform-info"
-    assert "-n" in create and create[create.index("-n") + 1] == "argus"
+    assert create[3] == "noto-platform-info"
+    assert "-n" in create and create[create.index("-n") + 1] == "noto"
     assert "--from-literal=born=2026-09-17T12:00:00Z" in create
     # nothing but born rides along in the create call
     assert [a for a in create if a.startswith("--from-literal=")] == [
@@ -203,7 +203,7 @@ def test_the_default_born_is_an_rfc3339_utc_instant() -> None:
 def test_platform_records_its_info_before_it_applies_the_platform_rules(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: list[list[str]] = []
 
@@ -255,7 +255,7 @@ def test_two_runs_with_different_clusters_keep_born_and_update_the_tenant(
     import datetime as _dt
 
     rules = [
-        d for d in runner.applied_docs() if d.get("metadata", {}).get("name") == "argus-platform"
+        d for d in runner.applied_docs() if d.get("metadata", {}).get("name") == "noto-platform"
     ]
     expected = int(_dt.datetime.fromisoformat(born).timestamp()) + 30 * 86400
     assert f"vector(time()) > {expected}" in rules[-1]["spec"]["groups"][0]["rules"][0]["expr"]
@@ -280,12 +280,12 @@ def test_platform_applies_the_retention_promise_to_the_pinned_charts(
     assert _platform(tmp_path, monkeypatch, runner) == 0
     upgrades = {
         c[3]: c for c, _ in runner.calls if c[0] == "helm" and c[1] == "upgrade"
-    }  # argus-<component> -> argv
-    mimir = " ".join(upgrades["argus-mimir"])
+    }  # noto-<component> -> argv
+    mimir = " ".join(upgrades["noto-mimir"])
     assert "mimir.structuredConfig.limits.compactor_blocks_retention_period=30d" in mimir
-    assert "loki.limits_config.retention_period=7d" in " ".join(upgrades["argus-loki"])
-    assert "loki.compactor.retention_enabled=true" in " ".join(upgrades["argus-loki"])
-    assert "tempo.retention=168h" in " ".join(upgrades["argus-tempo"])
+    assert "loki.limits_config.retention_period=7d" in " ".join(upgrades["noto-loki"])
+    assert "loki.compactor.retention_enabled=true" in " ".join(upgrades["noto-loki"])
+    assert "tempo.retention=168h" in " ".join(upgrades["noto-tempo"])
     # the cardinality budget still reaches mimir alongside it
     assert "mimir.structuredConfig.limits.max_global_series_per_user=200000" in mimir
 
@@ -307,7 +307,7 @@ def test_platform_rules_carry_the_recorded_born(tmp_path: Path, monkeypatch) -> 
     rule_doc = next(
         d
         for d in runner.applied_docs()
-        if d.get("kind") == "PrometheusRule" and d["metadata"]["name"] == "argus-platform"
+        if d.get("kind") == "PrometheusRule" and d["metadata"]["name"] == "noto-platform"
     )
     expr = rule_doc["spec"]["groups"][0]["rules"][0]["expr"]
     # 2026-01-01T00:00:00Z = 1767225600; + 30d = 1769817600

@@ -1,4 +1,4 @@
-# Builds the Argus collector distribution with ocb and validates the rendered
+# Builds the Noto collector distribution with ocb and validates the rendered
 # configs against the RESULTING binary - proving the manifest's component set is
 # sufficient for everything the renderers emit. Path-filtered: runs only when the
 # distro, the renderers, or this workflow change.
@@ -8,13 +8,13 @@ on:
   pull_request:
     paths:
       - "distro/**"
-      - "agent/argus/rendering/**"
+      - "agent/noto/rendering/**"
       - ".github/workflows/distro.yml"
   push:
     branches: [main]
     paths:
       - "distro/**"
-      - "agent/argus/rendering/**"
+      - "agent/noto/rendering/**"
       - ".github/workflows/distro.yml"
 
 permissions:
@@ -60,13 +60,13 @@ jobs:
           if [ ! -r "$SA/token" ]; then
             AS_ROOT=""; command -v sudo >/dev/null && AS_ROOT=sudo
             $AS_ROOT mkdir -p "$SA"
-            openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out /tmp/ca.crt -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
+            openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out /tmp/ca.crt -days 1 -subj "/CN=noto-validation-placeholder" 2>/dev/null
             $AS_ROOT cp /tmp/ca.crt "$SA/ca.crt"
             echo placeholder | $AS_ROOT tee "$SA/token" >/dev/null
             $AS_ROOT chmod -R a+rX /var/run/secrets
           fi
-          uv run python scripts/render-for-validation.py .argus/rendered
-          for cfg in .argus/rendered/otelcol/*.yaml; do
-            ./distro/_build/argus-otelcol validate --config="$cfg"
+          uv run python scripts/render-for-validation.py .noto/rendered
+          for cfg in .noto/rendered/otelcol/*.yaml; do
+            ./distro/_build/noto-otelcol validate --config="$cfg"
             echo "ok: $(basename "$cfg")"
           done

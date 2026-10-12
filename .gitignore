@@ -24,7 +24,7 @@ crash.log
 *.sqlite3
 
 # Rendered/generated artifacts
-/.argus/
+/.noto/
 *.local.yaml
 
 # Editor / OS

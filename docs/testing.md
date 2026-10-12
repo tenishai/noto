@@ -1,7 +1,7 @@
 # Testing Philosophy
 
-Argus stands up observability platforms. Our tests have to earn the same trust we ask users to place
-in the platform: if Argus says a cluster is observed, it is. So we test the things that, for an
+Noto stands up observability platforms. Our tests have to earn the same trust we ask users to place
+in the platform: if Noto says a cluster is observed, it is. So we test the things that, for an
 observability tool, actually predict success at each deployment stage - and we keep those tests
 **small, fast, and meaningful**. We do not chase coverage numbers.
 
@@ -70,7 +70,7 @@ representative per-app pair (web-solo, web-regional) plus the shared collector t
 - `kubeconform` over the CRDs against published schemas (CRDs-catalog).
 - `percli lint` over the Perses resources.
 
-Binaries are pinned (versions.md) and cached under `.argus/tools/`. On its first run this layer
+Binaries are pinned (versions.md) and cached under `.noto/tools/`. On its first run this layer
 caught four real bugs that the then-134 green self-referential tests had passed over. When a pin
 bumps, this layer converts silent config-schema drift into a failing check.
 

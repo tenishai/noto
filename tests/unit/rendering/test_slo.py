@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
-from argus.rendering.context import Context
-from argus.rendering.slo import render_sloth
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
+from noto.rendering.context import Context
+from noto.rendering.slo import render_sloth
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "profiles"
 
@@ -45,7 +45,7 @@ def test_availability_slo_query() -> None:
     slo = doc["spec"]["slos"][0]
     assert slo["objective"] == 99.9
     assert 'status=~"5.."' in slo["sli"]["events"]["errorQuery"]
-    assert "ArgusSLO" in slo["alerting"]["name"]
+    assert "NotoSLO" in slo["alerting"]["name"]
 
 
 def test_latency_slo_uses_le_bucket() -> None:

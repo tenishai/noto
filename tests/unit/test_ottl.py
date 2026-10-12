@@ -2,8 +2,8 @@
 
 import pytest
 
-from argus.profiles.models import DropRule
-from argus.rendering.ottl import CompiledFilter, UnsupportedRule, compile_rules
+from noto.profiles.models import DropRule
+from noto.rendering.ottl import CompiledFilter, UnsupportedRule, compile_rules
 
 
 def test_log_level_below() -> None:

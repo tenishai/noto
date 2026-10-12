@@ -42,7 +42,7 @@ with data.
 
 The open item is now answered, live, in two halves:
 
-**Argus's pipeline carries exemplars end to end.** A pinned OTel Python SDK app
+**Noto's pipeline carries exemplars end to end.** A pinned OTel Python SDK app
 ([tests/smoke/exemplar-app.yaml](../../../tests/smoke/exemplar-app.yaml); trace_based exemplar
 filter, the SDK default) shipped OTLP through agent -> gateway -> Mimir (exemplar storage enabled
 in [helm/values/mimir.yaml](../../../helm/values/mimir.yaml), `max_global_exemplars_per_user`).
@@ -58,7 +58,7 @@ frontend has no code path for it: all 83 loaded JS assets contain zero occurrenc
 has never mentioned exemplars. Not a hidden toggle - an absent feature.
 
 **Standing answer:** co-located correlated panels remain the documented mitigation. Revisit
-trigger: a Perses release notes exemplar support in TimeSeriesChart; Argus's backend is already
+trigger: a Perses release notes exemplar support in TimeSeriesChart; Noto's backend is already
 exemplar-ready, so adoption is then a UI-version bump, not a pipeline change.
 
 ## Operational gotchas learned (feed into Helm values / renderers)

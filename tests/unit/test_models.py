@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from argus.profiles.models import SLO, ClassProfile, DropRule, Override
+from noto.profiles.models import SLO, ClassProfile, DropRule, Override
 
 
 def test_raw_ottl_requires_justification() -> None:

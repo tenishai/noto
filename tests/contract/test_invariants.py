@@ -17,20 +17,20 @@ from pathlib import Path
 import pytest
 from tests.support.otel import config_of, iter_pipelines
 
-from argus import cli
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.models import ResolvedProfile
-from argus.profiles.resolve import resolve
-from argus.rendering.collectors import (
+from noto import cli
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.models import ResolvedProfile
+from noto.profiles.resolve import resolve
+from noto.rendering.collectors import (
     render_agent,
     render_gateway,
     render_ingest,
     render_targetallocator,
 )
-from argus.rendering.context import Context
-from argus.rendering.ottl import compile_rules
-from argus.rendering.rbac import render_observe_rbac
-from argus.rendering.slo import render_sloth
+from noto.rendering.context import Context
+from noto.rendering.ottl import compile_rules
+from noto.rendering.rbac import render_observe_rbac
+from noto.rendering.slo import render_sloth
 
 REPO = Path(__file__).parents[2]
 PROFILES = REPO / "profiles"
@@ -61,10 +61,10 @@ def _ctx(topology: str, class_name: str) -> Context:
     if topology == "regional":
         kw["region"] = "us-east4"
         kw["endpoints"] = {
-            "mimir_otlp_http": "http://mimir.us-east4.argus.internal:9009/otlp",
-            "loki_otlp_http": "http://loki.us-east4.argus.internal:3100/otlp",
-            "tempo_otlp_grpc": "tempo.us-east4.argus.internal:4317",
-            "kafka_bootstrap": "redpanda.us-east4.argus.internal:9092",
+            "mimir_otlp_http": "http://mimir.us-east4.noto.internal:9009/otlp",
+            "loki_otlp_http": "http://loki.us-east4.noto.internal:3100/otlp",
+            "tempo_otlp_grpc": "tempo.us-east4.noto.internal:4317",
+            "kafka_bootstrap": "redpanda.us-east4.noto.internal:9092",
         }
     return Context(**kw)
 
@@ -76,10 +76,10 @@ def _platform_ctx(topology: str) -> Context:
     if topology == "regional":
         kw["region"] = "us-east4"
         kw["endpoints"] = {
-            "mimir_otlp_http": "http://mimir.us-east4.argus.internal:9009/otlp",
-            "loki_otlp_http": "http://loki.us-east4.argus.internal:3100/otlp",
-            "tempo_otlp_grpc": "tempo.us-east4.argus.internal:4317",
-            "kafka_bootstrap": "redpanda.us-east4.argus.internal:9092",
+            "mimir_otlp_http": "http://mimir.us-east4.noto.internal:9009/otlp",
+            "loki_otlp_http": "http://loki.us-east4.noto.internal:3100/otlp",
+            "tempo_otlp_grpc": "tempo.us-east4.noto.internal:4317",
+            "kafka_bootstrap": "redpanda.us-east4.noto.internal:9092",
         }
     return Context(**kw)
 
@@ -88,7 +88,7 @@ def _role(docs: list[dict], role: str) -> dict:
     def _labels(doc: dict) -> dict:
         return doc.get("metadata", {}).get("labels", {})
 
-    return next(d for d in docs if _labels(d).get("argus.dev/role") == role)
+    return next(d for d in docs if _labels(d).get("noto.dev/role") == role)
 
 
 def test_observing_an_app_without_traces_does_not_change_the_gateway() -> None:
@@ -255,7 +255,7 @@ def test_drop_rules_present_at_declared_stage_only() -> None:
 
     for stage, crd in stage_crd.items():
         compiled = compile_rules([r for r in p.drop if not r.metric_labels_strip], stage)  # type: ignore[arg-type]
-        filter_name = f"filter/argus-{stage}"
+        filter_name = f"filter/noto-{stage}"
         processors = config_of(crd)["processors"]
         if compiled.is_empty():
             assert filter_name not in processors
@@ -273,7 +273,7 @@ def test_drop_rules_present_at_declared_stage_only() -> None:
         for other_stage, other_crd in stage_crd.items():
             if other_stage == stage:
                 continue
-            other = config_of(other_crd)["processors"].get(f"filter/argus-{other_stage}", {})
+            other = config_of(other_crd)["processors"].get(f"filter/noto-{other_stage}", {})
             flattened = [
                 stmt
                 for section in other.values()
@@ -307,7 +307,7 @@ def test_statsd_never_in_default_pipelines(topology: str) -> None:
         receivers = config_of(crd)["receivers"]
         for _, pipeline in iter_pipelines(crd):
             assert "statsd" not in pipeline["receivers"]
-        if crd["metadata"]["labels"]["argus.dev/role"] == "agent":
+        if crd["metadata"]["labels"]["noto.dev/role"] == "agent":
             assert "statsd" in receivers  # defined as the legacy affordance
 
 
@@ -335,8 +335,8 @@ def test_self_scrape_pipeline_on_gateway() -> None:
 def test_integrations_autodiscovery_wired() -> None:
     """The shipped catalog renders into the agent: k8s_observer + receiver_creator
     in the metrics pipeline, with the exact contract rule strings."""
-    from argus.integrations.catalog import load_catalog
-    from argus.rendering.collectors import render_agent
+    from noto.integrations.catalog import load_catalog
+    from noto.rendering.collectors import render_agent
 
     catalog = load_catalog(REPO / "integrations")
     agent = render_agent(_tier_profile(), _platform_ctx("solo"), catalog=catalog)
@@ -346,19 +346,19 @@ def test_integrations_autodiscovery_wired() -> None:
     creator = cfg["receivers"]["receiver_creator"]
     assert creator["watch_observers"] == ["k8s_observer"]
     assert (
-        'pod.labels["argus.dev/integration"] == "redis"'
-        in (creator["receivers"]["redis/argus-redis"]["rule"])
+        'pod.labels["noto.dev/integration"] == "redis"'
+        in (creator["receivers"]["redis/noto-redis"]["rule"])
     )
     pipelines = dict(iter_pipelines(agent))
     assert "receiver_creator" in pipelines["metrics"]["receivers"]
 
 
-# --- Task 6: argus-observe RBAC is exactly as narrow as observe needs ------------------
+# --- Task 6: noto-observe RBAC is exactly as narrow as observe needs ------------------
 #
 # `render_observe_rbac`'s ClusterRole grants exactly three resources
 # (servicemonitors, podmonitors, prometheusrules under monitoring.coreos.com). The
 # invariant this suite proves: those three resources are sufficient for every kind
-# `argus observe` can be asked to server-side apply, in every class and topology - so
+# `noto observe` can be asked to server-side apply, in every class and topology - so
 # the identity a provisioner's Job runs as is narrow AND complete, never one requiring
 # a later widening.
 
@@ -383,7 +383,7 @@ def test_observe_rbac_covers_every_kind_scrape_and_alerts_can_render(
 def test_render_sloth_itself_is_a_generator_input_not_an_applied_kind(class_name: str) -> None:
     """The one kind `render_sloth` renders (`PrometheusServiceLevel`, a Sloth CR) is
     OUTSIDE the three granted resources - documented and locked here rather than
-    silently assumed. This is not an RBAC gap: `_generate_slo_rules` (agent/argus/
+    silently assumed. This is not an RBAC gap: `_generate_slo_rules` (agent/noto/
     cli.py) always converts this document into real PrometheusRule documents via the
     pinned, LOCAL `sloth generate` binary (a subprocess, never kubectl) before
     `_run_observe` ever builds the `ApplyRendered(family="slo")` step - see
@@ -401,7 +401,7 @@ def test_render_sloth_itself_is_a_generator_input_not_an_applied_kind(class_name
     assert doc["kind"] not in _GRANTED_KINDS
 
 
-_SLOTH_BIN = REPO / ".argus" / "tools" / "sloth-0.16.0"
+_SLOTH_BIN = REPO / ".noto" / "tools" / "sloth-0.16.0"
 
 
 @pytest.mark.skipif(
@@ -424,7 +424,7 @@ def test_observe_rbac_covers_the_kind_slo_actually_applies(class_name: str, topo
 
 
 def test_observe_rbac_cluster_role_grants_exactly_the_three_resources() -> None:
-    _sa, cluster_role, *_rest = render_observe_rbac("argus")
+    _sa, cluster_role, *_rest = render_observe_rbac("noto")
     assert cluster_role["kind"] == "ClusterRole"
     assert len(cluster_role["rules"]) == 1
     rule = cluster_role["rules"][0]

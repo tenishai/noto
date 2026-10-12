@@ -1,10 +1,35 @@
 # Changelog
 
-All notable changes to Argus are documented here. The format is based on
+All notable changes to Noto (named Argus until 2026-10-12) are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/) (see [docs/versioning.md](docs/versioning.md)).
 
 ## [Unreleased]
+
+### Changed
+
+- **Renamed: Argus is now Noto.** The repository is `tenishai/noto`, the
+  distribution is `tenish-noto`, the import package is `noto` and the CLI is
+  `noto` (`noto platform`, `noto observe`, `python -m noto.cli` in the image).
+  What an installation touches follows the name, so an existing platform moves
+  deliberately rather than by surprise:
+  - the platform's own namespace defaults to `noto`, its Helm releases are
+    `noto-<component>`, its ServiceAccount is `noto-observe`, its record is
+    the `noto-platform-info` ConfigMap, and the objects it manages carry
+    `noto.dev/*` labels; a platform installed under the old names is a new
+    tenant to this release, so re-run `noto platform` and point the
+    provisioner's observe configuration at the new namespace and account;
+  - environment variables: `NOTO_CLUSTER`, `NOTO_NAMESPACE`, `NOTO_PERSES_URL`
+    and the OTLP endpoint variables replace their `ARGUS_` forms;
+  - the ruler groups are `noto-platform`, `noto-app-<app>`, `noto-collector-health`
+    and `noto-cardinality`; the skills are `noto-*`;
+  - **unchanged, on purpose:** the observe Job's wire contract with gojira.
+    The Job still reads `ARGUS_ENV` and still prints exactly one
+    `ARGUS_SUMMARY` line, because gojira sets and reads those by name
+    (`OBSERVE_SUMMARY_PREFIX` in its steps). They change together with gojira,
+    not before.
+  Entries below this one describe the product under its old name and are
+  left as written.
 
 ### Added
 

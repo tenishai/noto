@@ -1,13 +1,13 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: argus-observe-platform-info
-  namespace: argus
+  name: noto-observe-platform-info
+  namespace: noto
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: argus-observe-platform-info
+  name: noto-observe-platform-info
 subjects:
 - kind: ServiceAccount
-  name: argus-observe
-  namespace: argus
+  name: noto-observe
+  namespace: noto

@@ -6,16 +6,16 @@ import pytest
 import yaml
 from tests.support.otel import config_of, iter_pipelines
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
-from argus.rendering.collectors import (
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
+from noto.rendering.collectors import (
     render_agent,
     render_gateway,
     render_ingest,
     render_targetallocator,
     render_targetallocator_rbac,
 )
-from argus.rendering.context import Context
+from noto.rendering.context import Context
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "profiles"
 
@@ -112,23 +112,23 @@ def test_targetallocator_rbac_namespace_follows_platform_namespace() -> None:
             assert subject["namespace"] == "obs"
 
 
-def test_targetallocator_rbac_cluster_scoped_names_stay_argus_prefixed() -> None:
+def test_targetallocator_rbac_cluster_scoped_names_stay_noto_prefixed() -> None:
     """Two platforms in one cluster is not a supported topology: cluster-scoped object
-    NAMES (ClusterRole/ClusterRoleBinding) stay `argus-...` even when the platform's own
+    NAMES (ClusterRole/ClusterRoleBinding) stay `noto-...` even when the platform's own
     namespace is renamed, so renaming the namespace never touches the golden names."""
     docs = render_targetallocator_rbac(_solo_in("obs"))
     for doc in docs:
         if doc["kind"] in {"ClusterRole", "ClusterRoleBinding"}:
-            assert doc["metadata"]["name"].startswith("argus-") or doc["metadata"]["name"] == (
-                "argus-targetallocator"
+            assert doc["metadata"]["name"].startswith("noto-") or doc["metadata"]["name"] == (
+                "noto-targetallocator"
             )
 
 
-def test_no_rendered_collector_document_mentions_the_argus_namespace_when_renamed() -> None:
+def test_no_rendered_collector_document_mentions_the_noto_namespace_when_renamed() -> None:
     ctx = _solo_in("obs")
     for doc in _all_rendered_docs(ctx):
         dumped = yaml.safe_dump(doc, sort_keys=True, default_flow_style=False)
-        assert "namespace: argus" not in dumped, dumped
+        assert "namespace: noto" not in dumped, dumped
 
 
 def test_agent_filelog_follows_signals() -> None:

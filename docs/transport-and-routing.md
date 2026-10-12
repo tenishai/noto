@@ -5,7 +5,7 @@
 > collector export path (was: gateway exports OTLP straight to backends).
 > **Context:** the pipeline sketch (Prometheus/collectors -> queue -> ingestor -> multiple stores),
 > the cost-consciousness notes (get telemetry off the workload node fast, mind ingress/egress), and
-> the requirement that Argus work on any cloud, starting with GCP.
+> the requirement that Noto work on any cloud, starting with GCP.
 
 ## Decision, in one picture
 
@@ -66,7 +66,7 @@ resource attributes in one protocol. The pull path is the Prometheus `/metrics` 
 app already exposes on 8080. **StatsD is demoted to a legacy-ingest affordance**: the `statsd`
 receiver stays in the distro manifest so un-instrumented third-party workloads can be caught, but it
 is documented as "supported, never recommended" - it is a 2011-era untyped protocol that survives
-mostly as a Datadog-migration path, and nothing Argus or gojira generates emits it. New
+mostly as a Datadog-migration path, and nothing Noto or gojira generates emits it. New
 instrumentation questions have a one-word answer: OTLP.
 
 ## Filtering: drop the noise as early as possible
@@ -168,7 +168,7 @@ engine from day one, with **only the GCP implementation built now**:
 | Managed-logging bypass | Disable GKE Cloud Logging for app logs (keep system logs) | Disable CloudWatch agent | Disable AMA |
 
 Terraform modules are provider-namespaced (`terraform/modules/<seam>/gcp/...`), the pattern ladon
-already uses. The `argus adopt` path (Phase 3, pulled forward conceptually) is the multi-cloud entry
+already uses. The `noto adopt` path (Phase 3, pulled forward conceptually) is the multi-cloud entry
 point: gojira is GKE-only, so on AWS/Azure a conformant cluster enters via adoption, not deployment.
 
 **On the logging bypass:** `kubectl logs -f` is unaffected on every provider - it streams from the
@@ -178,7 +178,7 @@ cloud console.
 
 ## Consequences
 
-- The queue is the largest new operational commitment in Argus. It is sized per environment (dev/qa
+- The queue is the largest new operational commitment in Noto. It is sized per environment (dev/qa
   run single-node Redpanda) and stood up by the step engine like everything else (new steps:
   `queue@<region>`, `ingest@<region>`; regional steps join the per-cluster steps 1-6).
 - The enablement guide's reference assembly must be updated: filter examples, routing connector,

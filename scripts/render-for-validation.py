@@ -8,7 +8,7 @@ grouped by the tool that judges them:
   <out>/otelcol/<case>-<role>.yaml   standalone collector configs (spec.config extracted)
   <out>/k8s/<case>-<name>.yaml       CRDs and plain objects for kubeconform
                                      (ServiceMonitor/PodMonitor/PrometheusRule/
-                                     OpenTelemetryCollector/the argus-observe identity/
+                                     OpenTelemetryCollector/the noto-observe identity/
                                      the platform's own record and rules)
   <out>/sloth/<case>.yaml            Sloth specs (validated by `sloth generate` itself)
   <out>/perses/<case>.yaml           Perses resources for `percli lint`

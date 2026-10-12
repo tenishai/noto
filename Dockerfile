@@ -1,6 +1,6 @@
-# The argus image: a one-shot `argus observe` runner for a provisioner's in-cluster
+# The noto image: a one-shot `noto observe` runner for a provisioner's in-cluster
 # Job (README, "Running observe as a Job"). It preserves the repo layout instead of
-# pip-installing the package into site-packages, because REPO_ROOT (agent/argus/cli.py)
+# pip-installing the package into site-packages, because REPO_ROOT (agent/noto/cli.py)
 # is derived from that file's own location and reads profiles/, integrations/ and
 # helm/pins.yaml relative to it at runtime - see tests/unit/test_layout.py.
 FROM python:3.14-slim
@@ -27,16 +27,16 @@ RUN curl -fsSL -o /usr/local/bin/kubectl \
 # once, by hand, from the real v0.16.0 linux-amd64 release (see the task report for how)
 # and is verified below with sha256sum -c. The image is amd64 only, so the binary and
 # its hash are both hardcoded to amd64 rather than derived from the build architecture.
-# `.argus` is otherwise runtime scratch (never copied wholesale into the image) - this
+# `.noto` is otherwise runtime scratch (never copied wholesale into the image) - this
 # one binary is the sole exception.
 ARG SLOTH_VERSION=0.16.0
 ARG SLOTH_SHA256_AMD64=1cecaa50853abbb3669a928612b523df8174d258ea6f2a3c8f048e5fc5af90b2
-RUN mkdir -p /app/.argus/tools \
-    && curl -fsSL -o "/app/.argus/tools/sloth-${SLOTH_VERSION}" \
+RUN mkdir -p /app/.noto/tools \
+    && curl -fsSL -o "/app/.noto/tools/sloth-${SLOTH_VERSION}" \
       "https://github.com/slok/sloth/releases/download/v${SLOTH_VERSION}/sloth-linux-amd64" \
-    && echo "${SLOTH_SHA256_AMD64}  /app/.argus/tools/sloth-${SLOTH_VERSION}" | sha256sum -c - \
-    && chmod +x "/app/.argus/tools/sloth-${SLOTH_VERSION}" \
-    && "/app/.argus/tools/sloth-${SLOTH_VERSION}" version
+    && echo "${SLOTH_SHA256_AMD64}  /app/.noto/tools/sloth-${SLOTH_VERSION}" | sha256sum -c - \
+    && chmod +x "/app/.noto/tools/sloth-${SLOTH_VERSION}" \
+    && "/app/.noto/tools/sloth-${SLOTH_VERSION}" version
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ WORKDIR /app
 # repo root (never the dev group) - tests/unit/test_dockerfile_pins.py keeps this pip
 # install line from drifting away from pyproject.toml's pins.
 COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir "pydantic==2.13.4" "pyyaml==6.0.3"
+RUN pip install --no-cache-dir "pydantic==2.14.0" "pyyaml==6.0.3"
 
 # The repo layout, preserved verbatim - see the file header and test_layout.py.
 COPY agent ./agent
@@ -52,9 +52,9 @@ COPY profiles ./profiles
 COPY integrations ./integrations
 COPY helm/pins.yaml ./helm/pins.yaml
 
-RUN groupadd --system --gid 10001 argus \
-    && useradd --system --uid 10001 --gid argus --home-dir /tmp --shell /usr/sbin/nologin argus
+RUN groupadd --system --gid 10001 noto \
+    && useradd --system --uid 10001 --gid noto --home-dir /tmp --shell /usr/sbin/nologin noto
 USER 10001
 ENV PYTHONPATH=/app/agent PYTHONUNBUFFERED=1 HOME=/tmp
-ENTRYPOINT ["python", "-m", "argus.cli"]
+ENTRYPOINT ["python", "-m", "noto.cli"]
 CMD ["observe"]

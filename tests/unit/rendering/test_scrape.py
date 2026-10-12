@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
-from argus.rendering.context import Context
-from argus.rendering.scrape import render_podmonitor, render_servicemonitor
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
+from noto.rendering.context import Context
+from noto.rendering.scrape import render_podmonitor, render_servicemonitor
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "profiles"
 
@@ -33,7 +33,7 @@ def test_servicemonitor_shape() -> None:
     assert sm["apiVersion"] == "monitoring.coreos.com/v1"
     assert sm["kind"] == "ServiceMonitor"
     assert sm["metadata"]["namespace"] == "clips"
-    assert sm["metadata"]["labels"]["argus.dev/class"] == "web"
+    assert sm["metadata"]["labels"]["noto.dev/class"] == "web"
     endpoint = sm["spec"]["endpoints"][0]
     assert endpoint == {"port": "http", "path": "/metrics", "interval": "15s"}
     assert sm["spec"]["selector"]["matchLabels"] == {"app.kubernetes.io/name": "clips"}

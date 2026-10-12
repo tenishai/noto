@@ -6,7 +6,7 @@
 # dl.min.io answers 410 for every binary. On 2026-10-06 a GKE node pool
 # upgrade recreated every node in the dev cluster and the MinIO pod could not
 # be pulled again, which took the whole metrics path down for eleven hours
-# while logs kept flowing (tenishai/argus#90).
+# while logs kept flowing (tenishai/noto#90).
 #
 # This is the SAME release, rebuilt from the RPMs MinIO still publishes on
 # GitHub Releases, checksum-verified against the .sha256sum assets, laid out
@@ -14,7 +14,7 @@
 # docker-entrypoint.sh from the same tag. It also carries mc at the version
 # the chart's make-buckets hook pins, so one image serves `minio.image` and
 # `minio.mcImage`. Build it into the deployment's own registry and name it
-# through the values-overrides seam (`argus platform --values-overrides`);
+# through the values-overrides seam (`noto platform --values-overrides`);
 # nothing in this repository names a registry.
 #
 #   docker build -t <registry>/minio:RELEASE.2024-12-18T13-15-44Z images/minio

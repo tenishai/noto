@@ -1,6 +1,6 @@
 ---
 name: Question
-about: Ask how argus works or how to use it
+about: Ask how noto works or how to use it
 labels: question
 ---
 

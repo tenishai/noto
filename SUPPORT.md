@@ -1,8 +1,8 @@
 # Getting help
 
 - **Questions and bugs:** open a GitHub issue with the
-  [question, bug report or feature request template](https://github.com/tenishai/argus/issues/new/choose).
-  For a bug, include the argus version or commit and the steps to reproduce it.
+  [question, bug report or feature request template](https://github.com/tenishai/noto/issues/new/choose).
+  For a bug, include the noto version or commit and the steps to reproduce it.
 - **Security problems:** don't open a public issue. Report them privately as
   [SECURITY.md](SECURITY.md) describes.
 

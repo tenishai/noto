@@ -1,6 +1,6 @@
 """Which tenant an app's dashboards, rules and cardinality reports READ with.
 
-The gateway WRITES telemetry with the tenant `argus platform --cluster` was given, and the
+The gateway WRITES telemetry with the tenant `noto platform --cluster` was given, and the
 platform records it (test_platform_info.py). When the tenant `observe` resolved differed
 from that one, every panel was empty and nothing errored. These tests pin the resolution
 order that closes the gap, in both operator and job mode.
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from tests.support.fake_cluster import CONTRACT_CLUSTER, RECORDED, InfoRunner, fake_perses_opener
 
-from argus import cli
+from noto import cli
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gojira"
 
@@ -47,7 +47,7 @@ def _observe(
 def test_the_recorded_tenant_wins_over_the_contract_with_one_info_line(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    """The case the temporary ARGUS_CLUSTER bridge was invented for: gojira's contract
+    """The case the temporary NOTO_CLUSTER bridge was invented for: gojira's contract
     calls the cluster one thing, the platform writes as another. The platform wins."""
     runner = InfoRunner(dict(RECORDED))
     captured: dict = {}
@@ -82,10 +82,10 @@ def test_an_explicit_cluster_that_disagrees_fails_before_anything_is_applied(
     )
 
 
-def test_argus_cluster_is_an_explicit_override_and_must_match(tmp_path: Path, monkeypatch) -> None:
+def test_noto_cluster_is_an_explicit_override_and_must_match(tmp_path: Path, monkeypatch) -> None:
     """The environment variable is the same explicit override the flag is, so it fails the
     same way. It is no longer a bridge around a contract that disagrees."""
-    monkeypatch.setenv("ARGUS_CLUSTER", "wrong-name")
+    monkeypatch.setenv("NOTO_CLUSTER", "wrong-name")
     runner = InfoRunner(dict(RECORDED))
     assert _observe(tmp_path, monkeypatch, runner) == 1
     assert runner.applies == []
@@ -98,7 +98,7 @@ def test_a_missing_record_warns_and_falls_back_to_the_contract(
     captured: dict = {}
     assert _observe(tmp_path, monkeypatch, runner, captured=captured) == 0
     err = capsys.readouterr().err
-    assert "argus platform" in err
+    assert "noto platform" in err
     assert CONTRACT_CLUSTER in err
     assert captured["ctx"].tenant == CONTRACT_CLUSTER
 
@@ -161,13 +161,13 @@ def test_render_never_warns_and_never_fails_over_the_record(
 
 
 def _job_observe(tmp_path: Path, monkeypatch, runner: InfoRunner, *extra: str, **env: str) -> int:
-    from argus.job import contract_fingerprint
+    from noto.job import contract_fingerprint
 
     contract = (FIXTURES / "web.yaml").read_text()
     monkeypatch.setenv("GOJIRA_CONTRACT_YAML", contract)
     monkeypatch.setenv("GOJIRA_CONTRACT_SHA256", contract_fingerprint(contract))
     monkeypatch.setenv("ARGUS_ENV", "dev")
-    monkeypatch.delenv("ARGUS_CLUSTER", raising=False)
+    monkeypatch.delenv("NOTO_CLUSTER", raising=False)
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(cli, "real_runner", runner)
@@ -202,7 +202,7 @@ def test_job_mode_fails_when_the_record_is_present_but_unreadable(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
     """A Forbidden is not an absent record: it means the job's own identity was not
-    rolled out, so `argus platform` has not been re-run in the right order. Falling back
+    rolled out, so `noto platform` has not been re-run in the right order. Falling back
     quietly there would wire an app to a tenant nothing writes to and report success."""
     runner = InfoRunner(readable=False)
     assert _job_observe(tmp_path, monkeypatch, runner) == 1
@@ -250,19 +250,19 @@ def test_operator_mode_still_warns_and_falls_back_on_an_unreadable_record(
     captured: dict = {}
     assert _observe(tmp_path, monkeypatch, runner, captured=captured) == 0
     assert captured["ctx"].tenant == CONTRACT_CLUSTER
-    assert "argus platform" in capsys.readouterr().err
+    assert "noto platform" in capsys.readouterr().err
 
 
 def test_job_mode_reports_a_tenant_mismatch_as_the_summary_line(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    from argus.job import contract_fingerprint
+    from noto.job import contract_fingerprint
 
     contract = (FIXTURES / "web.yaml").read_text()
     monkeypatch.setenv("GOJIRA_CONTRACT_YAML", contract)
     monkeypatch.setenv("GOJIRA_CONTRACT_SHA256", contract_fingerprint(contract))
     monkeypatch.setenv("ARGUS_ENV", "dev")
-    monkeypatch.setenv("ARGUS_CLUSTER", "wrong-name")
+    monkeypatch.setenv("NOTO_CLUSTER", "wrong-name")
     runner = InfoRunner(dict(RECORDED))
     monkeypatch.setattr(cli, "real_runner", runner)
     monkeypatch.setattr(cli, "default_perses_opener", fake_perses_opener)

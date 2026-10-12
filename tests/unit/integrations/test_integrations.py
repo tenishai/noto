@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from argus.integrations.catalog import IntegrationError, load_catalog
-from argus.integrations.render import render_receiver_creator
+from noto.integrations.catalog import IntegrationError, load_catalog
+from noto.integrations.render import render_receiver_creator
 
 REPO = Path(__file__).parents[3]
 
@@ -19,7 +19,7 @@ def test_shipped_catalog_loads() -> None:
     names = {i.name for i in catalog}
     assert {"redis", "nginx"} <= names
     redis = next(i for i in catalog if i.name == "redis")
-    assert redis.match.labels == {"argus.dev/integration": "redis"}
+    assert redis.match.labels == {"noto.dev/integration": "redis"}
     assert redis.match.port == 6379
     assert redis.receiver.type == "redis"
 
@@ -33,10 +33,10 @@ def test_receiver_creator_rendering() -> None:
         "observe_services": False,
     }
     assert creator["watch_observers"] == ["k8s_observer"]
-    redis = creator["receivers"]["redis/argus-redis"]
+    redis = creator["receivers"]["redis/noto-redis"]
     # label OR port match - the receiver_creator rule syntax is contract
     assert redis["rule"] == (
-        'type == "port" and (pod.labels["argus.dev/integration"] == "redis" or port == 6379)'
+        'type == "port" and (pod.labels["noto.dev/integration"] == "redis" or port == 6379)'
     )
     assert redis["config"]["endpoint"] == "`endpoint`"
 

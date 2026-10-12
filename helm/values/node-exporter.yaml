@@ -2,5 +2,5 @@
 prometheus: { monitor: { enabled: true } }
 
 # Node coverage is the point of a node exporter: same preemption story as the
-# argus-agent DaemonSet (a pod-capped node otherwise goes unmeasured, live-found).
-priorityClassName: argus-node-critical
+# noto-agent DaemonSet (a pod-capped node otherwise goes unmeasured, live-found).
+priorityClassName: noto-node-critical

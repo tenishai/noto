@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from argus.feedback.distill import DistillError, distill_resource, to_cpu_quantity, to_mem_quantity
-from argus.feedback.models import ResourceUsage, UsageProfile
+from noto.feedback.distill import DistillError, distill_resource, to_cpu_quantity, to_mem_quantity
+from noto.feedback.models import ResourceUsage, UsageProfile
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "feedback"
 REPO = Path(__file__).parents[3]
@@ -66,7 +66,7 @@ def test_distill_empty_series_fails_loud() -> None:
 def test_cli_feedback_without_dry_run_refuses(tmp_path, capsys) -> None:
     """The production POST path is retired (issue #52): gojira-sizing-agent is the
     single evidence producer. The refusal happens before any Mimir query."""
-    from argus import cli
+    from noto import cli
 
     gojira_fixture = Path(__file__).parents[1] / "fixtures" / "gojira" / "web.yaml"
     code = cli.main(
@@ -88,8 +88,8 @@ def test_cli_feedback_without_dry_run_refuses(tmp_path, capsys) -> None:
 
 def test_cli_feedback_dry_run(tmp_path, monkeypatch, capsys) -> None:
     """Full dry-run through the CLI with a faked Mimir - the issue's acceptance check."""
-    from argus import cli
-    from argus.feedback import mimir as mimir_mod
+    from noto import cli
+    from noto.feedback import mimir as mimir_mod
 
     def fake_collect(client, app, namespace, window_days, step=300):
         assert client.tenant == "dev-cluster"  # tenant = the env's cluster
@@ -125,11 +125,11 @@ def test_cli_feedback_dry_run(tmp_path, monkeypatch, capsys) -> None:
     profile = json.loads(out)
     assert profile["app"] == "clips-api"
     assert profile["cpu"]["max"] == "1100m"
-    assert profile["reported_by"] == "argus/dev-cluster"
+    assert profile["reported_by"] == "noto/dev-cluster"
 
 
 def test_ruler_sync_pushes_groups() -> None:
-    from argus.feedback.ruler import sync_rules
+    from noto.feedback.ruler import sync_rules
 
     calls = []
 
@@ -159,10 +159,10 @@ def test_ruler_sync_pushes_groups() -> None:
 
 
 def test_cardinality_budget_alerts_render() -> None:
-    from argus.profiles.loader import load_baseline, load_class, load_override
-    from argus.profiles.resolve import resolve
-    from argus.rendering.alerts import render_alert_rules
-    from argus.rendering.context import Context
+    from noto.profiles.loader import load_baseline, load_class, load_override
+    from noto.profiles.resolve import resolve
+    from noto.rendering.alerts import render_alert_rules
+    from noto.rendering.context import Context
 
     p = resolve(
         load_baseline(REPO / "profiles" / "baseline.yaml"),
@@ -171,7 +171,7 @@ def test_cardinality_budget_alerts_render() -> None:
     )
     ctx = Context(topology="solo", cluster="c1", environment="prod", app="a", namespace="n")
     doc = render_alert_rules(p, ctx)
-    card = next(g for g in doc["spec"]["groups"] if g["name"] == "argus-cardinality")
+    card = next(g for g in doc["spec"]["groups"] if g["name"] == "noto-cardinality")
     exprs = {r["alert"]: r["expr"] for r in card["rules"]}
-    assert exprs["ArgusCardinalityBudgetExceeded"] == "sum(cortex_ingester_active_series) > 1000000"
-    assert exprs["ArgusCardinalityBudget80"] == "sum(cortex_ingester_active_series) > 800000"
+    assert exprs["NotoCardinalityBudgetExceeded"] == "sum(cortex_ingester_active_series) > 1000000"
+    assert exprs["NotoCardinalityBudget80"] == "sum(cortex_ingester_active_series) > 800000"

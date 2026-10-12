@@ -1,5 +1,5 @@
 # OTel Operator at the same train as the distro (chart 0.119.0 -> app 0.154.0).
-# Collector image defaults to upstream contrib at the pinned train; the Argus distro
+# Collector image defaults to upstream contrib at the pinned train; the Noto distro
 # image (built from distro/manifest.yaml) replaces it when image publishing lands.
 manager:
   collectorImage:

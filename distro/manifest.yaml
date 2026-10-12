@@ -1,10 +1,10 @@
-# The Argus OpenTelemetry Collector distribution (ocb manifest).
+# The Noto OpenTelemetry Collector distribution (ocb manifest).
 #
 # Everything pinned to the v0.154.0 collector train (docs/versions.md); gomod lines
 # sourced from the official otelcol-contrib manifest at the same tag, so they are
 # known-good. Adding a component is a rebuild-and-release event (docs/design.md).
 #
-# Component set = exactly what the renderers emit (agent/argus/rendering/) plus the
+# Component set = exactly what the renderers emit (agent/noto/rendering/) plus the
 # decided affordances:
 #   - statsd receiver: legacy-ingest only, wired into no default pipeline (ADR).
 #   - spanmetrics connector: available but unwired by default - Tempo's
@@ -17,9 +17,9 @@
 #     routing to a single gateway replica).
 
 dist:
-  module: github.com/tenishai/argus/distro
-  name: argus-otelcol
-  description: Argus OpenTelemetry Collector distribution
+  module: github.com/tenishai/noto/distro
+  name: noto-otelcol
+  description: Noto OpenTelemetry Collector distribution
   version: 0.154.0
   output_path: ./_build
 
@@ -31,7 +31,7 @@ receivers:
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.154.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.154.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver v0.154.0
-  # argus-integrations autodiscovery (Phase 2): receiver_creator instantiates
+  # noto-integrations autodiscovery (Phase 2): receiver_creator instantiates
   # per-integration sub-receivers on k8s_observer matches. Sub-receivers below.
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v0.154.0
   - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v0.154.0

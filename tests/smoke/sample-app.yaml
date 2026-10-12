@@ -25,7 +25,7 @@ spec:
           command: ["./podinfo", "--port=9898", "--otel-service-name=podinfo"]
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://argus-agent-collector.argus.svc:4317
+              value: http://noto-agent-collector.noto.svc:4317
           ports:
             - { name: http, containerPort: 9898 }
           resources:
@@ -77,7 +77,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: redis
-        argus.dev/integration: redis
+        noto.dev/integration: redis
     spec:
       containers:
         - name: redis

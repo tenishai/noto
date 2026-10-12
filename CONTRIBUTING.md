@@ -1,6 +1,6 @@
-# Contributing to Argus
+# Contributing to Noto
 
-Argus is built like a real software development lifecycle: foundations first, quality over
+Noto is built like a real software development lifecycle: foundations first, quality over
 velocity, small and meaningful tests, and a build -> review -> revise loop on every unit of work.
 This document is the working agreement. Read it before opening a branch.
 
@@ -42,7 +42,7 @@ We use **trunk-based development with short-lived branches**.
 
 ### Why trunk-based for this repo
 
-Argus is a small repo worked by one maintainer plus AI agents. Trunk-based keeps integration
+Noto is a small repo worked by one maintainer plus AI agents. Trunk-based keeps integration
 continuous and the history linear and legible, which matters because the SQLite ledger and the design
 docs treat git as part of the audit trail. A heavier model like Git Flow adds release/develop branches
 whose merge overhead buys us nothing at this size and would fragment the history we rely on for review.
@@ -90,7 +90,7 @@ Finish, test, and review one thing before starting the next.
 
 ## Developer Certificate of Origin
 
-Argus uses the [Developer Certificate of Origin](https://developercertificate.org/)
+Noto uses the [Developer Certificate of Origin](https://developercertificate.org/)
 (DCO) instead of a contributor license agreement. Every commit in a pull request
 must carry a `Signed-off-by:` line with your name and email, and they must match
 the commit's author. `git commit -s` adds it from your `user.name` and

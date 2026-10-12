@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from argus import cli
-from argus.engine.ledger import Ledger
-from argus.job import (
+from noto import cli
+from noto.engine.ledger import Ledger
+from noto.job import (
     SUMMARY_MAX,
     JobInputError,
     contract_fingerprint,
@@ -18,7 +18,7 @@ from argus.job import (
     success_summary,
     summary_line,
 )
-from argus.steps import StepContext
+from noto.steps import StepContext
 
 A = "app: demo\nclass: web\nenvironments:\n  dev: {cluster: c1, namespace: demo}\n"
 
@@ -54,14 +54,14 @@ def test_job_inputs_absent_means_operator_mode():
 def test_job_inputs_happy_path_and_defaults():
     sha = contract_fingerprint(A)
     got = job_inputs({"GOJIRA_CONTRACT_YAML": A, "GOJIRA_CONTRACT_SHA256": sha, "ARGUS_ENV": "dev"})
-    assert (got.env, got.cluster, got.namespace, got.contract_sha256) == ("dev", None, "argus", sha)
+    assert (got.env, got.cluster, got.namespace, got.contract_sha256) == ("dev", None, "noto", sha)
     got = job_inputs(
         {
             "GOJIRA_CONTRACT_YAML": A,
             "GOJIRA_CONTRACT_SHA256": sha.upper(),
             "ARGUS_ENV": "dev",
-            "ARGUS_CLUSTER": " real-name ",
-            "ARGUS_NAMESPACE": "obs",
+            "NOTO_CLUSTER": " real-name ",
+            "NOTO_NAMESPACE": "obs",
         }
     )
     assert (got.cluster, got.namespace, got.contract_sha256) == ("real-name", "obs", sha)
@@ -281,7 +281,7 @@ def test_job_mode_fingerprint_mismatch_applies_nothing(monkeypatch, capsys):
     assert "does not match" in out[-1]
 
 
-def test_job_mode_ledger_lives_under_temp_dir_not_dot_argus(monkeypatch, capsys):
+def test_job_mode_ledger_lives_under_temp_dir_not_dot_noto(monkeypatch, capsys):
     seen_ledgers: list[Path] = []
     orig_init = Ledger.__init__
 
@@ -303,8 +303,8 @@ def test_job_mode_ledger_lives_under_temp_dir_not_dot_argus(monkeypatch, capsys)
     assert code == 0
     assert seen_ledgers
     for p in seen_ledgers:
-        assert ".argus" not in p.parts
-        assert "argus-job-" in str(p)
+        assert ".noto" not in p.parts
+        assert "noto-job-" in str(p)
 
 
 def test_operator_mode_still_requires_gojira_and_env(monkeypatch, capsys):
@@ -359,7 +359,7 @@ def test_job_mode_bad_flag_still_ends_stdout_with_summary(monkeypatch, capsys):
 def test_job_mode_never_silently_becomes_operator_mode(monkeypatch, capsys):
     """Job mode is decided from the environment before parsing and confirmed after it.
     If the variable disappears in between, the answer is a summary line and exit 1 - not
-    a quiet slide into operator mode, which would write a `.argus/` ledger into whatever
+    a quiet slide into operator mode, which would write a `.noto/` ledger into whatever
     directory the container started in and report nothing the launcher can read."""
     gojira_text = (FIXTURES / "web.yaml").read_text()
     for k, v in _job_env(gojira_text).items():
@@ -387,7 +387,7 @@ def test_job_mode_help_passes_through_untouched(monkeypatch, capsys):
 
 
 def test_job_mode_applies_only_to_observe_platform_stays_untouched(monkeypatch, capsys):
-    """GOJIRA_CONTRACT_YAML being set must not change `argus platform` at all - job
+    """GOJIRA_CONTRACT_YAML being set must not change `noto platform` at all - job
     mode is an `observe`-only concept."""
     monkeypatch.setenv("GOJIRA_CONTRACT_YAML", "app: demo\nclass: web\nenvironments: []\n")
     monkeypatch.setenv("GOJIRA_CONTRACT_SHA256", "0" * 64)
@@ -403,9 +403,9 @@ def test_job_mode_applies_only_to_observe_platform_stays_untouched(monkeypatch, 
 
 
 def test_job_mode_applied_documents_carry_the_observed_contract_annotation(monkeypatch, capsys):
-    """Every object argus applies in job mode must record which contract was
+    """Every object noto applies in job mode must record which contract was
     observed (issue: born-observed), so the cluster can answer 'has the app
-    changed since argus looked' on its own."""
+    changed since noto looked' on its own."""
     import yaml
 
     runner = FakeRunner()
@@ -424,7 +424,7 @@ def test_job_mode_applied_documents_carry_the_observed_contract_annotation(monke
     assert applies
     for _cmd, stdin_text in applies:
         for doc in yaml.safe_load_all(stdin_text):
-            assert doc["metadata"]["annotations"]["argus.dev/contract-sha256"] == sha
+            assert doc["metadata"]["annotations"]["noto.dev/contract-sha256"] == sha
             assert doc["kind"] != "OpenTelemetryCollector"
 
 
@@ -455,12 +455,12 @@ def test_job_mode_stdout_still_ends_with_summary_when_drop_warning_fires(monkeyp
 
 
 def test_job_mode_namespace_from_job_inputs_reaches_the_step_context(monkeypatch, capsys):
-    """`ARGUS_NAMESPACE` (carried in JobInputs.namespace) must drive the same
+    """`NOTO_NAMESPACE` (carried in JobInputs.namespace) must drive the same
     in-cluster namespace job mode applies against - mocking job_inputs (rather than
     relying on both sides reading the same env var) proves the value is actually
     threaded through, not just coincidentally identical."""
-    from argus.engine.engine import ProvisionEngine as RealEngine
-    from argus.job import JobInputs
+    from noto.engine.engine import ProvisionEngine as RealEngine
+    from noto.job import JobInputs
 
     captured: dict = {}
 
@@ -489,13 +489,13 @@ def test_job_mode_namespace_from_job_inputs_reaches_the_step_context(monkeypatch
 
     assert code == 0
     assert captured["step_ctx"].namespace == "mocked-ns"
-    assert captured["step_ctx"].perses_url == "http://argus-perses.mocked-ns.svc:8080"
+    assert captured["step_ctx"].perses_url == "http://noto-perses.mocked-ns.svc:8080"
 
 
 def test_job_mode_step_order_ends_with_provision_perses(monkeypatch, capsys):
     """Job mode shares `_run_observe` with the operator command - dashboards must
     land last there too."""
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: list[list[str]] = []
 
@@ -554,7 +554,7 @@ def test_job_mode_fails_when_the_ruler_cannot_be_reached(monkeypatch, capsys):
     in-cluster URL). A job runs INSIDE the cluster, where that name resolves, and nobody
     is reading a note: it ends as the failure it is, through the same summary path as
     every other failed step."""
-    from argus.feedback.ruler import RulerUnreachable
+    from noto.feedback.ruler import RulerUnreachable
 
     def unreachable(*_args):
         raise RulerUnreachable("Connection refused")
@@ -576,7 +576,7 @@ def test_job_mode_fails_when_the_ruler_cannot_be_reached(monkeypatch, capsys):
     assert "Connection refused" in out[-1]
     # The summary line is the whole of a job's output that anyone reads, and a resolver
     # error on its own ("Name or service not known") does not say which name failed.
-    assert "http://argus-mimir-gateway.argus.svc:80/prometheus" in out[-1]
+    assert "http://noto-mimir-gateway.noto.svc:80/prometheus" in out[-1]
 
 
 def test_job_mode_key_error_summary_has_no_leading_quote(monkeypatch, capsys):
@@ -685,7 +685,7 @@ def test_job_mode_every_kubectl_call_carries_the_in_cluster_kubeconfig(
     """The regression the first live run found: --request-timeout is on every argv (the
     bound stays), so the cluster has to be on every argv too, or kubectl dials
     localhost:8080 and the run ends in `platform record unreadable`."""
-    from argus import job
+    from noto import job
 
     sa = _sa_dir(tmp_path)
     monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", sa)
@@ -708,7 +708,7 @@ def test_job_mode_every_kubectl_call_carries_the_in_cluster_kubeconfig(
         assert "--kubeconfig" in c and any(a.startswith("--request-timeout=") for a in c)
         paths.add(c[c.index("--kubeconfig") + 1])
     (path,) = paths  # one file, written once, for the whole run
-    assert path.endswith("/kubeconfig") and "argus-job-" in path
+    assert path.endswith("/kubeconfig") and "noto-job-" in path
     assert "https://10.140.4.1:443" in Path(path).read_text()
 
 
@@ -716,7 +716,7 @@ def test_operator_mode_never_writes_or_passes_a_kubeconfig(monkeypatch, tmp_path
     """An operator on a laptop that happens to carry the in-cluster env (a devcontainer,
     a CI pod) keeps their own kubeconfig and --kube-context: job mode's file is job
     mode's alone."""
-    from argus import job
+    from noto import job
 
     monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
     monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", _sa_dir(tmp_path))

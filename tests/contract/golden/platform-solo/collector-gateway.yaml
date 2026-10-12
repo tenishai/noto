@@ -2,17 +2,17 @@ apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   labels:
-    argus.dev/cluster: golden-cluster
-    argus.dev/managed: 'true'
-    argus.dev/role: gateway
-  name: argus-gateway
-  namespace: argus
+    noto.dev/cluster: golden-cluster
+    noto.dev/managed: 'true'
+    noto.dev/role: gateway
+  name: noto-gateway
+  namespace: noto
 spec:
   config:
     exporters:
       otlp/tempo:
         compression: zstd
-        endpoint: argus-tempo.argus.svc:4317
+        endpoint: noto-tempo.noto.svc:4317
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -26,7 +26,7 @@ spec:
           insecure: true
       otlphttp/loki:
         compression: zstd
-        endpoint: http://argus-loki.argus.svc:3100/otlp
+        endpoint: http://noto-loki.noto.svc:3100/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -38,7 +38,7 @@ spec:
         timeout: 30s
       otlphttp/mimir:
         compression: zstd
-        endpoint: http://argus-mimir-gateway.argus.svc:80/otlp
+        endpoint: http://noto-mimir-gateway.noto.svc:80/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -61,7 +61,7 @@ spec:
         send_batch_max_size: 2000
         send_batch_size: 1000
         timeout: 1s
-      filter/argus-gateway:
+      filter/noto-gateway:
         error_mode: ignore
         logs:
           log_record:
@@ -114,7 +114,7 @@ spec:
       prometheus/self:
         config:
           scrape_configs:
-          - job_name: argus-collector-self
+          - job_name: noto-collector-self
             scrape_interval: 15s
             static_configs:
             - targets:
@@ -133,7 +133,7 @@ spec:
           - memory_limiter
           - k8sattributes
           - resource/default
-          - filter/argus-gateway
+          - filter/noto-gateway
           - batch
           receivers:
           - otlp
@@ -146,7 +146,7 @@ spec:
           - resource/default
           - groupbyattrs
           - transform/labels-strip
-          - filter/argus-gateway
+          - filter/noto-gateway
           - batch
           receivers:
           - otlp
@@ -166,7 +166,7 @@ spec:
           - memory_limiter
           - k8sattributes
           - resource/default
-          - filter/argus-gateway
+          - filter/noto-gateway
           - batch
           receivers:
           - otlp
