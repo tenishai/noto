@@ -21,16 +21,17 @@ Take a deployment from zero to a full, end-to-end open-source observability plat
 
 Noto makes what gojira deploys **observable**. Where gojira gets your app running on Kubernetes
 (identity, CI/CD, manifests, sizing), Noto continues the same lifecycle and stands up a complete,
-100% open-source observability platform around it: the metrics, logs, and traces backends, the
+open-source observability platform around it: the metrics, logs, and traces backends, the
 OpenTelemetry collection tier, and per-app dashboards, SLOs, and alerts derived from the workload
 class gojira already assigned. No hand-rolled collector YAML, no parallel project to operate, no
 vendor backend.
 
 Noto is opinionated by design. Its goals:
 
-- **Automatic** - a gojira deployment goes from running to fully observed with zero extra config.
-- **Opinionated** - a workload's class selects how it is observed; battle-tested collector pipelines
-  are the default, not a blank file.
+- **Automatic** - once the platform is up and gojira's observe step is on, a gojira deployment is
+  observed with no per-app configuration (the observe Job, [docs/operating.md](docs/operating.md)).
+- **Opinionated** - a workload's class selects how it is observed; the collector pipelines in the
+  [enablement guide](docs/otel-collector-enablement-guide.md) are the default, not a blank file.
 - **Open source, end to end** - OpenTelemetry plus Mimir/Loki/Tempo and Perses, no vendor lock-in, no
   per-host licensing.
 - **Agent-driven** - operated by a self-contained agent and a set of Agent Skills, not a web UI.
@@ -55,8 +56,10 @@ spec). It touches nothing else; `observe` is the command that applies them to a 
 
 To see the whole thing run, `make smoke` creates a [kind](https://kind.sigs.k8s.io/) cluster,
 installs the platform (collector, Mimir, Loki, Tempo, Perses), deploys the sample app, observes it
-and checks the result. It needs Docker, kind and kubectl, and takes about 15 minutes. `make test`
-runs the conventions lint and the unit and contract tests, the same gates CI runs.
+and checks the result. It needs Docker, kind and kubectl. `make test` runs the conventions lint and
+the unit and contract tests (`Makefile`); CI runs those plus the architecture-card checker, the
+rendered-artifact validators, the OpenTofu checks and the collector distribution build
+(`.github/workflows/`).
 
 ## Part of a larger platform
 
@@ -64,20 +67,16 @@ Noto is one piece of a shared, opinionated SRE/agent platform - sibling projects
 concern and are built to compose. Noto owns observability:
 
 - **[gojira](https://github.com/tenishai/gojira)** - the deploy platform (identity, CI/CD, manifests,
-  sizing). Noto's parent: it continues gojira's lifecycle and maps workload class to observability.
-- **[techne](https://github.com/tenishai/techne)** - agentic memory. Noto's ledger migrates here, so
-  its deploy history becomes durable memory.
-- **[liminal](https://github.com/tenishai/liminal)** - the MCP gateway. Noto reaches its tools
-  through it, and can expose its own operations as a handler.
-- **[cabal](https://github.com/tenishai/cabal)** - agent orchestration. Noto's agent registers here
-  as the observability persona.
-- **[daedalus](https://github.com/tenishai/daedalus)** - agent construction kit. The Noto agent's
-  shell is a daedalus bundle (persona, agent card, wiring).
-- **[ladon](https://github.com/tenishai/ladon)** - secrets on OpenBao. Noto consumes secrets as a
-  ladon team via the External Secrets Operator.
+  sizing). Noto's parent: it reads gojira's deploy contract and gojira's provisioner runs
+  `noto observe` as a Job after each deploy (the `ARGUS_SUMMARY` contract in
+  [docs/operating.md](docs/operating.md)).
 
-Noto runs self-contained today and composes with these as the platform comes together; it never
-duplicates what a sibling owns.
+Planned seams, not built: [techne](https://github.com/tenishai/techne) as the home of the ledger,
+[liminal](https://github.com/tenishai/liminal) for reaching tools and exposing noto's own operations
+as a handler, [cabal](https://github.com/tenishai/cabal) for an observability persona,
+[daedalus](https://github.com/tenishai/daedalus) for that agent's bundle, and
+[sero](https://github.com/tenishai/sero) for secrets through the External Secrets Operator. Noto
+runs self-contained today; gojira is the one integration that ships.
 
 ## How it works
 
@@ -85,7 +84,7 @@ duplicates what a sibling owns.
 gojira:  repo ──▶ identity ──▶ CI/CD ──▶ manifests ──▶ app running, /metrics exposed
                                                               │
                                                               ▼  (Noto continues)
-noto:   per-cluster platform (collectors + backends + Perses) ──▶ auto-wire every app by class ──▶ dashboards · SLOs · alerts
+noto:   per-cluster platform (collectors + backends + Perses) ──▶ wire each gojira app by class ──▶ dashboards · SLOs · alerts
 ```
 
 Noto stands the platform up once per cluster, then wires each gojira-managed app into it based on its
@@ -123,7 +122,7 @@ beyond that is in [docs/operating.md](docs/operating.md):
 
 ## Status
 
-**Phase 1 (Observe) is complete**, released as v0.1.0 on 2026-07-11 and deployed. **Phase 2
+**Phase 1 (Observe) is complete**, released as v0.1.0 (tag `v0.1.0`, 2026-07-11) and deployed. **Phase 2
 (Curate) is the current focus**, and parts of it have landed: the integrations catalog and the
 cardinality skill. See the [roadmap](ROADMAP.md) for the phase plan, the
 [changelog](CHANGELOG.md) for what has shipped since the tag, and the
