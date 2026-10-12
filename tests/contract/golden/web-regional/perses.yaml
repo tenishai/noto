@@ -3,7 +3,7 @@
     name: golden-cluster
   spec:
     display:
-      name: "Argus \xB7 golden-cluster"
+      name: "Noto \xB7 golden-cluster"
 - kind: Datasource
   metadata:
     name: mimir
@@ -18,7 +18,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://mimir.us-east4.argus.internal:9009/prometheus
+            url: http://mimir.us-east4.noto.internal:9009/prometheus
 - kind: Datasource
   metadata:
     name: loki
@@ -33,7 +33,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://loki.us-east4.argus.internal:3100
+            url: http://loki.us-east4.noto.internal:3100
 - kind: Datasource
   metadata:
     name: tempo
@@ -48,7 +48,7 @@
           spec:
             headers:
               X-Scope-OrgID: golden-cluster
-            url: http://tempo.us-east4.argus.internal:3200
+            url: http://tempo.us-east4.noto.internal:3200
 - kind: Dashboard
   metadata:
     name: cluster-baseline

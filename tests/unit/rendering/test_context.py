@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from argus.rendering.context import SOLO_DEFAULTS, Context, solo_endpoints
+from noto.rendering.context import SOLO_DEFAULTS, Context, solo_endpoints
 
 
 def test_tenant_defaults_to_cluster() -> None:
@@ -13,26 +13,26 @@ def test_tenant_defaults_to_cluster() -> None:
 
 def test_solo_endpoint_defaults() -> None:
     ctx = Context(topology="solo", cluster="c1", environment="dev")
-    assert ctx.endpoints.mimir_otlp_http == "http://argus-mimir-gateway.argus.svc:80/otlp"
-    assert ctx.endpoints.loki_otlp_http == "http://argus-loki.argus.svc:3100/otlp"
-    assert ctx.endpoints.tempo_otlp_grpc == "argus-tempo.argus.svc:4317"
+    assert ctx.endpoints.mimir_otlp_http == "http://noto-mimir-gateway.noto.svc:80/otlp"
+    assert ctx.endpoints.loki_otlp_http == "http://noto-loki.noto.svc:3100/otlp"
+    assert ctx.endpoints.tempo_otlp_grpc == "noto-tempo.noto.svc:4317"
     assert ctx.endpoints.kafka_bootstrap is None
 
 
-def test_solo_endpoints_for_argus_matches_module_constant() -> None:
-    """SOLO_DEFAULTS is `solo_endpoints("argus")` - the back-compat identity every
+def test_solo_endpoints_for_noto_matches_module_constant() -> None:
+    """SOLO_DEFAULTS is `solo_endpoints("noto")` - the back-compat identity every
     golden file relies on."""
-    assert solo_endpoints("argus") == SOLO_DEFAULTS
+    assert solo_endpoints("noto") == SOLO_DEFAULTS
 
 
 def test_solo_endpoints_default_values_are_todays_constants() -> None:
-    assert solo_endpoints("argus") == {
-        "mimir_otlp_http": "http://argus-mimir-gateway.argus.svc:80/otlp",
-        "loki_otlp_http": "http://argus-loki.argus.svc:3100/otlp",
-        "tempo_otlp_grpc": "argus-tempo.argus.svc:4317",
-        "mimir_query_url": "http://argus-mimir-gateway.argus.svc:80/prometheus",
-        "perses_url": "http://argus-perses.argus.svc:8080",
-        "alertmanager_url": "http://alertmanager-operated.argus.svc:9093",
+    assert solo_endpoints("noto") == {
+        "mimir_otlp_http": "http://noto-mimir-gateway.noto.svc:80/otlp",
+        "loki_otlp_http": "http://noto-loki.noto.svc:3100/otlp",
+        "tempo_otlp_grpc": "noto-tempo.noto.svc:4317",
+        "mimir_query_url": "http://noto-mimir-gateway.noto.svc:80/prometheus",
+        "perses_url": "http://noto-perses.noto.svc:8080",
+        "alertmanager_url": "http://alertmanager-operated.noto.svc:9093",
     }
 
 
@@ -41,21 +41,21 @@ def test_solo_endpoints_alertmanager_url_for_custom_namespace() -> None:
 
 
 def test_solo_endpoints_custom_namespace_changes_every_host() -> None:
-    default = solo_endpoints("argus")
+    default = solo_endpoints("noto")
     custom = solo_endpoints("obs")
     assert set(custom) == set(default)
     for key, value in default.items():
         assert custom[key] != value
-        assert ".obs.svc" in custom[key] or "argus-tempo.obs.svc" in custom[key]
+        assert ".obs.svc" in custom[key] or "noto-tempo.obs.svc" in custom[key]
 
 
 def test_solo_endpoints_custom_namespace_exact_values() -> None:
     assert solo_endpoints("obs") == {
-        "mimir_otlp_http": "http://argus-mimir-gateway.obs.svc:80/otlp",
-        "loki_otlp_http": "http://argus-loki.obs.svc:3100/otlp",
-        "tempo_otlp_grpc": "argus-tempo.obs.svc:4317",
-        "mimir_query_url": "http://argus-mimir-gateway.obs.svc:80/prometheus",
-        "perses_url": "http://argus-perses.obs.svc:8080",
+        "mimir_otlp_http": "http://noto-mimir-gateway.obs.svc:80/otlp",
+        "loki_otlp_http": "http://noto-loki.obs.svc:3100/otlp",
+        "tempo_otlp_grpc": "noto-tempo.obs.svc:4317",
+        "mimir_query_url": "http://noto-mimir-gateway.obs.svc:80/prometheus",
+        "perses_url": "http://noto-perses.obs.svc:8080",
         "alertmanager_url": "http://alertmanager-operated.obs.svc:9093",
     }
 
@@ -71,9 +71,9 @@ def test_context_default_platform_namespace_is_byte_identical_to_today() -> None
 
 def test_context_custom_platform_namespace_changes_every_endpoint_host() -> None:
     ctx = Context(topology="solo", cluster="c1", environment="dev", platform_namespace="obs")
-    assert ctx.endpoints.mimir_otlp_http == "http://argus-mimir-gateway.obs.svc:80/otlp"
-    assert ctx.endpoints.loki_otlp_http == "http://argus-loki.obs.svc:3100/otlp"
-    assert ctx.endpoints.tempo_otlp_grpc == "argus-tempo.obs.svc:4317"
+    assert ctx.endpoints.mimir_otlp_http == "http://noto-mimir-gateway.obs.svc:80/otlp"
+    assert ctx.endpoints.loki_otlp_http == "http://noto-loki.obs.svc:3100/otlp"
+    assert ctx.endpoints.tempo_otlp_grpc == "noto-tempo.obs.svc:4317"
 
 
 def test_context_explicit_endpoints_win_over_platform_namespace() -> None:
@@ -112,10 +112,10 @@ def test_regional_valid() -> None:
         environment="prod",
         region="us-east4",
         endpoints={
-            "mimir_otlp_http": "http://mimir.us-east4.argus.internal/otlp",
-            "loki_otlp_http": "http://loki.us-east4.argus.internal/otlp",
-            "tempo_otlp_grpc": "tempo.us-east4.argus.internal:4317",
-            "kafka_bootstrap": "redpanda.us-east4.argus.internal:9092",
+            "mimir_otlp_http": "http://mimir.us-east4.noto.internal/otlp",
+            "loki_otlp_http": "http://loki.us-east4.noto.internal/otlp",
+            "tempo_otlp_grpc": "tempo.us-east4.noto.internal:4317",
+            "kafka_bootstrap": "redpanda.us-east4.noto.internal:9092",
         },
     )
     assert ctx.region == "us-east4"

@@ -15,21 +15,21 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "agent"))
 
-from argus.cli import _platform_profile, _render_platform_families  # noqa: E402
-from argus.integrations.catalog import load_catalog  # noqa: E402
-from argus.profiles.loader import load_baseline, load_class, load_override  # noqa: E402
-from argus.profiles.resolve import resolve  # noqa: E402
-from argus.rendering.alerts import render_alert_rules  # noqa: E402
-from argus.rendering.collectors import (  # noqa: E402
+from noto.cli import _platform_profile, _render_platform_families  # noqa: E402
+from noto.integrations.catalog import load_catalog  # noqa: E402
+from noto.profiles.loader import load_baseline, load_class, load_override  # noqa: E402
+from noto.profiles.resolve import resolve  # noqa: E402
+from noto.rendering.alerts import render_alert_rules  # noqa: E402
+from noto.rendering.collectors import (  # noqa: E402
     render_agent,
     render_gateway,
     render_ingest,
     render_targetallocator,
 )
-from argus.rendering.context import Context  # noqa: E402
-from argus.rendering.perses import render_perses  # noqa: E402
-from argus.rendering.scrape import render_podmonitor, render_servicemonitor  # noqa: E402
-from argus.rendering.slo import render_sloth  # noqa: E402
+from noto.rendering.context import Context  # noqa: E402
+from noto.rendering.perses import render_perses  # noqa: E402
+from noto.rendering.scrape import render_podmonitor, render_servicemonitor  # noqa: E402
+from noto.rendering.slo import render_sloth  # noqa: E402
 
 GOLDEN = REPO / "tests" / "contract" / "golden"
 PROFILES = REPO / "profiles"
@@ -49,10 +49,10 @@ TOPOLOGIES = ["solo", "regional"]
 GOLDEN_BORN = "2026-01-01T00:00:00Z"
 
 REGIONAL_ENDPOINTS = {
-    "mimir_otlp_http": "http://mimir.us-east4.argus.internal:9009/otlp",
-    "loki_otlp_http": "http://loki.us-east4.argus.internal:3100/otlp",
-    "tempo_otlp_grpc": "tempo.us-east4.argus.internal:4317",
-    "kafka_bootstrap": "redpanda.us-east4.argus.internal:9092",
+    "mimir_otlp_http": "http://mimir.us-east4.noto.internal:9009/otlp",
+    "loki_otlp_http": "http://loki.us-east4.noto.internal:3100/otlp",
+    "tempo_otlp_grpc": "tempo.us-east4.noto.internal:4317",
+    "kafka_bootstrap": "redpanda.us-east4.noto.internal:9092",
 }
 
 
@@ -109,7 +109,7 @@ _IDENTITY_DOC_NAMES = [
 
 
 def render_platform(topology: str) -> dict[str, object]:
-    """Everything `argus platform` puts in a cluster, taken from the CLI's own
+    """Everything `noto platform` puts in a cluster, taken from the CLI's own
     `_render_platform_families` so a golden can never show something a real run would not
     apply. Nothing here is re-derived by hand.
 
@@ -117,7 +117,7 @@ def render_platform(topology: str) -> dict[str, object]:
     is for: a reviewable diff per object. `identity-*` and `collector-targetallocator`
     carry no topology dependence and so render byte-identical in both cases. The regional
     ingest collector is the one document `_render_platform_families` does not carry (it
-    belongs to the regional topology, which `argus platform` does not stand up yet), so it
+    belongs to the regional topology, which `noto platform` does not stand up yet), so it
     is still rendered directly.
     """
     p = _platform_profile()
@@ -132,7 +132,7 @@ def render_platform(topology: str) -> dict[str, object]:
         artifacts["collector-ingest"] = render_ingest(p, ctx)
     for name, doc in zip(_IDENTITY_DOC_NAMES, families["identity"], strict=True):
         artifacts[name] = doc
-    # The platform's own record and its own alert rules, both applied by `argus platform`
+    # The platform's own record and its own alert rules, both applied by `noto platform`
     # and belonging to no app. A real run uses the birth instant it finds (or records now);
     # a golden needs a fixed one, or the file would differ on every run.
     (artifacts["platform-info"],) = families["platform-info"]

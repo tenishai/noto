@@ -8,8 +8,8 @@ both modes (a note on an operator's laptop, a failure in a Job).
 import pytest
 import yaml
 
-from argus.feedback.ruler import RulerSyncError, RulerUnreachable
-from argus.steps import StepContext, SyncRules
+from noto.feedback.ruler import RulerSyncError, RulerUnreachable
+from noto.steps import StepContext, SyncRules
 
 BASE = "http://mimir/prometheus"
 NS_URL = f"{BASE}/config/v1/rules/demo"
@@ -85,11 +85,11 @@ def test_the_dry_run_count_is_the_count_the_real_push_reports() -> None:
 
 
 def test_an_app_cannot_target_the_platforms_own_ruler_namespace() -> None:
-    """`argus-platform` is a legal app name. An app run filed there would prune every
+    """`noto-platform` is a legal app name. An app run filed there would prune every
     group it did not render - which is the platform's retention alarm, rendered only by
-    `argus platform`. Refused before a single call, in every mode including a dry run."""
+    `noto platform`. Refused before a single call, in every mode including a dry run."""
     ctx = _ctx(_exploding, dry_run=True)
-    ctx.ruler_namespace = "argus-platform"
+    ctx.ruler_namespace = "noto-platform"
     with pytest.raises(RulerSyncError, match="the platform's own ruler namespace"):
         SyncRules().apply(ctx)
 
@@ -136,13 +136,13 @@ def test_every_group_is_pushed_before_anything_is_pruned() -> None:
 
 def test_a_run_for_one_app_issues_no_delete_outside_that_apps_namespace() -> None:
     """The prune is scoped to the app's own ruler namespace and nothing else: another
-    app's groups, and the platform's own `argus-platform` group, are untouchable from
+    app's groups, and the platform's own `noto-platform` group, are untouchable from
     here even when the ruler's answer mentions them."""
     listing = yaml.safe_dump(
         {
             "demo": [{"name": "stale", "rules": []}],
             "other-app": [{"name": "theirs", "rules": []}],
-            "argus-platform": [{"name": "argus-platform-retention", "rules": []}],
+            "noto-platform": [{"name": "noto-platform-retention", "rules": []}],
         }
     )
     http = FakeHttp(

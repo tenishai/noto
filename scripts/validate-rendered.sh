@@ -11,8 +11,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-TOOLS="$REPO/.argus/tools"
-RENDERED="$REPO/.argus/rendered"
+TOOLS="$REPO/.noto/tools"
+RENDERED="$REPO/.noto/rendered"
 
 OTELCOL_VERSION=0.154.0
 SLOTH_VERSION=0.16.0
@@ -71,7 +71,7 @@ SKIP_AGENT=0
 if [ ! -f "$SA_DIR/ca.crt" ]; then
   PLACEHOLDER_CERT=$(mktemp)
   openssl req -x509 -newkey rsa:2048 -nodes -keyout /dev/null -out "$PLACEHOLDER_CERT" \
-    -days 1 -subj "/CN=argus-validation-placeholder" 2>/dev/null
+    -days 1 -subj "/CN=noto-validation-placeholder" 2>/dev/null
   if sudo -n mkdir -p "$SA_DIR" 2>/dev/null && sudo -n cp "$PLACEHOLDER_CERT" "$SA_DIR/ca.crt" 2>/dev/null && sudo -n tee "$SA_DIR/token" >/dev/null 2>&1 <<<"validation-placeholder" && sudo -n chmod -R a+rX /var/run/secrets 2>/dev/null; then
     echo "    (created placeholder in-cluster SA files for kubeletstats validation)"
   else

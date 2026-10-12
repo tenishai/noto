@@ -1,11 +1,11 @@
 <div align="center">
 
-# Argus
+# Noto
 
 **The observability arm of [gojira](https://github.com/tenishai/gojira).**
 Take a deployment from zero to a full, end-to-end open-source observability platform - automatically.
 
-[![CI](https://github.com/tenishai/argus/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tenishai/argus/actions/workflows/ci.yml)
+[![CI](https://github.com/tenishai/noto/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tenishai/noto/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](docs/design.md)
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
@@ -19,14 +19,14 @@ Take a deployment from zero to a full, end-to-end open-source observability plat
 
 ## Overview
 
-Argus makes what gojira deploys **observable**. Where gojira gets your app running on Kubernetes
-(identity, CI/CD, manifests, sizing), Argus continues the same lifecycle and stands up a complete,
+Noto makes what gojira deploys **observable**. Where gojira gets your app running on Kubernetes
+(identity, CI/CD, manifests, sizing), Noto continues the same lifecycle and stands up a complete,
 100% open-source observability platform around it: the metrics, logs, and traces backends, the
 OpenTelemetry collection tier, and per-app dashboards, SLOs, and alerts derived from the workload
 class gojira already assigned. No hand-rolled collector YAML, no parallel project to operate, no
 vendor backend.
 
-Argus is opinionated by design. Its goals:
+Noto is opinionated by design. Its goals:
 
 - **Automatic** - a gojira deployment goes from running to fully observed with zero extra config.
 - **Opinionated** - a workload's class selects how it is observed; battle-tested collector pipelines
@@ -38,18 +38,18 @@ Argus is opinionated by design. Its goals:
 
 ## Quickstart
 
-Render what argus would install for a sample app, with no cluster. The only prerequisite is
+Render what noto would install for a sample app, with no cluster. The only prerequisite is
 [uv](https://docs.astral.sh/uv/); it fetches Python 3.14 for you.
 
 ```
-git clone https://github.com/tenishai/argus && cd argus
+git clone https://github.com/tenishai/noto && cd noto
 uv sync --frozen
-uv run argus render --gojira tests/smoke/gojira.yaml --env dev
-ls .argus/rendered-app
+uv run noto render --gojira tests/smoke/gojira.yaml --env dev
+ls .noto/rendered-app
 ```
 
 `render` reads a gojira deploy contract (the sample describes `podinfo`, a `web` class app) and
-writes the four families argus derives from the workload class: `scrape.yaml` (the collection
+writes the four families noto derives from the workload class: `scrape.yaml` (the collection
 config), `perses.yaml` (the dashboard), `alerts.yaml` (the alert rules) and `slo.yaml` (the SLO
 spec). It touches nothing else; `observe` is the command that applies them to a cluster.
 
@@ -60,23 +60,23 @@ runs the conventions lint and the unit and contract tests, the same gates CI run
 
 ## Part of a larger platform
 
-Argus is one piece of a shared, opinionated SRE/agent platform - sibling projects that each own one
-concern and are built to compose. Argus owns observability:
+Noto is one piece of a shared, opinionated SRE/agent platform - sibling projects that each own one
+concern and are built to compose. Noto owns observability:
 
 - **[gojira](https://github.com/tenishai/gojira)** - the deploy platform (identity, CI/CD, manifests,
-  sizing). Argus's parent: it continues gojira's lifecycle and maps workload class to observability.
-- **[techne](https://github.com/tenishai/techne)** - agentic memory. Argus's ledger migrates here, so
+  sizing). Noto's parent: it continues gojira's lifecycle and maps workload class to observability.
+- **[techne](https://github.com/tenishai/techne)** - agentic memory. Noto's ledger migrates here, so
   its deploy history becomes durable memory.
-- **[liminal](https://github.com/tenishai/liminal)** - the MCP gateway. Argus reaches its tools
+- **[liminal](https://github.com/tenishai/liminal)** - the MCP gateway. Noto reaches its tools
   through it, and can expose its own operations as a handler.
-- **[cabal](https://github.com/tenishai/cabal)** - agent orchestration. Argus's agent registers here
+- **[cabal](https://github.com/tenishai/cabal)** - agent orchestration. Noto's agent registers here
   as the observability persona.
-- **[daedalus](https://github.com/tenishai/daedalus)** - agent construction kit. The Argus agent's
+- **[daedalus](https://github.com/tenishai/daedalus)** - agent construction kit. The Noto agent's
   shell is a daedalus bundle (persona, agent card, wiring).
-- **[ladon](https://github.com/tenishai/ladon)** - secrets on OpenBao. Argus consumes secrets as a
+- **[ladon](https://github.com/tenishai/ladon)** - secrets on OpenBao. Noto consumes secrets as a
   ladon team via the External Secrets Operator.
 
-Argus runs self-contained today and composes with these as the platform comes together; it never
+Noto runs self-contained today and composes with these as the platform comes together; it never
 duplicates what a sibling owns.
 
 ## How it works
@@ -84,25 +84,25 @@ duplicates what a sibling owns.
 ```
 gojira:  repo ──▶ identity ──▶ CI/CD ──▶ manifests ──▶ app running, /metrics exposed
                                                               │
-                                                              ▼  (Argus continues)
-argus:   per-cluster platform (collectors + backends + Perses) ──▶ auto-wire every app by class ──▶ dashboards · SLOs · alerts
+                                                              ▼  (Noto continues)
+noto:   per-cluster platform (collectors + backends + Perses) ──▶ auto-wire every app by class ──▶ dashboards · SLOs · alerts
 ```
 
-Argus stands the platform up once per cluster, then wires each gojira-managed app into it based on its
+Noto stands the platform up once per cluster, then wires each gojira-managed app into it based on its
 workload class, applying everything directly through cloud CLI / SDK / Helm and OpenTelemetry Operator
 CRDs - no third-party GitOps controller in the path.
 
 ## Operating it
 
-`argus platform --cluster <name> --env <dev|qa|prod>` stands the platform up once per cluster:
+`noto platform --cluster <name> --env <dev|qa|prod>` stands the platform up once per cluster:
 the collector tier, the backends, Perses, and the identity the observe Job runs as.
-`argus observe --gojira <path> --env <env>` wires one app in. Everything an operator needs
+`noto observe --gojira <path> --env <env>` wires one app in. Everything an operator needs
 beyond that is in [docs/operating.md](docs/operating.md):
 
 - the collector tier, and why per-app shaping rules do not reach the shared gateway;
-- the platform's own record (`argus-platform-info`), and how `observe` resolves its tenant from
+- the platform's own record (`noto-platform-info`), and how `observe` resolves its tenant from
   it so the write tenant and the read tenant cannot drift apart;
-- retention, enforced per backend and alarmed by `ArgusRetentionWindowShort`;
+- retention, enforced per backend and alarmed by `NotoRetentionWindowShort`;
 - how rules reach Mimir's ruler: on `platform`, on every `observe`, and via `rules-sync`;
 - endpoints: in-cluster DNS by default, port-forward on request;
 - running `observe` as a one-shot Job: its identity, a ready-to-copy manifest, the
@@ -132,11 +132,11 @@ operations.
 
 ## Documentation
 
-- [Operating argus](docs/operating.md) - the platform record, retention, rules, endpoints, the observe Job, the image
+- [Operating noto](docs/operating.md) - the platform record, retention, rules, endpoints, the observe Job, the image
 - [Roadmap](ROADMAP.md) - the phased plan (Observe -> Curate -> Guard -> Reason) at a glance
 - [Design document](docs/design.md) - architecture, decisions, deployment model, roadmap
 - [OpenTelemetry Collector Enablement Guide](docs/otel-collector-enablement-guide.md) - the collector
-  patterns and pipeline opinions Argus ships as defaults
+  patterns and pipeline opinions Noto ships as defaults
 - [Platform Evolution](docs/observability-platform-design.md) - the agent topology and
   integrations-that-just-work north star
 - [Architecture cards](ARCHITECTURE.md) - the repo card and its seams under docs/arch/
@@ -156,4 +156,4 @@ have had AI help.
 
 [AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).
 
-Copyright (C) 2026 tenish and the argus contributors
+Copyright (C) 2026 tenish and the noto contributors

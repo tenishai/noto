@@ -8,8 +8,8 @@ rendered config to the backend's own binary. See the task report for the transcr
 
 import pytest
 
-from argus.rendering.alerts import render_platform_rules
-from argus.steps import helm_set_values, retention_helm_sets
+from noto.rendering.alerts import render_platform_rules
+from noto.steps import helm_set_values, retention_helm_sets
 
 # profiles/baseline.yaml's budgets.retention, spelled out so a baseline edit shows up
 # here as a deliberate test change rather than a silently re-derived expectation.
@@ -103,14 +103,14 @@ def test_helm_set_values_is_the_mapping_helm_install_fingerprints() -> None:
 def test_the_retention_alert_is_a_platform_rule_in_the_platform_namespace() -> None:
     doc = render_platform_rules(BASELINE, BORN, namespace="obs")
     assert doc["kind"] == "PrometheusRule"
-    assert doc["metadata"]["name"] == "argus-platform"
+    assert doc["metadata"]["name"] == "noto-platform"
     assert doc["metadata"]["namespace"] == "obs"
-    assert doc["metadata"]["labels"]["argus.dev/managed"] == "true"
+    assert doc["metadata"]["labels"]["noto.dev/managed"] == "true"
 
 
 def test_the_expression_for_the_baseline_thirty_day_promise() -> None:
     rule = _only_rule(render_platform_rules(BASELINE, BORN))
-    assert rule["alert"] == "ArgusRetentionWindowShort"
+    assert rule["alert"] == "NotoRetentionWindowShort"
     assert rule["expr"] == (
         "absent_over_time(up[1h] offset 29d) and on() (vector(time()) > 1702592000)"
     )
@@ -148,4 +148,4 @@ def test_the_retention_alert_says_it_belongs_to_the_platform() -> None:
     """Nothing else owns this alert, so it carries its own name as its `app` rather than
     going unlabeled while every per-app alert says whose it is."""
     rule = _only_rule(render_platform_rules(BASELINE, BORN))
-    assert rule["labels"]["app"] == "argus-platform"
+    assert rule["labels"]["app"] == "noto-platform"

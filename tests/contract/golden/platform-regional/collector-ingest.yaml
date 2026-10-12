@@ -2,17 +2,17 @@ apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   labels:
-    argus.dev/cluster: golden-cluster
-    argus.dev/managed: 'true'
-    argus.dev/role: ingest
-  name: argus-ingest
-  namespace: argus
+    noto.dev/cluster: golden-cluster
+    noto.dev/managed: 'true'
+    noto.dev/role: ingest
+  name: noto-ingest
+  namespace: noto
 spec:
   config:
     exporters:
       otlp/tempo:
         compression: zstd
-        endpoint: tempo.us-east4.argus.internal:4317
+        endpoint: tempo.us-east4.noto.internal:4317
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -25,7 +25,7 @@ spec:
           insecure: true
       otlphttp/loki:
         compression: zstd
-        endpoint: http://loki.us-east4.argus.internal:3100/otlp
+        endpoint: http://loki.us-east4.noto.internal:3100/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -36,7 +36,7 @@ spec:
         timeout: 30s
       otlphttp/mimir:
         compression: zstd
-        endpoint: http://mimir.us-east4.argus.internal:9009/otlp
+        endpoint: http://mimir.us-east4.noto.internal:9009/otlp
         headers:
           X-Scope-OrgID: golden-cluster
         retry_on_failure:
@@ -62,7 +62,7 @@ spec:
     receivers:
       kafka:
         brokers:
-        - redpanda.us-east4.argus.internal:9092
+        - redpanda.us-east4.noto.internal:9092
         protocol_version: 2.6.0
     service:
       extensions:

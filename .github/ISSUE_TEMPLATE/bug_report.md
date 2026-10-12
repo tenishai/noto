@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something argus does wrong
+about: Something noto does wrong
 labels: bug
 ---
 
@@ -12,6 +12,6 @@ labels: bug
 Commands, the deploy contract or profile involved, and output. Say whether it was the observe job, the CLI, or rendered output (collector config, rules, dashboards).
 
 **Environment**
-- argus version or commit:
+- noto version or commit:
 - Kubernetes distribution and version:
 - Python version and OS:

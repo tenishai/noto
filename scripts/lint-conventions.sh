@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# lint-conventions.sh - enforce Argus prose and pinning conventions.
+# lint-conventions.sh - enforce Noto prose and pinning conventions.
 #
 # Checks:
 #   1. Em dashes in prose (Markdown). WARNS only: style, not a gate.

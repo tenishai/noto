@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from argus.profiles.loader import load_baseline, load_class, load_override
-from argus.profiles.resolve import resolve
-from argus.rendering.alerts import render_alert_rules
-from argus.rendering.context import Context
+from noto.profiles.loader import load_baseline, load_class, load_override
+from noto.profiles.resolve import resolve
+from noto.rendering.alerts import render_alert_rules
+from noto.rendering.context import Context
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "profiles"
 
@@ -24,13 +24,13 @@ def test_groups() -> None:
     doc = _doc()
     assert doc["kind"] == "PrometheusRule"
     names = [g["name"] for g in doc["spec"]["groups"]]
-    assert names == ["argus-collector-health", "argus-cardinality", "argus-app-clips"]
+    assert names == ["noto-collector-health", "noto-cardinality", "noto-app-clips"]
 
 
 def test_scrape_down_expr() -> None:
     doc = _doc()
     app_group = doc["spec"]["groups"][2]
-    scrape_down = next(r for r in app_group["rules"] if r["alert"] == "ArgusScrapeDown")
+    scrape_down = next(r for r in app_group["rules"] if r["alert"] == "NotoScrapeDown")
     assert scrape_down["expr"] == 'up{job="clips"} == 0'
     assert scrape_down["for"] == "5m"
 
@@ -39,7 +39,7 @@ def test_collector_health_alerts_present() -> None:
     doc = _doc()
     health = doc["spec"]["groups"][0]
     alerts = {r["alert"] for r in health["rules"]}
-    assert {"ArgusCollectorMemoryHigh", "ArgusCollectorRefusing", "ArgusExporterFailing"} <= alerts
+    assert {"NotoCollectorMemoryHigh", "NotoCollectorRefusing", "NotoExporterFailing"} <= alerts
 
 
 def test_no_scrape_class_ships_no_scrape_down_group() -> None:
@@ -52,11 +52,11 @@ def test_no_scrape_class_ships_no_scrape_down_group() -> None:
     ctx = Context(topology="solo", cluster="c1", environment="dev", app="hello", namespace="hello")
     doc = render_alert_rules(p, ctx)
     names = [g["name"] for g in doc["spec"]["groups"]]
-    assert names == ["argus-collector-health", "argus-cardinality"]
+    assert names == ["noto-collector-health", "noto-cardinality"]
 
 
 def test_every_alert_in_the_apps_own_group_says_whose_it_is() -> None:
-    """The app's own group (`argus-app-<app>`) is the one whose alerts belong to the app,
+    """The app's own group (`noto-app-<app>`) is the one whose alerts belong to the app,
     so those carry who owns them, beside the severity they already had."""
     p = resolve(
         load_baseline(FIXTURES / "baseline.yaml"),
@@ -65,7 +65,7 @@ def test_every_alert_in_the_apps_own_group_says_whose_it_is() -> None:
     )
     ctx = Context(topology="solo", cluster="c1", environment="dev", app="clips", namespace="clips")
     doc = render_alert_rules(p, ctx)
-    app_group = next(g for g in doc["spec"]["groups"] if g["name"] == "argus-app-clips")
+    app_group = next(g for g in doc["spec"]["groups"] if g["name"] == "noto-app-clips")
     seen_alert = False
     for rule in app_group["rules"]:
         if "alert" not in rule:
@@ -79,7 +79,7 @@ def test_every_alert_in_the_apps_own_group_says_whose_it_is() -> None:
     assert seen_alert
 
 
-_SHARED_GROUPS = ("argus-collector-health", "argus-cardinality")
+_SHARED_GROUPS = ("noto-collector-health", "noto-cardinality")
 
 
 def _rendered_for(app: str, namespace: str, class_file: str = "web"):
@@ -101,7 +101,7 @@ def test_the_shared_groups_carry_one_label_and_it_is_the_platforms() -> None:
         if group["name"] not in _SHARED_GROUPS:
             continue
         for rule in group["rules"]:
-            assert rule["labels"]["app"] == "argus-platform"
+            assert rule["labels"]["app"] == "noto-platform"
             assert set(rule["labels"]) == {"severity", "app"}
 
 
@@ -126,7 +126,7 @@ def test_a_shared_alert_has_the_same_labelset_in_every_apps_pack() -> None:
 def test_owned_leaves_a_recording_rule_untouched() -> None:
     """A rule with no `alert` key (a recording rule) is not this task's concern: `_owned`
     must return it exactly as given, with no owner labels added."""
-    from argus.rendering.alerts import _owned
+    from noto.rendering.alerts import _owned
 
     recording_rule = {"record": "job:up:avg", "expr": "avg(up)"}
     owner = {"app": "clips", "namespace": "clips", "class": "web", "environment": "dev"}
@@ -137,7 +137,7 @@ def test_owned_leaves_a_recording_rule_untouched() -> None:
 def test_owned_does_not_mutate_the_module_level_collector_health_rules() -> None:
     """`_COLLECTOR_HEALTH_RULES` is shared across every render call; `_owned` must build a
     new dict rather than writing labels into the module constant."""
-    from argus.rendering.alerts import _COLLECTOR_HEALTH_RULES
+    from noto.rendering.alerts import _COLLECTOR_HEALTH_RULES
 
     before = [dict(r) for r in _COLLECTOR_HEALTH_RULES]
     p = resolve(
@@ -155,7 +155,7 @@ def test_owned_does_not_mutate_the_module_level_collector_health_rules() -> None
 def test_a_rules_own_label_wins_over_the_owners() -> None:
     """`_owned`'s docstring promise: a rule that already sets one of the owner keys on
     purpose keeps its own value rather than being overwritten."""
-    from argus.rendering.alerts import _owned
+    from noto.rendering.alerts import _owned
 
     rule = {"alert": "X", "labels": {"severity": "page", "app": "not-clips"}}
     owner = {"app": "clips", "namespace": "clips", "class": "web", "environment": "dev"}

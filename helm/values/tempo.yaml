@@ -4,7 +4,7 @@ tempo:
   multitenancyEnabled: true
   metricsGenerator:
     enabled: true
-    remoteWriteUrl: http://mimir-nginx.argus.svc:80/api/v1/push  # engine overrides
+    remoteWriteUrl: http://mimir-nginx.noto.svc:80/api/v1/push  # engine overrides
   overrides:
     defaults:
       metrics_generator:

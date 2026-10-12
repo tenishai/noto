@@ -8,7 +8,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PINS="$REPO/helm/pins.yaml"
 
-uv run python - "$PINS" <<'EOF' > /tmp/argus-helm-matrix.txt
+uv run python - "$PINS" <<'EOF' > /tmp/noto-helm-matrix.txt
 import sys
 import yaml
 
@@ -19,11 +19,11 @@ EOF
 
 while read -r name repo chart version values; do
   echo "==> $name ($chart $version)"
-  helm template "argus-$name" "$chart" \
+  helm template "noto-$name" "$chart" \
     --repo "$repo" --version "$version" \
     -f "$REPO/helm/$values" \
-    --namespace argus --kube-version 1.36.0 >/dev/null
+    --namespace noto --kube-version 1.36.0 >/dev/null
   echo "    ok"
-done < /tmp/argus-helm-matrix.txt
+done < /tmp/noto-helm-matrix.txt
 
 echo "==> validate-helm: every pinned chart templates cleanly with our values"

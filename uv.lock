@@ -181,7 +181,7 @@ wheels = [
 ]
 
 [[package]]
-name = "tenish-argus"
+name = "tenish-noto"
 version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [

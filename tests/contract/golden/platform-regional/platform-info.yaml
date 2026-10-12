@@ -6,6 +6,6 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    argus.dev/managed: 'true'
-  name: argus-platform-info
-  namespace: argus
+    noto.dev/managed: 'true'
+  name: noto-platform-info
+  namespace: noto

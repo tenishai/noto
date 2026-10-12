@@ -1,8 +1,8 @@
 # OpenTelemetry Collector Enablement Guide
 
-> **Status:** Reference. The collection patterns, processor opinions, and pipeline assembly Argus
-> encodes as defaults. References to "Argus' reference config" describe the opinionated configuration
-> Argus ships. Treat the content as a guide to validate against upstream OpenTelemetry docs, not as
+> **Status:** Reference. The collection patterns, processor opinions, and pipeline assembly Noto
+> encodes as defaults. References to "Noto' reference config" describe the opinionated configuration
+> Noto ships. Treat the content as a guide to validate against upstream OpenTelemetry docs, not as
 > ground truth.
 
 This guide covers how to deploy, monitor, and configure the OpenTelemetry Collector in Kubernetes,
@@ -1012,7 +1012,7 @@ For production, the best practice is often a combination:
 3. **StatefulSet Collectors** (Optional) are introduced specifically to handle massive scale Prometheus
    endpoint scraping alongside the Gateway, sharded via the TargetAllocator.
 
-> The Argus reference config uses this combined strategy - we leverage an Agent for local collection of
+> The Noto reference config uses this combined strategy - we leverage an Agent for local collection of
 > spans/push-based metrics, and forward telemetry to the Gateway for secondary processing
 > (k8sattributes enrichment, and spanMetrics generation). A StatefulSet is also deployed to handle
 > discovery/scraping of Prometheus metrics as needed.
@@ -1058,11 +1058,11 @@ service:
   backend (network issues, rate limiting, bad credentials).
 - `otelcol_processor_batch_batch_send_size`: Helps tune your batch processor.
 
-> The Argus managed **OpenTelemetry Ingestion & Health** dashboard exposes many of these metrics by
+> The Noto managed **OpenTelemetry Ingestion & Health** dashboard exposes many of these metrics by
 > default, so customers scraping their collector metrics and sending them to the platform have an
 > out-of-the-box view providing a high-level overview of collector health.
 
-**Example Customer Collector Dashboard:** *(source linked an internal Argus dashboard URL - omitted)*
+**Example Customer Collector Dashboard:** *(source linked an internal Noto dashboard URL - omitted)*
 
 The dashboard shows panels such as:
 - **OpenTelemetry Collector Receivers** - Receiver Metric Data Points Accepted / Refused; Receiver
@@ -1102,7 +1102,7 @@ errors by dropping data or forcing garbage collection when memory thresholds are
 - `spike_limit_mib`: A buffer to handle sudden spikes. Dropping starts at `limit_mib − spike_limit_mib`.
   This can also be expressed as a percentage via `spike_limit_percentage`.
 
-> The Argus reference collector config looks like the example below - for collectors that leverage HPA,
+> The Noto reference collector config looks like the example below - for collectors that leverage HPA,
 > the default `targetMemoryUtilization` is 70%, so HPA scaling should ideally kick in before the
 > `memory_limiter` rejects traffic (assuming the workload does not ramp up too quickly).
 
@@ -1249,7 +1249,7 @@ PII, dropping specific spans, or complex conditional logic.
 
 *[OTTL Function Reference]*
 
-In the Argus reference OTel configuration, we leverage the Transform processor to do conditional
+In the Noto reference OTel configuration, we leverage the Transform processor to do conditional
 processing of telemetry, usually to target specific metrics in a pipeline.
 
 **Example:**
@@ -1292,7 +1292,7 @@ processors:
 **Purpose:** Re-groups Spans, Metrics, or Logs in the pipeline to a Resource based on the specified
 attributes. Said differently, this processor will "promote" specified attributes to the resource scope.
 
-**Use Case:** In the Argus reference configuration, we leverage the group by attributes processor to
+**Use Case:** In the Noto reference configuration, we leverage the group by attributes processor to
 elevate labels on metrics from cAdvisor and Kube State Metrics (such as pod and namespace) from the
 datapoint scope to the resource scope, so they can be used as source attributes in the `k8sattributes`
 processor. This allows for more flexible metadata enrichment than can be done with Prometheus relabel
@@ -1319,14 +1319,14 @@ processors:
 using zstd or gzip, and reduces the number of outgoing connections and API requests to your backend.
 **Always place this last in your pipeline.**
 
-The Argus reference config uses a batch size of 1k elements, with a max batch size of 2k elements and a
+The Noto reference config uses a batch size of 1k elements, with a max batch size of 2k elements and a
 1s timeout. This provides a good baseline level of batching/compression that trades memory overhead
 batching elements client-side (and memory overhead processing batches platform-side) vs network
 compression/number of requests made to the platform.
 
 The timeout can be adjusted to larger values if collector metrics show that most batches are being sent
 after the timeout is triggered, as opposed to reaching the desired batch size. The tradeoff here is that
-larger timeouts means waiting longer to send data to Argus, so it affects time-to-data being queryable
+larger timeouts means waiting longer to send data to Noto, so it affects time-to-data being queryable
 within the platform. This should not be a significant concern though, as batch timeouts should always be
 on the order of seconds.
 
@@ -1340,15 +1340,15 @@ processors:
     send_batch_max_size: 2000  # Hard limit to prevent payload too large errors
 ```
 
-## Exporting Telemetry to Argus
+## Exporting Telemetry to Noto
 
-To send telemetry to the Argus platform from the OTel collector, we need to configure an OTLP exporter
+To send telemetry to the Noto platform from the OTel collector, we need to configure an OTLP exporter
 like shown below:
 
 ```yaml
 exporters:
-  otlp/argus:
-    endpoint: ${env:ARGUS_OTLP_GRPC_ENDPOINT}
+  otlp/noto:
+    endpoint: ${env:NOTO_OTLP_GRPC_ENDPOINT}
     timeout: 30s
     retry_on_failure:
       enabled: true
@@ -1356,10 +1356,10 @@ exporters:
       num_consumers: 50
     compression: zstd
     headers:
-      API-Token: ${env:ARGUS_API_TOKEN}
+      API-Token: ${env:NOTO_API_TOKEN}
       # Return a description if metrics sent to the platform are rejected
       # due to validation issues
-      Argus-Metrics-Validation-Response: SHORT
+      Noto-Metrics-Validation-Response: SHORT
 ```
 
 A couple of key points to call out in the above configuration:
@@ -1377,13 +1377,13 @@ A couple of key points to call out in the above configuration:
     effectively.
   - Note: The default `num_consumers` is 10, and the default `queue_size` is 1000.
 
-For sending **Logs** to Argus, we should configure a separate exporter that sends OTLP data over HTTP,
+For sending **Logs** to Noto, we should configure a separate exporter that sends OTLP data over HTTP,
 instead of the gRPC based exporter shown above:
 
 ```yaml
 exporters:
-  otlphttp/argus:
-    endpoint: ${env:ARGUS_OTLP_HTTP_ENDPOINT}
+  otlphttp/noto:
+    endpoint: ${env:NOTO_OTLP_HTTP_ENDPOINT}
     timeout: 30s
     retry_on_failure:
       enabled: true
@@ -1394,13 +1394,13 @@ exporters:
       API-Token: ${env:API_TOKEN}
 ```
 
-> The core configuration is fundamentally the same as it is for the gRPC based exporter. Argus supports
+> The core configuration is fundamentally the same as it is for the gRPC based exporter. Noto supports
 > ingesting Metrics/Logs via the OTLPHTTP exporter as well, but our preferred method is via gRPC.
 
 ## Example Recommended Pipeline Assembly
 
 Here is an example of how these processors are combined into pipelines, using the reference Gateway
-configuration that Argus provides:
+configuration that Noto provides:
 
 ```yaml
 service:
@@ -1415,7 +1415,7 @@ service:
         - resource/default      # 3. Standardize resource attributes
         - batch                 # 4. Compress and batch for export
       exporters:
-        - otlp/argus
+        - otlp/noto
     traces:
       receivers:
         - otlp
@@ -1425,7 +1425,7 @@ service:
         - resource/default      # 3. Standardize resource attributes
         - batch                 # 4. Compress and batch for export
       exporters:
-        - otlp/argus
+        - otlp/noto
         - spanmetrics           # connector at the end of the main "traces"
                                 # pipeline (no receivers; does attribute
                                 # enrichment of the generated span metrics)
@@ -1443,7 +1443,7 @@ service:
         - metricstransform/spanmetrics  # 5. Aggregate/de-dupe series
         - batch                 # 6. Compress and batch for export
       exporters:
-        - otlp/argus
+        - otlp/noto
 
     # Use a separate pipeline for self-scrape so we can run additional
     # processors before forwarding to the regular pipeline.

@@ -1,4 +1,4 @@
-# Argus - test layers per docs/testing.md, cheapest first.
+# Noto - test layers per docs/testing.md, cheapest first.
 # `make test` runs layers 1-3 (static, unit, contract). Layer 4 (smoke) is gated
 # separately and lands with issue #24.
 

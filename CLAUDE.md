@@ -12,15 +12,15 @@ skill below, use it before hand-rolling the work.
 | Skill | Use it when... | Relevance |
 |---|---|---|
 | **doc-coauthoring** | Writing or revising any doc, proposal, design spec, or decision record (the design doc, runbooks, ADRs). | Core - we are documentation-heavy. |
-| **claude-api** | Writing or reviewing any agent code that calls the Claude API / Anthropic SDK, defines tools, or migrates models. Read it before answering LLM/model/pricing questions from memory. | Core - the Argus agent is an LLM app. |
-| **mcp-builder** | Building any MCP server (e.g. exposing Argus operations as MCP tools, or the flight-recorder local server). Python (FastMCP) or Node/TS (MCP SDK). | Core when we add MCP surfaces. |
+| **claude-api** | Writing or reviewing any agent code that calls the Claude API / Anthropic SDK, defines tools, or migrates models. Read it before answering LLM/model/pricing questions from memory. | Core - the Noto agent is an LLM app. |
+| **mcp-builder** | Building any MCP server (e.g. exposing Noto operations as MCP tools, or the flight-recorder local server). Python (FastMCP) or Node/TS (MCP SDK). | Core when we add MCP surfaces. |
 | **webapp-testing** | Verifying any local web behavior with Playwright (e.g. Perses provisioning, a future status page, dashboard round-trip checks). | When a web surface or Perses check exists. |
 | **frontend-design** | Designing any web UI surface so it is distinctive and intentional, not templated (e.g. a status page, docs site, dashboard theming). | When/if we build a web surface. |
 | **web-artifacts-builder** | Prototyping elaborate multi-component web artifacts (React/Tailwind/shadcn) - e.g. dashboard mockups or an internal console prototype. | Prototyping only; not a core surface. |
 | **web-design-guidelines** (Vercel) | Reviewing/auditing any UI code we build against 100+ rules across 11 categories (a11y, focus states, forms, animation, typography, images, i18n, performance). Triggers: "review my UI", "check accessibility", "audit design". | Apply to any web surface we ship. Installed project-local (see below). |
-| **skill-creator** | Authoring or evaluating Argus's own Agent Skills (`agent/skills/`): write SKILL.md, draft eval prompts, run with/without, optimize the description, package. | Core - we author skills here. |
+| **skill-creator** | Authoring or evaluating Noto's own Agent Skills (`agent/skills/`): write SKILL.md, draft eval prompts, run with/without, optimize the description, package. | Core - we author skills here. |
 
-Argus's own skills live in [agent/skills/](agent/skills/) and follow the Anthropic format
+Noto's own skills live in [agent/skills/](agent/skills/) and follow the Anthropic format
 (lowercase-hyphenated dir = `name`; `SKILL.md` under 500 lines with `name` + `description` frontmatter;
 progressive disclosure to `references/`/`scripts/`/`assets/`; imperative voice; `license: AGPL-3.0-or-later`).
 

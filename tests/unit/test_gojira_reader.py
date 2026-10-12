@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from argus.gojira.reader import ClusterInfo, GojiraReadError, read_gojira_yaml
+from noto.gojira.reader import ClusterInfo, GojiraReadError, read_gojira_yaml
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gojira"
 
@@ -46,7 +46,7 @@ def test_observability_block_and_unknown_fields() -> None:
         spec = read_gojira_yaml(FIXTURES / "web-observability.yaml")
     assert spec.observability == {"traces": True, "retention": {"metrics": "90d"}}
     # feeds straight into the profile layer's Override
-    from argus.profiles.loader import load_override
+    from noto.profiles.loader import load_override
 
     override = load_override(spec.observability)
     assert override.traces is True

@@ -1,6 +1,6 @@
 # Versioning and Releases
 
-Argus pins everything (an existing hard convention) and versions everything consistently with that
+Noto pins everything (an existing hard convention) and versions everything consistently with that
 rule. This document defines how we version, tag, and change-log.
 
 ## Semantic Versioning
@@ -17,17 +17,17 @@ and we communicate them loudly in the CHANGELOG. We tag the first end-to-end Pha
 
 ## Two version lines
 
-Argus contains two things that version on different clocks. Keep them distinct:
+Noto contains two things that version on different clocks. Keep them distinct:
 
-1. **The Argus release** - the repo as a whole (agent, profiles, helm/CRD pins, docs). Tagged on
-   `main` as `vX.Y.Z`. This is the version a user means by "which Argus."
+1. **The Noto release** - the repo as a whole (agent, profiles, helm/CRD pins, docs). Tagged on
+   `main` as `vX.Y.Z`. This is the version a user means by "which Noto."
 2. **The collector distro** - the `ocb`-built OpenTelemetry Collector in `distro/`. It tracks the
    upstream OTel Collector release train and is pinned in the ocb manifest. It carries its **own**
    version (matching the upstream collector minor it is built from), recorded in the manifest and in
    the built image tag, and is referenced by digest where deployed.
 
-An Argus release records exactly which distro version it ships. Bumping the distro (to add a contrib
-component or follow upstream) is a normal `feat`/`chore` change that flows into the next Argus release;
+An Noto release records exactly which distro version it ships. Bumping the distro (to add a contrib
+component or follow upstream) is a normal `feat`/`chore` change that flows into the next Noto release;
 it does not get its own git tag on this repo. Rationale: one tag namespace on `main` stays simple, and
 the manifest is the single source of truth for the distro version.
 

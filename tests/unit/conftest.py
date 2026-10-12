@@ -9,7 +9,7 @@ which works because monkeypatch applies this fixture first.
 
 The same rule holds for every seam that speaks to the ruler, and there are three: the
 `SyncRules` step's injected `ruler_http`, and the two commands that call the ruler client
-directly with no seam at all (`argus platform`'s own group, `argus rules-sync`). All three
+directly with no seam at all (`noto platform`'s own group, `noto rules-sync`). All three
 are replaced here, the last two by patching `urllib_http` under both names it is reachable
 by, so a test that gets a URL or a tenant wrong fails on the assertions below rather than
 resolving a cluster-internal name on whatever network the machine is on.
@@ -17,9 +17,9 @@ resolving a cluster-internal name on whatever network the machine is on.
 
 import pytest
 
-from argus import cli
-from argus import steps as steps_module
-from argus.feedback import ruler as ruler_module
+from noto import cli
+from noto import steps as steps_module
+from noto.feedback import ruler as ruler_module
 
 
 def _accepting_ruler(method: str, url: str, data: bytes | None, headers: dict):

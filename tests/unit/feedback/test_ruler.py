@@ -11,7 +11,7 @@ import urllib.error
 import pytest
 import yaml
 
-from argus.feedback.ruler import (
+from noto.feedback.ruler import (
     PLATFORM_RULE_GROUP,
     RulerSyncError,
     RulerUnreachable,
@@ -127,7 +127,7 @@ def test_prune_never_leaves_the_namespace_it_was_given() -> None:
         {
             "app-a": [{"name": "stale", "rules": []}],
             "app-b": [{"name": "someone-elses", "rules": []}],
-            "argus-platform": [{"name": "argus-platform-retention", "rules": []}],
+            "noto-platform": [{"name": "noto-platform-retention", "rules": []}],
         }
     )
     http = FakeHttp(
@@ -181,7 +181,7 @@ def test_the_dry_run_count_is_the_count_a_real_push_makes() -> None:
 
 
 def test_the_platforms_own_namespace_is_refused() -> None:
-    """`argus-platform` is a legal app name, and an app run there would prune the
+    """`noto-platform` is a legal app name, and an app run there would prune the
     platform's retention alarm: its groups are not rendered by an app's run."""
     with pytest.raises(RulerSyncError, match="the platform's own ruler namespace"):
         refuse_platform_namespace(PLATFORM_RULE_GROUP)

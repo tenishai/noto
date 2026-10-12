@@ -1,18 +1,18 @@
-# Proposed upstream: PROMETHEUS_HEADERS + the Argus Mimir recipe
+# Proposed upstream: PROMETHEUS_HEADERS + the Noto Mimir recipe
 
 **Target repo:** `gojira-sizing-agent`, a private tenishai repository; this proposal and its patch are kept here as the record
-(read-only for Argus, so this ships as a proposal, not a push)
+(read-only for Noto, so this ships as a proposal, not a push)
 **Patch:** [gojira-sizing-agent-prometheus-headers.patch](gojira-sizing-agent-prometheus-headers.patch)
 (git-am-able onto `main` @ `e060ff2`; verified: applies clean, 16/16 tests pass, ruff clean)
-**Context:** [argus#52](https://github.com/tenishai/argus/issues/52) - Option A adopted:
-gojira-sizing-agent is the single evidence producer everywhere; Argus retired its
-posting path the same day (this repo, `argus feedback` is now diagnostic-only).
+**Context:** [noto#52](https://github.com/tenishai/noto/issues/52) - Option A adopted:
+gojira-sizing-agent is the single evidence producer everywhere; Noto retired its
+posting path the same day (this repo, `noto feedback` is now diagnostic-only).
 
 ## Why
 
-The live interop test (2026-07-12, evidence in argus#52) ran the agent unmodified on an
-Argus solo cluster and it worked first try, with one bridge: a 20-line nginx proxy whose
-only job was injecting `X-Scope-OrgID` in front of Argus's multi-tenant Mimir. The metrics
+The live interop test (2026-07-12, evidence in noto#52) ran the agent unmodified on an
+Noto solo cluster and it worked first try, with one bridge: a 20-line nginx proxy whose
+only job was injecting `X-Scope-OrgID` in front of Noto's multi-tenant Mimir. The metrics
 handler speaks `PROMETHEUS_AUTH=none|google` but has no way to add a header. This patch
 replaces that proxy with configuration.
 
@@ -23,7 +23,7 @@ replaces that proxy with configuration.
   Prometheus request by the metrics handler. Auth modes still win the `Authorization`
   header on conflict. Declared in the handler's capability card; optional secret key in
   the CronJob manifest.
-- README gains an "Argus-managed clusters (Mimir)" recipe next to the GMP one, with the
+- README gains an "Noto-managed clusters (Mimir)" recipe next to the GMP one, with the
   live-validated endpoint, tenant header, and kubeletstats `CPU_QUERY`/`MEM_QUERY`
   preset (`k8s_pod_cpu_time` / `k8s_pod_memory_working_set`, pod-level, promoted
   `k8s_*` labels).

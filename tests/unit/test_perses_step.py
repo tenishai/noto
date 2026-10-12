@@ -9,8 +9,8 @@ import urllib.request
 
 import pytest
 
-from argus.perses_client import PersesClient, PersesError
-from argus.steps import ProvisionPerses, StepContext
+from noto.perses_client import PersesClient, PersesError
+from noto.steps import ProvisionPerses, StepContext
 
 
 class FakeOpener:
@@ -122,7 +122,7 @@ def test_transport_error_raises_perses_error_naming_base_url() -> None:
 
 def _rendered_docs() -> list[dict]:
     return [
-        _doc("c1", None, "Project", {"display": {"name": "Argus · c1"}}),
+        _doc("c1", None, "Project", {"display": {"name": "Noto · c1"}}),
         _doc("mimir", "c1", "Datasource", {"default": True}),
         _doc("loki", "c1", "Datasource", {"default": True}),
         _doc("c1-agent-health", "c1", "Dashboard", {"duration": "1h"}),

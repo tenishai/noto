@@ -9,10 +9,10 @@ from pathlib import Path
 
 import yaml
 
-from argus import cli
-from argus.engine.engine import ProvisionEngine
-from argus.engine.ledger import Ledger
-from argus.steps import ApplyRendered, EnsureNamespace, HelmInstall, StepContext
+from noto import cli
+from noto.engine.engine import ProvisionEngine
+from noto.engine.ledger import Ledger
+from noto.steps import ApplyRendered, EnsureNamespace, HelmInstall, StepContext
 
 FIXTURES = Path(__file__).parent / "fixtures" / "gojira"
 REPO = Path(__file__).parents[2]
@@ -126,7 +126,7 @@ def test_helm_targets_the_same_context_as_kubectl(tmp_path: Path) -> None:
     CURRENT context, which happened to be prod. Both the status probe and the
     upgrade must carry --kube-context whenever the run has one."""
     step = HelmInstall(component="mimir")
-    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    runner = FakeRunner(missing=False, release_description="noto-fp:stale00000000000")
     ledger = Ledger(tmp_path / "l.db")
     result = ProvisionEngine([step]).run(
         ledger, "platform@c1", _ctx(runner, kube_context="dev-ctx")
@@ -141,7 +141,7 @@ def test_helm_targets_the_same_context_as_kubectl(tmp_path: Path) -> None:
 
 def test_helm_without_a_context_adds_no_flag(tmp_path: Path) -> None:
     step = HelmInstall(component="mimir")
-    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    runner = FakeRunner(missing=False, release_description="noto-fp:stale00000000000")
     ProvisionEngine([step]).run(Ledger(tmp_path / "l.db"), "platform@c1", _ctx(runner))
     for cmd, _ in runner.calls:
         if cmd[0] == "helm":
@@ -152,13 +152,13 @@ def test_helm_drift_triggers_upgrade(tmp_path: Path) -> None:
     """Issue #46: an installed release with a stale fingerprint (values/pin/sets changed)
     re-applies instead of ledger-skipping - the gap that cost two manual upgrades live."""
     step = HelmInstall(component="mimir")
-    runner = FakeRunner(missing=False, release_description="argus-fp:stale00000000000")
+    runner = FakeRunner(missing=False, release_description="noto-fp:stale00000000000")
     ledger = Ledger(tmp_path / "l.db")
     result = ProvisionEngine([step]).run(ledger, "platform@c1", _ctx(runner))
     assert result.steps_run == ["helm_mimir"]
     upgrade = next(c for c, _ in runner.calls if c[0] == "helm" and c[1] == "upgrade")
     idx = upgrade.index("--description")
-    assert upgrade[idx + 1].startswith("argus-fp:")
+    assert upgrade[idx + 1].startswith("noto-fp:")
 
 
 def test_helm_rerun_after_values_edit_reapplies(tmp_path: Path) -> None:
@@ -176,7 +176,7 @@ def test_helm_rerun_after_values_edit_reapplies(tmp_path: Path) -> None:
     r2 = ProvisionEngine([step]).run(
         ledger,
         "platform@c1",
-        _ctx(FakeRunner(missing=False, release_description="argus-fp:oldoldoldoldold1")),
+        _ctx(FakeRunner(missing=False, release_description="noto-fp:oldoldoldoldold1")),
     )
     assert r2.steps_run == ["helm_mimir"]
 
@@ -238,7 +238,7 @@ def test_the_rollout_poll_is_bounded_by_its_own_deadline_not_by_thirty_seconds()
     bounds the watch request underneath it - so the standing 30s bound would abort a
     healthy rollout that simply takes longer than that. The polling step passes its own
     remaining deadline instead."""
-    from argus.steps import StepContext as Ctx
+    from noto.steps import StepContext as Ctx
 
     cmd = Ctx(runner=lambda *_a: (0, "")).kubectl("rollout", "status", request_timeout="330s")
     assert cmd[-1] == "--request-timeout=330s"
@@ -275,11 +275,11 @@ def test_apply_rendered_annotates_documents_with_the_observed_contract(
     ProvisionEngine([ApplyRendered(family="scrape")]).run(
         ledger,
         "wire@x",
-        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+        _ctx(runner, rendered=rendered, annotations={"noto.dev/contract-sha256": sha}),
     )
     _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
     applied = list(yaml.safe_load_all(stdin_text))
-    assert applied[0]["metadata"]["annotations"] == {"argus.dev/contract-sha256": sha}
+    assert applied[0]["metadata"]["annotations"] == {"noto.dev/contract-sha256": sha}
 
 
 def test_apply_rendered_annotation_survives_alongside_unrelated_annotations(
@@ -294,7 +294,7 @@ def test_apply_rendered_annotation_survives_alongside_unrelated_annotations(
                 "name": "x",
                 "annotations": {
                     "unrelated/keep": "yes",
-                    "argus.dev/contract-sha256": "stale" * 12 + "0000",
+                    "noto.dev/contract-sha256": "stale" * 12 + "0000",
                 },
             },
         }
@@ -304,13 +304,13 @@ def test_apply_rendered_annotation_survives_alongside_unrelated_annotations(
     ProvisionEngine([ApplyRendered(family="scrape")]).run(
         ledger,
         "wire@x",
-        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": sha}),
+        _ctx(runner, rendered=rendered, annotations={"noto.dev/contract-sha256": sha}),
     )
     _, stdin_text = next((c, s) for c, s in runner.calls if "apply" in c)
     applied = list(yaml.safe_load_all(stdin_text))
     annotations = applied[0]["metadata"]["annotations"]
     assert annotations["unrelated/keep"] == "yes"
-    assert annotations["argus.dev/contract-sha256"] == sha
+    assert annotations["noto.dev/contract-sha256"] == sha
 
 
 def test_apply_rendered_never_mutates_the_callers_rendered_documents(
@@ -326,7 +326,7 @@ def test_apply_rendered_never_mutates_the_callers_rendered_documents(
     ProvisionEngine([ApplyRendered(family="scrape")]).run(
         ledger,
         "wire@x",
-        _ctx(runner, rendered=rendered, annotations={"argus.dev/contract-sha256": "c" * 64}),
+        _ctx(runner, rendered=rendered, annotations={"noto.dev/contract-sha256": "c" * 64}),
     )
     assert original_doc == {"kind": "ServiceMonitor"}
     assert "metadata" not in original_doc
@@ -374,7 +374,7 @@ def test_cli_render_defaults_out_dir_per_mode(tmp_path: Path, monkeypatch) -> No
         ]
     )
     assert code == 0
-    assert (tmp_path / ".argus" / "rendered-app" / "alerts.yaml").exists()
+    assert (tmp_path / ".noto" / "rendered-app" / "alerts.yaml").exists()
 
     code = cli.main(
         [
@@ -389,8 +389,8 @@ def test_cli_render_defaults_out_dir_per_mode(tmp_path: Path, monkeypatch) -> No
         ]
     )
     assert code == 0
-    assert (tmp_path / ".argus" / "rendered-platform" / "collectors.yaml").exists()
-    assert not (tmp_path / ".argus" / "rendered-app" / "collectors.yaml").exists()
+    assert (tmp_path / ".noto" / "rendered-platform" / "collectors.yaml").exists()
+    assert not (tmp_path / ".noto" / "rendered-app" / "collectors.yaml").exists()
 
 
 def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
@@ -418,10 +418,10 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
     }
     docs = list(yaml.safe_load_all((out / "collectors.yaml").read_text()))
     names = {d["metadata"]["name"] for d in docs}
-    assert {"argus-agent", "argus-gateway", "argus-scraper", "argus-targetallocator"} <= names
+    assert {"noto-agent", "noto-gateway", "noto-scraper", "noto-targetallocator"} <= names
     kinds = {d["kind"] for d in docs}
     assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding", "PriorityClass"} <= kinds
-    gateway = next(d for d in docs if d["metadata"]["name"] == "argus-gateway")
+    gateway = next(d for d in docs if d["metadata"]["name"] == "noto-gateway")
     assert set(gateway["spec"]["config"]["service"]["pipelines"]) == {
         "metrics",
         "logs",
@@ -432,7 +432,7 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
 
 def test_cli_render_platform_writes_the_observe_job_identity(tmp_path: Path) -> None:
     """The job's own identity - the ServiceAccount + RBAC a provisioner's Job runs
-    `argus observe` as - is a separate family from `collectors` (see
+    `noto observe` as - is a separate family from `collectors` (see
     `_render_platform_families`'s docstring); `render --platform` must include it."""
     out = tmp_path / "rendered"
     code = cli.main(
@@ -496,7 +496,7 @@ def test_cli_render_platform_previews_exactly_what_platform_applies(
 
     applied_runner = InfoRunner(dict(recorded))
     monkeypatch.setattr(cli, "real_runner", applied_runner)
-    monkeypatch.setattr("argus.feedback.ruler.sync_rules", lambda *a, **k: 1)
+    monkeypatch.setattr("noto.feedback.ruler.sync_rules", lambda *a, **k: 1)
     assert (
         cli.main(
             ["platform", "--cluster", "c1", "--env", "dev", "--ledger", str(tmp_path / "p.db")]
@@ -506,7 +506,7 @@ def test_cli_render_platform_previews_exactly_what_platform_applies(
     applied = [
         d
         for d in applied_runner.applied_docs()
-        if d.get("metadata", {}).get("name") == "argus-platform"
+        if d.get("metadata", {}).get("name") == "noto-platform"
     ]
     assert applied == previewed
 
@@ -556,7 +556,7 @@ def test_cli_platform_applies_the_collector_tier_after_the_helm_installs(
 
 def test_cli_platform_tells_the_ruler_where_alertmanager_is(tmp_path: Path, monkeypatch) -> None:
     """Mimir's ruler evaluates a rule and then drops any alert it fires unless it knows
-    where Alertmanager is. `argus platform` passes that URL through the same --set
+    where Alertmanager is. `noto platform` passes that URL through the same --set
     passthrough as the cardinality budget and retention sets, derived from the
     platform's own --namespace so it agrees with the operator's Service."""
     runner = FakeRunner()
@@ -577,21 +577,21 @@ def test_cli_platform_tells_the_ruler_where_alertmanager_is(tmp_path: Path, monk
     assert code == 0
     upgrades = {
         c[3]: c for c, _ in runner.calls if c[0] == "helm" and c[1] == "upgrade"
-    }  # argus-<component> -> argv
-    mimir = " ".join(upgrades["argus-mimir"])
+    }  # noto-<component> -> argv
+    mimir = " ".join(upgrades["noto-mimir"])
     assert (
         "mimir.structuredConfig.ruler.alertmanager_url="
         "http://alertmanager-operated.obs.svc:9093" in mimir
     )
     for release, argv in upgrades.items():
-        if release != "argus-mimir":
+        if release != "noto-mimir":
             assert "alertmanager_url" not in " ".join(argv)
 
 
 def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
     """collectors apply -> wait_collectors -> validate, in that order: the collector
     apply has no --wait, so validate must not race the operator standing up pods."""
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: list[list[str]] = []
 
@@ -628,7 +628,7 @@ def test_cli_platform_requires_an_environment(tmp_path: Path) -> None:
 
 
 def test_ignored_drop_rule_names_covers_added_changed_and_disabled() -> None:
-    from argus.profiles.models import DropRule
+    from noto.profiles.models import DropRule
 
     platform = [
         DropRule(name="health-endpoints", stage="agent", path_matches=["/healthz"]),
@@ -644,7 +644,7 @@ def test_ignored_drop_rule_names_covers_added_changed_and_disabled() -> None:
 
 
 def test_ignored_drop_rule_names_empty_when_identical() -> None:
-    from argus.profiles.models import DropRule
+    from noto.profiles.models import DropRule
 
     rules = [DropRule(name="x", stage="agent", path_matches=["/y"])]
     assert cli._ignored_drop_rule_names(list(rules), list(rules)) == []
@@ -803,7 +803,7 @@ def test_cli_observe_operator_mode_applies_no_contract_annotation(
     assert applies
     for _cmd, stdin_text in applies:
         for doc in yaml.safe_load_all(stdin_text):
-            assert "argus.dev/contract-sha256" not in doc.get("metadata", {}).get("annotations", {})
+            assert "noto.dev/contract-sha256" not in doc.get("metadata", {}).get("annotations", {})
 
 
 def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
@@ -838,7 +838,7 @@ def test_cli_observe_operator_mode_progress_on_stdout_no_summary_line(
 
 import pytest  # noqa: E402
 
-# --- in-cluster endpoint derivation: --namespace / ARGUS_NAMESPACE feed --mimir-url
+# --- in-cluster endpoint derivation: --namespace / NOTO_NAMESPACE feed --mimir-url
 # and --perses-url unless the flag is given explicitly ---
 
 
@@ -849,10 +849,10 @@ def test_cardinality_mimir_url_derives_from_default_namespace(monkeypatch) -> No
         captured["mimir_base"] = mimir_base
         return [("foo", 5)]
 
-    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    monkeypatch.setattr("noto.feedback.cardinality.top_metric_names", fake_top_metric_names)
     code = cli.main(["cardinality", "--tenant", "t1"])
     assert code == 0
-    assert captured["mimir_base"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+    assert captured["mimir_base"] == "http://noto-mimir-gateway.noto.svc:80/prometheus"
 
 
 def test_cardinality_explicit_mimir_url_wins_over_derived_default(monkeypatch) -> None:
@@ -862,7 +862,7 @@ def test_cardinality_explicit_mimir_url_wins_over_derived_default(monkeypatch) -
         captured["mimir_base"] = mimir_base
         return []
 
-    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    monkeypatch.setattr("noto.feedback.cardinality.top_metric_names", fake_top_metric_names)
     code = cli.main(
         ["cardinality", "--tenant", "t1", "--mimir-url", "http://localhost:9009/prometheus"]
     )
@@ -877,24 +877,24 @@ def test_cardinality_namespace_flag_changes_the_derived_default(monkeypatch) -> 
         captured["mimir_base"] = mimir_base
         return []
 
-    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    monkeypatch.setattr("noto.feedback.cardinality.top_metric_names", fake_top_metric_names)
     code = cli.main(["cardinality", "--tenant", "t1", "--namespace", "obs"])
     assert code == 0
-    assert captured["mimir_base"] == "http://argus-mimir-gateway.obs.svc:80/prometheus"
+    assert captured["mimir_base"] == "http://noto-mimir-gateway.obs.svc:80/prometheus"
 
 
-def test_cardinality_argus_namespace_env_feeds_the_derived_default(monkeypatch) -> None:
-    monkeypatch.setenv("ARGUS_NAMESPACE", "envns")
+def test_cardinality_noto_namespace_env_feeds_the_derived_default(monkeypatch) -> None:
+    monkeypatch.setenv("NOTO_NAMESPACE", "envns")
     captured: dict = {}
 
     def fake_top_metric_names(mimir_base, tenant, limit=15):
         captured["mimir_base"] = mimir_base
         return []
 
-    monkeypatch.setattr("argus.feedback.cardinality.top_metric_names", fake_top_metric_names)
+    monkeypatch.setattr("noto.feedback.cardinality.top_metric_names", fake_top_metric_names)
     code = cli.main(["cardinality", "--tenant", "t1"])
     assert code == 0
-    assert captured["mimir_base"] == "http://argus-mimir-gateway.envns.svc:80/prometheus"
+    assert captured["mimir_base"] == "http://noto-mimir-gateway.envns.svc:80/prometheus"
 
 
 def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path) -> None:
@@ -904,10 +904,10 @@ def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path
         captured["mimir_url"] = mimir_url
         return 0
 
-    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr("noto.feedback.ruler.sync_rules", fake_sync_rules)
     # `rules-sync` prunes against the same endpoint right after pushing; this test is
     # about which endpoint that is, not about pruning.
-    monkeypatch.setattr("argus.feedback.ruler.prune_groups", lambda *_a: [])
+    monkeypatch.setattr("noto.feedback.ruler.prune_groups", lambda *_a: [])
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -921,7 +921,7 @@ def test_rules_sync_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path
         ]
     )
     assert code == 0
-    assert captured["mimir_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+    assert captured["mimir_url"] == "http://noto-mimir-gateway.noto.svc:80/prometheus"
 
 
 def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None:
@@ -931,10 +931,10 @@ def test_rules_sync_explicit_mimir_url_wins(monkeypatch, tmp_path: Path) -> None
         captured["mimir_url"] = mimir_url
         return 0
 
-    monkeypatch.setattr("argus.feedback.ruler.sync_rules", fake_sync_rules)
+    monkeypatch.setattr("noto.feedback.ruler.sync_rules", fake_sync_rules)
     # `rules-sync` prunes against the same endpoint right after pushing; this test is
     # about which endpoint that is, not about pruning.
-    monkeypatch.setattr("argus.feedback.ruler.prune_groups", lambda *_a: [])
+    monkeypatch.setattr("noto.feedback.ruler.prune_groups", lambda *_a: [])
     monkeypatch.setattr(cli, "_generate_slo_rules", lambda doc, ns: [{"kind": "PrometheusRule"}])
     code = cli.main(
         [
@@ -969,7 +969,7 @@ def test_feedback_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path, 
             "oom_kills": 0,
         }
 
-    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    monkeypatch.setattr("noto.feedback.mimir.collect", fake_collect)
     code = cli.main(
         [
             "feedback",
@@ -983,7 +983,7 @@ def test_feedback_mimir_url_derives_from_namespace(monkeypatch, tmp_path: Path, 
         ]
     )
     assert code == 0
-    assert captured["base_url"] == "http://argus-mimir-gateway.argus.svc:80/prometheus"
+    assert captured["base_url"] == "http://noto-mimir-gateway.noto.svc:80/prometheus"
 
 
 def test_feedback_queries_the_tenant_the_platform_recorded(
@@ -1010,7 +1010,7 @@ def test_feedback_queries_the_tenant_the_platform_recorded(
             "oom_kills": 0,
         }
 
-    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    monkeypatch.setattr("noto.feedback.mimir.collect", fake_collect)
     code = cli.main(
         [
             "feedback",
@@ -1044,7 +1044,7 @@ def test_feedback_explicit_mimir_url_wins(monkeypatch, tmp_path: Path, capsys) -
             "oom_kills": 0,
         }
 
-    monkeypatch.setattr("argus.feedback.mimir.collect", fake_collect)
+    monkeypatch.setattr("noto.feedback.mimir.collect", fake_collect)
     code = cli.main(
         [
             "feedback",
@@ -1064,7 +1064,7 @@ def test_feedback_explicit_mimir_url_wins(monkeypatch, tmp_path: Path, capsys) -
 
 
 def test_observe_perses_url_flag_reaches_the_step_context(tmp_path: Path, monkeypatch) -> None:
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: dict = {}
 
@@ -1098,7 +1098,7 @@ def test_observe_perses_url_flag_reaches_the_step_context(tmp_path: Path, monkey
 def test_observe_perses_url_derives_from_namespace_when_not_given(
     tmp_path: Path, monkeypatch
 ) -> None:
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: dict = {}
 
@@ -1126,13 +1126,11 @@ def test_observe_perses_url_derives_from_namespace_when_not_given(
         ]
     )
     assert code == 0
-    assert captured["step_ctx"].perses_url == "http://argus-perses.obs.svc:8080"
+    assert captured["step_ctx"].perses_url == "http://noto-perses.obs.svc:8080"
 
 
-def test_observe_argus_perses_url_env_wins_over_derived_default(
-    tmp_path: Path, monkeypatch
-) -> None:
-    from argus.engine.engine import ProvisionEngine as RealEngine
+def test_observe_noto_perses_url_env_wins_over_derived_default(tmp_path: Path, monkeypatch) -> None:
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: dict = {}
 
@@ -1141,7 +1139,7 @@ def test_observe_argus_perses_url_env_wins_over_derived_default(
             captured["step_ctx"] = ctx
             return super().run(ledger, name, ctx)
 
-    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    monkeypatch.setenv("NOTO_PERSES_URL", "http://noto-perses.envset:9999")
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
     monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
@@ -1159,11 +1157,11 @@ def test_observe_argus_perses_url_env_wins_over_derived_default(
         ]
     )
     assert code == 0
-    assert captured["step_ctx"].perses_url == "http://argus-perses.envset:9999"
+    assert captured["step_ctx"].perses_url == "http://noto-perses.envset:9999"
 
 
 def test_observe_explicit_perses_url_flag_wins_over_env(tmp_path: Path, monkeypatch) -> None:
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: dict = {}
 
@@ -1172,7 +1170,7 @@ def test_observe_explicit_perses_url_flag_wins_over_env(tmp_path: Path, monkeypa
             captured["step_ctx"] = ctx
             return super().run(ledger, name, ctx)
 
-    monkeypatch.setenv("ARGUS_PERSES_URL", "http://argus-perses.envset:9999")
+    monkeypatch.setenv("NOTO_PERSES_URL", "http://noto-perses.envset:9999")
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
     monkeypatch.setattr(cli, "default_perses_opener", _fake_perses_opener)
@@ -1201,7 +1199,7 @@ def test_observe_step_order_ends_with_provision_perses_operator_mode(
     """Dashboards land last: they chart the alerts/SLOs applied earlier in the same
     run, so provisioning them first would leave dashboards pointing at rules that
     are not there yet."""
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: list[list[str]] = []
 
@@ -1232,7 +1230,7 @@ def test_observe_step_order_ends_with_provision_perses_operator_mode(
 
 
 def _spy_engine(monkeypatch, captured: list[list[str]]):
-    from argus.engine.engine import ProvisionEngine as RealEngine
+    from noto.engine.engine import ProvisionEngine as RealEngine
 
     class SpyEngine(RealEngine):
         def __init__(self, steps):
@@ -1274,7 +1272,7 @@ def test_observe_pushes_the_apps_groups_to_the_ruler_after_applying_them(
     names = captured[0]
     assert names.index("apply_alerts") < names.index("sync-rules") < names.index("provision-perses")
     assert names.index("apply_slo") < names.index("sync-rules")
-    base = "http://argus-mimir-gateway.argus.svc:80/prometheus/config/v1/rules/clips-api"
+    base = "http://noto-mimir-gateway.noto.svc:80/prometheus/config/v1/rules/clips-api"
     posts = [u for m, u, _h in ruler.calls if m == "POST"]
     assert posts and set(posts) == {base}
     # pushed first, pruned second: a failed push must never delete the working groups
@@ -1348,7 +1346,7 @@ def test_observe_in_operator_mode_survives_a_ruler_it_cannot_reach(
     succeeded, so the run succeeds and the step is reported as applied rather than
     failing the whole `observe` (the step's own wording is pinned in
     test_sync_rules_step.py)."""
-    from argus.feedback.ruler import RulerUnreachable
+    from noto.feedback.ruler import RulerUnreachable
 
     def unreachable(*_args):
         raise RulerUnreachable("Connection refused")
@@ -1399,15 +1397,15 @@ def test_platform_namespace_flag_threads_into_step_context(tmp_path: Path, monke
 
 
 @pytest.mark.skipif(
-    not (REPO / ".argus" / "tools" / f"sloth-{cli.SLOTH_VERSION}").exists(),
+    not (REPO / ".noto" / "tools" / f"sloth-{cli.SLOTH_VERSION}").exists(),
     reason="pinned sloth binary not fetched (run `make validate`)",
 )
 def test_generate_slo_rules_via_real_sloth() -> None:
     """Sloth-as-generator: our rendered spec in, PrometheusRule out (design decision)."""
-    from argus.profiles.loader import load_baseline, load_class, load_override
-    from argus.profiles.resolve import resolve
-    from argus.rendering.context import Context
-    from argus.rendering.slo import render_sloth
+    from noto.profiles.loader import load_baseline, load_class, load_override
+    from noto.profiles.resolve import resolve
+    from noto.rendering.context import Context
+    from noto.rendering.slo import render_sloth
 
     p = resolve(
         load_baseline(REPO / "profiles" / "baseline.yaml"),
@@ -1437,11 +1435,11 @@ def test_generate_slo_rules_via_real_sloth() -> None:
         assert rule["labels"]["class"] == p.class_name
 
 
-# --- platform --set COMPONENT:KEY=VALUE (tenishai/argus#90) ------------------------
+# --- platform --set COMPONENT:KEY=VALUE (tenishai/noto#90) ------------------------
 
 
 def test_platform_sets_parse_per_component_and_keep_image_references_whole() -> None:
-    from argus.cli import platform_sets
+    from noto.cli import platform_sets
 
     out = platform_sets(
         [
@@ -1463,7 +1461,7 @@ def test_platform_sets_parse_per_component_and_keep_image_references_whole() -> 
 def test_platform_sets_refuse_an_unknown_component_and_a_malformed_argument() -> None:
     import pytest
 
-    from argus.cli import platform_sets
+    from noto.cli import platform_sets
 
     with pytest.raises(ValueError, match="does not install"):
         platform_sets(["minio:image.tag=x"], ["mimir"])
@@ -1498,9 +1496,9 @@ def test_cli_platform_set_reaches_the_component_helm_upgrade_and_only_that_one(
         for c, _ in runner.calls
         if c[0] == "helm" and c[1] == "upgrade"
     }
-    mimir = upgrades["argus-mimir"]
+    mimir = upgrades["noto-mimir"]
     assert "minio.image.repository=reg/minio" in mimir
     assert "minio.image.tag=RELEASE.x" in mimir
     for name, cmd in upgrades.items():
-        if name != "argus-mimir":
+        if name != "noto-mimir":
             assert not any(a.startswith("minio.image") for a in cmd)

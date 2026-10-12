@@ -2,32 +2,32 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   labels:
-    argus.dev/class: web
-    argus.dev/managed: 'true'
-  name: argus-alerts-sample-web
+    noto.dev/class: web
+    noto.dev/managed: 'true'
+  name: noto-alerts-sample-web
   namespace: sample
 spec:
   groups:
-  - name: argus-collector-health
+  - name: noto-collector-health
     rules:
-    - alert: ArgusCollectorMemoryHigh
+    - alert: NotoCollectorMemoryHigh
       annotations:
         summary: Collector {{ $labels.job }} memory near the limiter threshold
       expr: otelcol_process_memory_rss / otelcol_process_memory_limit > 0.85
       for: 10m
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: ticket
-    - alert: ArgusCollectorRefusing
+    - alert: NotoCollectorRefusing
       annotations:
         summary: Collector {{ $labels.job }} is refusing telemetry at the door
       expr: sum by (job) (rate(otelcol_receiver_refused_spans[5m]) + rate(otelcol_receiver_refused_metric_points[5m])
         + rate(otelcol_receiver_refused_log_records[5m])) > 0
       for: 5m
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: page
-    - alert: ArgusExporterFailing
+    - alert: NotoExporterFailing
       annotations:
         summary: Collector exporter {{ $labels.exporter }} failing sends
       expr: sum by (job, exporter) (rate(otelcol_exporter_send_failed_spans[5m]) +
@@ -35,30 +35,30 @@ spec:
         > 0
       for: 5m
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: page
-  - name: argus-cardinality
+  - name: noto-cardinality
     rules:
-    - alert: ArgusCardinalityBudget80
+    - alert: NotoCardinalityBudget80
       annotations:
         summary: Tenant series count past 80% of the 1000000 budget (profile budgets.cardinality)
       expr: sum(cortex_ingester_active_series) > 800000
       for: 15m
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: ticket
-    - alert: ArgusCardinalityBudgetExceeded
+    - alert: NotoCardinalityBudgetExceeded
       annotations:
         summary: Tenant series count EXCEEDS the 1000000 budget - find offenders with
-          `argus cardinality`
+          `noto cardinality`
       expr: sum(cortex_ingester_active_series) > 1000000
       for: 5m
       labels:
-        app: argus-platform
+        app: noto-platform
         severity: page
-  - name: argus-app-sample-web
+  - name: noto-app-sample-web
     rules:
-    - alert: ArgusScrapeDown
+    - alert: NotoScrapeDown
       annotations:
         summary: sample-web scrape target down (no /metrics for 5m)
       expr: up{job="sample-web"} == 0

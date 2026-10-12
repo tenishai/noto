@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from argus.profiles.loader import ProfileError, load_baseline, load_class, load_override
+from noto.profiles.loader import ProfileError, load_baseline, load_class, load_override
 
 FIXTURES = Path(__file__).parent / "fixtures" / "profiles"
 

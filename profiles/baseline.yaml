@@ -1,4 +1,4 @@
-# Argus baseline profile - what every app and cluster gets, before any class opinion.
+# Noto baseline profile - what every app and cluster gets, before any class opinion.
 # Layered composition: baseline + class + per-app override (docs/design.md).
 budgets:
   retention: { metrics: 30d, logs: 7d, traces: 7d }

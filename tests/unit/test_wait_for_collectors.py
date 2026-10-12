@@ -1,4 +1,4 @@
-"""WaitForCollectors: a fresh `argus platform` run must not race the operator turning
+"""WaitForCollectors: a fresh `noto platform` run must not race the operator turning
 OpenTelemetryCollector CRs into workloads. The operator needs a beat to create the
 DaemonSet/Deployment/StatefulSet and pull images, so Pending/ContainerCreating right
 after the collectors are applied is expected, not a failure - unlike ValidateRoundTrip,
@@ -12,8 +12,8 @@ each one, tolerating NotFound while the operator catches up.
 
 import pytest
 
-from argus import steps as steps_mod
-from argus.steps import StepContext, WaitForCollectors, collector_workloads
+from noto import steps as steps_mod
+from noto.steps import StepContext, WaitForCollectors, collector_workloads
 
 
 class FakeRunner:
@@ -40,7 +40,7 @@ def _ctx(runner, rendered=None, dry_run=False, kube_context=None) -> StepContext
 
 
 def _otel_cr(
-    name: str, mode: str | None, target_allocator: bool = False, namespace: str = "argus"
+    name: str, mode: str | None, target_allocator: bool = False, namespace: str = "noto"
 ) -> dict:
     spec: dict = {}
     if mode is not None:
@@ -56,50 +56,50 @@ def _otel_cr(
 
 
 def test_daemonset_mode_maps_to_daemonset_workload():
-    docs = [_otel_cr("argus-agent", "daemonset")]
-    assert collector_workloads(docs) == [("DaemonSet", "argus-agent-collector", "argus")]
+    docs = [_otel_cr("noto-agent", "daemonset")]
+    assert collector_workloads(docs) == [("DaemonSet", "noto-agent-collector", "noto")]
 
 
 def test_deployment_mode_maps_to_deployment_workload():
-    docs = [_otel_cr("argus-gateway", "deployment")]
-    assert collector_workloads(docs) == [("Deployment", "argus-gateway-collector", "argus")]
+    docs = [_otel_cr("noto-gateway", "deployment")]
+    assert collector_workloads(docs) == [("Deployment", "noto-gateway-collector", "noto")]
 
 
 def test_statefulset_mode_maps_to_statefulset_workload():
-    docs = [_otel_cr("argus-scraper", "statefulset")]
-    assert collector_workloads(docs) == [("StatefulSet", "argus-scraper-collector", "argus")]
+    docs = [_otel_cr("noto-scraper", "statefulset")]
+    assert collector_workloads(docs) == [("StatefulSet", "noto-scraper-collector", "noto")]
 
 
 def test_missing_mode_defaults_to_deployment():
     """The OpenTelemetry operator defaults spec.mode to deployment when absent."""
-    docs = [_otel_cr("argus-gateway", None)]
-    assert collector_workloads(docs) == [("Deployment", "argus-gateway-collector", "argus")]
+    docs = [_otel_cr("noto-gateway", None)]
+    assert collector_workloads(docs) == [("Deployment", "noto-gateway-collector", "noto")]
 
 
 def test_target_allocator_enabled_adds_its_own_deployment():
-    docs = [_otel_cr("argus-scraper", "statefulset", target_allocator=True)]
+    docs = [_otel_cr("noto-scraper", "statefulset", target_allocator=True)]
     assert collector_workloads(docs) == [
-        ("StatefulSet", "argus-scraper-collector", "argus"),
-        ("Deployment", "argus-scraper-targetallocator", "argus"),
+        ("StatefulSet", "noto-scraper-collector", "noto"),
+        ("Deployment", "noto-scraper-targetallocator", "noto"),
     ]
 
 
 def test_non_collector_documents_are_ignored():
     docs = [
-        {"kind": "PriorityClass", "metadata": {"name": "argus-node-critical"}},
-        {"kind": "ServiceAccount", "metadata": {"name": "argus-targetallocator"}},
-        _otel_cr("argus-agent", "daemonset"),
+        {"kind": "PriorityClass", "metadata": {"name": "noto-node-critical"}},
+        {"kind": "ServiceAccount", "metadata": {"name": "noto-targetallocator"}},
+        _otel_cr("noto-agent", "daemonset"),
     ]
-    assert collector_workloads(docs) == [("DaemonSet", "argus-agent-collector", "argus")]
+    assert collector_workloads(docs) == [("DaemonSet", "noto-agent-collector", "noto")]
 
 
 def test_the_real_rendered_platform_tier_yields_four_workloads():
     """End-to-end sanity against the actual renderers: agent (daemonset), gateway
     (deployment), scraper (statefulset + its own targetallocator deployment)."""
-    from argus import cli as cli_mod
-    from argus.integrations.catalog import load_catalog
-    from argus.rendering.collectors import render_agent, render_gateway, render_targetallocator
-    from argus.rendering.context import Context
+    from noto import cli as cli_mod
+    from noto.integrations.catalog import load_catalog
+    from noto.rendering.collectors import render_agent, render_gateway, render_targetallocator
+    from noto.rendering.context import Context
 
     ctx = Context(topology="solo", cluster="c1", environment="dev")
     p = cli_mod._platform_profile()
@@ -110,10 +110,10 @@ def test_the_real_rendered_platform_tier_yields_four_workloads():
     ]
     workloads = collector_workloads(docs)
     assert len(workloads) == 4
-    assert ("DaemonSet", "argus-agent-collector", "argus") in workloads
-    assert ("Deployment", "argus-gateway-collector", "argus") in workloads
-    assert ("StatefulSet", "argus-scraper-collector", "argus") in workloads
-    assert ("Deployment", "argus-scraper-targetallocator", "argus") in workloads
+    assert ("DaemonSet", "noto-agent-collector", "noto") in workloads
+    assert ("Deployment", "noto-gateway-collector", "noto") in workloads
+    assert ("StatefulSet", "noto-scraper-collector", "noto") in workloads
+    assert ("Deployment", "noto-scraper-targetallocator", "noto") in workloads
 
 
 # ---------------------------------------------------------------------------
@@ -123,11 +123,11 @@ def test_the_real_rendered_platform_tier_yields_four_workloads():
 
 def test_dry_run_calls_nothing():
     runner = FakeRunner([])
-    rendered = {"collectors": [_otel_cr("argus-agent", "daemonset")]}
+    rendered = {"collectors": [_otel_cr("noto-agent", "daemonset")]}
     ctx = _ctx(runner, rendered=rendered, dry_run=True)
     msg = WaitForCollectors().apply(ctx)
     assert runner.calls == []
-    assert "argus-agent-collector" in msg or "1" in msg
+    assert "noto-agent-collector" in msg or "1" in msg
 
 
 def test_success_path_calls_runner_once_per_workload_with_kube_context(monkeypatch):
@@ -135,33 +135,33 @@ def test_success_path_calls_runner_once_per_workload_with_kube_context(monkeypat
     monkeypatch.setattr(steps_mod, "_sleep", lambda s: sleeps.append(s))
     rendered = {
         "collectors": [
-            _otel_cr("argus-agent", "daemonset"),
-            _otel_cr("argus-gateway", "deployment"),
+            _otel_cr("noto-agent", "daemonset"),
+            _otel_cr("noto-gateway", "deployment"),
         ]
     }
     runner = FakeRunner([(0, "ok"), (0, "ok")])
-    ctx = _ctx(runner, rendered=rendered, kube_context="kind-argus-smoke")
+    ctx = _ctx(runner, rendered=rendered, kube_context="kind-noto-smoke")
     msg = WaitForCollectors().apply(ctx)
     assert sleeps == []
     assert len(runner.calls) == 2
     for cmd in runner.calls:
-        assert cmd[:3] == ["kubectl", "--context", "kind-argus-smoke"]
+        assert cmd[:3] == ["kubectl", "--context", "kind-noto-smoke"]
         assert "rollout" in cmd and "status" in cmd
-        assert "-n" in cmd and "argus" in cmd
+        assert "-n" in cmd and "noto" in cmd
     first = runner.calls[0]
-    assert first[first.index("rollout") + 2] == "DaemonSet/argus-agent-collector"
+    assert first[first.index("rollout") + 2] == "DaemonSet/noto-agent-collector"
     assert msg == "collectors ready: 2 workloads"
 
 
 def test_not_found_twice_then_success_sleeps_twice_never_really(monkeypatch):
     sleeps = []
     monkeypatch.setattr(steps_mod, "_sleep", lambda s: sleeps.append(s))
-    rendered = {"collectors": [_otel_cr("argus-agent", "daemonset")]}
+    rendered = {"collectors": [_otel_cr("noto-agent", "daemonset")]}
     not_found = (
         1,
-        'Error from server (NotFound): daemonsets.apps "argus-agent-collector" not found',
+        'Error from server (NotFound): daemonsets.apps "noto-agent-collector" not found',
     )
-    rolled_out = (0, 'daemon set "argus-agent-collector" rolled out')
+    rolled_out = (0, 'daemon set "noto-agent-collector" rolled out')
     runner = FakeRunner([not_found, not_found, rolled_out])
     ctx = _ctx(runner, rendered=rendered)
     msg = WaitForCollectors().apply(ctx)
@@ -176,13 +176,13 @@ def _never_sleep(_seconds: float) -> None:
 
 def test_non_not_found_failure_raises_immediately_naming_the_workload(monkeypatch):
     monkeypatch.setattr(steps_mod, "_sleep", _never_sleep)
-    rendered = {"collectors": [_otel_cr("argus-gateway", "deployment")]}
+    rendered = {"collectors": [_otel_cr("noto-gateway", "deployment")]}
     runner = FakeRunner([(1, "connection refused" + "x" * 600)])
     ctx = _ctx(runner, rendered=rendered)
     with pytest.raises(RuntimeError) as exc:
         WaitForCollectors().apply(ctx)
     msg = str(exc.value)
-    assert "argus-gateway-collector" in msg
+    assert "noto-gateway-collector" in msg
     assert "\n" not in msg
     assert len(msg) < 700  # last 500 chars of output, collapsed
 
@@ -199,15 +199,15 @@ def test_deadline_exceeded_raises_naming_the_workload(monkeypatch):
 
     monkeypatch.setattr(steps_mod, "_now", fake_now)
     monkeypatch.setattr(steps_mod, "_sleep", fake_sleep)
-    rendered = {"collectors": [_otel_cr("argus-agent", "daemonset")]}
-    not_found = (1, 'Error (NotFound): daemonsets.apps "argus-agent-collector" not found')
+    rendered = {"collectors": [_otel_cr("noto-agent", "daemonset")]}
+    not_found = (1, 'Error (NotFound): daemonsets.apps "noto-agent-collector" not found')
     # Always NotFound; the deadline (5s, 3s sleeps) must be exceeded and raise.
     runner = FakeRunner([not_found] * 10)
     ctx = _ctx(runner, rendered=rendered)
     step = WaitForCollectors(timeout=5.0)
     with pytest.raises(RuntimeError) as exc:
         step.apply(ctx)
-    assert "argus-agent-collector" in str(exc.value)
+    assert "noto-agent-collector" in str(exc.value)
 
 
 def test_check_always_returns_none_never_ledger_skips():

@@ -71,7 +71,7 @@ spec:
               && exec python /app/main.py
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: http://argus-agent-collector.argus.svc:4317
+              value: http://noto-agent-collector.noto.svc:4317
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: grpc
           volumeMounts:

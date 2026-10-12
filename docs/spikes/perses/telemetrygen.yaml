@@ -18,7 +18,7 @@ spec:
             - --duration=60s
             - --workers=4
             - --otlp-attributes=service.name="clips-api"
-            - --otlp-attributes=k8s.cluster.name="argus-spike"
+            - --otlp-attributes=k8s.cluster.name="noto-spike"
             - --otlp-attributes=k8s.namespace.name="clips"
 ---
 apiVersion: batch/v1
@@ -43,7 +43,7 @@ spec:
             - --duration=60s
             - --workers=2
             - --otlp-attributes=service.name="clips-api"
-            - --otlp-attributes=k8s.cluster.name="argus-spike"
+            - --otlp-attributes=k8s.cluster.name="noto-spike"
 ---
 apiVersion: batch/v1
 kind: Job
@@ -67,7 +67,7 @@ spec:
             - --duration=60s
             - --workers=2
             - --otlp-attributes=service.name="clips-api"
-            - --otlp-attributes=k8s.cluster.name="argus-spike"
+            - --otlp-attributes=k8s.cluster.name="noto-spike"
             - --otlp-attributes=k8s.namespace.name="clips"
 ---
 apiVersion: batch/v1
@@ -90,5 +90,5 @@ spec:
             - --duration=60s
             - --workers=2
             - --otlp-attributes=service.name="checkout"
-            - --otlp-attributes=k8s.cluster.name="argus-spike"
+            - --otlp-attributes=k8s.cluster.name="noto-spike"
             - --otlp-attributes=k8s.namespace.name="growth"

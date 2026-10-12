@@ -1,4 +1,4 @@
-# Argus object-storage seam, GCP implementation: one bucket per backend block store.
+# Noto object-storage seam, GCP implementation: one bucket per backend block store.
 # Retention/lifecycle values are INPUTS (scale-posture rule) - deployments size them.
 
 terraform {
@@ -35,7 +35,7 @@ resource "google_storage_bucket" "store" {
   for_each = local.stores
 
   project                     = var.project
-  name                        = "${var.prefix}-argus-${each.key}-${each.value}"
+  name                        = "${var.prefix}-noto-${each.key}-${each.value}"
   location                    = var.location
   uniform_bucket_level_access = true
   force_destroy               = var.force_destroy
@@ -50,8 +50,8 @@ resource "google_storage_bucket" "store" {
   }
 
   labels = {
-    "argus-managed" = "true"
-    "argus-store"   = each.key
+    "noto-managed" = "true"
+    "noto-store"   = each.key
   }
 }
 

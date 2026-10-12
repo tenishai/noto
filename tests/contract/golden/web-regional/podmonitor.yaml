@@ -3,8 +3,8 @@ kind: PodMonitor
 metadata:
   labels:
     app.kubernetes.io/name: sample-web
-    argus.dev/class: web
-    argus.dev/managed: 'true'
+    noto.dev/class: web
+    noto.dev/managed: 'true'
   name: sample-web
   namespace: sample
 spec:
