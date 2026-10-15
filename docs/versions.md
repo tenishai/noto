@@ -54,7 +54,7 @@ exactly why we pin exact versions and back them with the contract-test layer
 | Component | Version | Source | Notes |
 |---|---|---|---|
 | OpenTofu CLI | 1.12.3 | [opentofu releases](https://github.com/opentofu/opentofu/releases/latest) | verified 2026-07-08. Replaces Terraform: Terraform is BUSL (not open source) since 1.6, violating the 100% OSS rule |
-| `hashicorp/google` provider | 7.37.0 | [OpenTofu registry](https://search.opentofu.org/provider/hashicorp/google/latest) | MPL-2.0, works unchanged with OpenTofu; re-verify version via the OpenTofu registry at pin time; `~>` minor constraint + committed lockfile |
+| `hashicorp/google` provider | 7.37.0 (constraint `~> 7.37`; `terraform/examples/gcp-solo/.terraform.lock.hcl` resolves 7.39.0) | [OpenTofu registry](https://search.opentofu.org/provider/hashicorp/google/latest) | MPL-2.0, works unchanged with OpenTofu; re-verify version via the OpenTofu registry at pin time; `~>` minor constraint + committed lockfile |
 | `hashicorp/google-beta` provider | 7.37.0 | [OpenTofu registry](https://search.opentofu.org/provider/hashicorp/google-beta/latest) | as above |
 
 ## Agent runtime (Python)
@@ -68,9 +68,9 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 | CPython | 3.14.6 | [python.org](https://www.python.org/downloads/) | pinned in `.python-version`; `requires-python = ">=3.14,<3.15"` |
 | uv (env / deps) | 0.11.28 | [astral-sh/uv](https://github.com/astral-sh/uv/releases/latest) | re-verified 2026-07-09 at scaffold time (was 0.11.21); lockfile committed; 0.x |
 | `anthropic` (Python SDK) | 0.109.2 | [PyPI](https://pypi.org/project/anthropic/) | GA line (0.x by semver). Default model `claude-opus-4-8`. Re-verify when the agent code lands |
-| `ruff` (lint / format) | 0.15.20 | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | verified 2026-07-09; pinned exact in `pyproject.toml`; wired into `make lint` / CI |
+| `ruff` (lint / format) | 0.16.10 | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | introduced 2026-07-09 at 0.15.20; pinned exact in `pyproject.toml`; wired into `make lint` / CI |
 | `pytest` | 9.1.1 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest/releases) | verified 2026-07-09; pinned exact in `pyproject.toml` |
-| `pydantic` | 2.13.4 | [PyPI](https://pypi.org/project/pydantic/) | verified 2026-07-11 at introduction (profile schema); pinned exact |
+| `pydantic` | 2.14.0 | [PyPI](https://pypi.org/project/pydantic/) | introduced 2026-07-11 at 2.13.4 (profile schema); 2.14.0 since PR #96/#99; pinned exact |
 | `pyyaml` | 6.0.3 | [PyPI](https://pypi.org/project/PyYAML/) | verified 2026-07-11 at introduction (profile loading / render serialization); pinned exact |
 | Sloth (SLO generator) | 0.16.0 | [slok/sloth](https://github.com/slok/sloth/releases) | verified 2026-07-11; render target `sloth.slok.dev/v1 PrometheusServiceLevel`; binary used by `make validate` |
 | kubeconform | 0.8.0 | [yannh/kubeconform](https://github.com/yannh/kubeconform/releases) | verified 2026-07-11 at introduction; CRD validation in `make validate` (schemas via CRDs-catalog) |
@@ -83,11 +83,15 @@ pins.
 
 | Action | Version | Notes |
 |---|---|---|
-| `actions/checkout` | v6 | bumped from v4 |
-| `astral-sh/setup-uv` | v8.3.2 (uv pinned to 0.11.28 via `with.version`) | verified 2026-07-09; exact tag - no v8 major alias exists; replaces setup-python (uv manages the interpreter from `.python-version`) |
-| `actions/setup-go` | v6 | only if a Go build step is ever needed (e.g. ocb invocation) |
+| `actions/checkout` | v7.0.1 (SHA-pinned) | every workflow |
+| `astral-sh/setup-uv` | v10.2.0 (SHA-pinned; uv pinned to 0.11.28 via `with.version`) | replaces setup-python (uv manages the interpreter from `.python-version`) |
+| `actions/setup-go` | v7.0.0 (SHA-pinned) | `distro.yml`, for the ocb collector build |
+| `azure/setup-helm` | v5.0.1 (SHA-pinned) | `ci.yml` |
+| `opentofu/setup-opentofu` | v2.0.2 (SHA-pinned) | `ci.yml` |
+| `helm/kind-action` | v1.15.1 (SHA-pinned) | `smoke.yml` |
 
-Runner image is `ubuntu-latest` (the conventional GitHub-hosted label). If we need bit-for-bit
+Runner image is `ubuntu-latest` (the conventional GitHub-hosted label), overridable per repository
+with the `CI_RUNS_ON` variable; `dco.yml` uses `ubuntu-latest` directly. If we need bit-for-bit
 reproducible runs we pin to a dated image (e.g. `ubuntu-24.04`); not required today.
 
 ## Verify-before-pinning checklist

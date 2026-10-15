@@ -20,7 +20,7 @@ repos meant to be merged into one GitHub org. Each owns one concern; Noto owns o
 | [liminal](https://github.com/tenishai/liminal) | MCP gateway (one connection point dispatching to many tool handlers) | Noto reaches its tools through liminal once integrated; Noto operations can be exposed as a liminal handler. |
 | [cabal](https://github.com/tenishai/cabal) | Agent orchestration / A2A broker (LLM personas) | Noto registers as the observability persona later (requires a cabal `PERSONA_REGISTRY` PR; the daedalus bundle's cabal peer surface is the nearer path). |
 | [daedalus](https://github.com/tenishai/daedalus) | Agent construction kit ("an agent is a directory": card + persona + wiring) | The Noto agent's shell is a daedalus bundle; Noto keeps a thin CLI fallback while daedalus is v0.1. |
-| [ladon](https://github.com/tenishai/ladon) | Secrets / vault management on OpenBao + External Secrets | Noto onboards as a ladon "team"; ESO syncs OpenBao values into plain K8s Secrets that collectors/backends mount. |
+| [sero](https://github.com/tenishai/sero) | Secrets / vault management on OpenBao + External Secrets | Noto onboards as a sero "team"; ESO syncs OpenBao values into plain K8s Secrets that collectors/backends mount. |
 
 Build Noto to run **self-contained today** (own runtime, step engine, SQLite ledger) but **compose
 with these later** (register into cabal, reach tools via liminal, persist memory into techne). Do not

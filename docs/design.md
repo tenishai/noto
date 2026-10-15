@@ -7,7 +7,7 @@
 > **License:** AGPL-3.0-or-later (the tenishai family license)
 > **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
 > **Home:** [tenishai/noto](https://github.com/tenishai/noto) (transferred into the org
-> 2026-07-11), alongside gojira / techne / liminal / cabal / daedalus / ladon.
+> 2026-07-11), alongside gojira / techne / liminal / cabal / daedalus / sero.
 
 ---
 
@@ -432,7 +432,7 @@ Sibling integration specifics (verified against the repos, 2026-07-08):
   (there is no generic foreign-SQLite importer).
 - **cabal** - registering a persona currently requires a cabal PR (`PERSONA_REGISTRY` is a hardcoded
   dict, no plugin loading); the daedalus bundle's cabal peer surface is the nearer-term path.
-- **ladon** - Noto onboards as a ladon "team"; the External Secrets Operator syncs OpenBao values
+- **sero** - Noto onboards as a sero "team"; the External Secrets Operator syncs OpenBao values
   into plain Kubernetes Secrets that collectors/backends mount. Noto never calls OpenBao at runtime.
 - Now that Noto is AGPL like the family, library-level embedding (techne, liminal) carries no
   license boundary.
@@ -573,7 +573,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 9. **License** → **AGPL-3.0-or-later.** The whole family (gojira, techne, liminal, cabal, daedalus,
    agents) relicensed from Apache-2.0/MIT to AGPL on 2026-07-08; Noto moves with it. This keeps
    library-level embedding of the siblings clean; the alternative (stay Apache, integrate only over
-   protocols) was rejected as a permanent seam through the ecosystem. Only ladon remains Apache-2.0.
+   protocols) was rejected as a permanent seam through the ecosystem. Only ladon (since renamed sero) stayed Apache-2.0 then; sero is AGPL-3.0-or-later now too.
 10. **Trigger mechanism** → **standalone pass.** gojira has no outbound hook or event bus, so Noto
     discovers and observes gojira-managed clusters on its own schedule; a tight end-of-deploy
     hand-off is a future gojira PR.

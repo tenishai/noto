@@ -148,7 +148,7 @@ GCP-proprietary and single-cloud - fails both the OSS rule and the portability s
 compressed/advanced features are under the non-OSS Timescale License and still trail purpose-built
 columnar stores at scale. The ecosystem tiebreaker: the OTel contrib exporter writes optimized
 ClickHouse schemas out of the box; no maintained OTel-to-Postgres analytics path exists. Postgres
-remains the family's right answer for transactional state (ladon's datastore, gojira's DB) - engine
+remains the family's right answer for transactional state (sero's datastore, gojira's DB) - engine
 per workload, not one engine everywhere.
 
 Pin the ClickHouse image/chart and the collector's `clickhouse` exporter component in
@@ -167,7 +167,7 @@ engine from day one, with **only the GCP implementation built now**:
 | Warehouse sink (analytics subset) | **ClickHouse (default, cloud-portable, self-hosted)**; BigQuery optional | ClickHouse (same); Athena/Redshift optional | ClickHouse (same); Synapse optional |
 | Managed-logging bypass | Disable GKE Cloud Logging for app logs (keep system logs) | Disable CloudWatch agent | Disable AMA |
 
-Terraform modules are provider-namespaced (`terraform/modules/<seam>/gcp/...`), the pattern ladon
+Terraform modules are provider-namespaced (`terraform/modules/<seam>/gcp/...`), the pattern sero
 already uses. The `noto adopt` path (Phase 3, pulled forward conceptually) is the multi-cloud entry
 point: gojira is GKE-only, so on AWS/Azure a conformant cluster enters via adoption, not deployment.
 
