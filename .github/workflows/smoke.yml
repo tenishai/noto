@@ -26,7 +26,13 @@ jobs:
       - uses: helm/kind-action@1544676c07bb3570fcb70166beaa07c4528fd4aa # v1.15.1
         with:
           install_only: true
-      - name: Fetch pinned tools (sloth for SLO generation)
-        run: bash -c 'source /dev/stdin <<< "$(sed -n "/^fetch/,/^$/p" scripts/validate-rendered.sh)" 2>/dev/null || true; make validate || true'
+      # kind-action installs kind and kubectl only; the platform steps shell out to
+      # helm, and the self-hosted runner image ships neither helm nor make (the
+      # v0.1.0 and v0.2.0 release runs both failed on exactly that).
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - name: Fetch pinned tools and validate the rendered artifacts
+        # A failure here is a failure: the smoke test renders the same artifacts,
+        # so an invalid render must stop the run, not hide behind || true.
+        run: bash scripts/validate-rendered.sh
       - name: Run the smoke test
         run: bash tests/smoke/run-smoke.sh
