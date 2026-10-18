@@ -54,6 +54,11 @@ jobs:
         # Each card pins the file it describes by blob sha; a seam that changed
         # without its card fails here (see AGENTS.md).
         run: uv run --frozen python scripts/check_arch_cards.py
+      - name: Unit and contract suites
+        # One `run:` line per command. From 2026-10-06 (#87) to this fix the two
+        # pytest lines were folded into the card checker's argument list and
+        # never ran; every green run in between tested nothing past ruff.
+        run: |
           uv run pytest tests/unit
           uv run pytest tests/contract -m contract
 
