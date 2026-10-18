@@ -6,6 +6,10 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Changed
+
+- pydantic 2.14.0 to 2.14.1 and ruff 0.16.10 to 0.17.0 (#105); the image installs the same pydantic.
+
 ## [0.2.0] - 2026-10-12
 
 ### Changed

@@ -70,7 +70,7 @@ cabal are all Python) and first-class Anthropic SDK support. See decision 8 in
 | `anthropic` (Python SDK) | 0.109.2 | [PyPI](https://pypi.org/project/anthropic/) | GA line (0.x by semver). Default model `claude-opus-4-8`. Re-verify when the agent code lands |
 | `ruff` (lint / format) | 0.16.10 | [astral-sh/ruff](https://github.com/astral-sh/ruff/releases) | introduced 2026-07-09 at 0.15.20; pinned exact in `pyproject.toml`; wired into `make lint` / CI |
 | `pytest` | 9.1.1 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest/releases) | verified 2026-07-09; pinned exact in `pyproject.toml` |
-| `pydantic` | 2.14.0 | [PyPI](https://pypi.org/project/pydantic/) | introduced 2026-07-11 at 2.13.4 (profile schema); 2.14.0 since PR #96/#99; pinned exact |
+| `pydantic` | 2.14.1 | [PyPI](https://pypi.org/project/pydantic/) | introduced 2026-07-11 at 2.13.4 (profile schema); 2.14.0 since PR #96/#99, 2.14.1 since PR #105; pinned exact |
 | `pyyaml` | 6.0.3 | [PyPI](https://pypi.org/project/PyYAML/) | verified 2026-07-11 at introduction (profile loading / render serialization); pinned exact |
 | Sloth (SLO generator) | 0.16.0 | [slok/sloth](https://github.com/slok/sloth/releases) | verified 2026-07-11; render target `sloth.slok.dev/v1 PrometheusServiceLevel`; binary used by `make validate` |
 | kubeconform | 0.8.0 | [yannh/kubeconform](https://github.com/yannh/kubeconform/releases) | verified 2026-07-11 at introduction; CRD validation in `make validate` (schemas via CRDs-catalog) |
