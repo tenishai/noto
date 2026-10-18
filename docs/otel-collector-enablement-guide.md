@@ -1391,7 +1391,7 @@ exporters:
       num_consumers: 50
     compression: zstd
     headers:
-      API-Token: ${env:API_TOKEN}
+      API-Token: ${env:NOTO_API_TOKEN}
 ```
 
 > The core configuration is fundamentally the same as it is for the gRPC based exporter. Noto supports

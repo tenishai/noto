@@ -1,6 +1,6 @@
 # Noto - test layers per docs/testing.md, cheapest first.
 # `make test` runs layers 1-3 (static, unit, contract). Layer 4 (smoke) is gated
-# separately and lands with issue #24.
+# separately: `make smoke`, or the smoke.yml workflow on dispatch and release.
 
 .PHONY: test lint unit contract smoke sync regen-golden validate validate-helm
 

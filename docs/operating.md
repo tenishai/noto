@@ -48,7 +48,9 @@ rewrite would mute the retention alert for another full window.
 `rules-sync` resolves its tenant the same way `observe` does, for the same reason: a rule group filed
 under a tenant the gateway does not write with evaluates over nothing. `cardinality` still reads with
 its own `--tenant`; pass the platform's, which `kubectl -n noto get configmap noto-platform-info -o
-yaml` will tell you.
+yaml` will tell you. It lists the top metric names by series count, 15 by default (`--limit`).
+`feedback` (diagnostic only, requires `--dry-run`) reads the last 14 days of usage from Mimir by
+default (`--window-days`).
 
 ## Retention, enforced and alarmed
 
