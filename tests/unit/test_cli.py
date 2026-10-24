@@ -411,6 +411,7 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
     )
     assert code == 0
     assert {p.name for p in out.glob("*.yaml")} == {
+        "scheduling.yaml",
         "collectors.yaml",
         "identity.yaml",
         "platform-info.yaml",
@@ -420,7 +421,11 @@ def test_cli_render_platform_writes_the_collector_tier(tmp_path: Path) -> None:
     names = {d["metadata"]["name"] for d in docs}
     assert {"noto-agent", "noto-gateway", "noto-scraper", "noto-targetallocator"} <= names
     kinds = {d["kind"] for d in docs}
-    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding", "PriorityClass"} <= kinds
+    assert {"ServiceAccount", "ClusterRole", "ClusterRoleBinding"} <= kinds
+    scheduling = list(yaml.safe_load_all((out / "scheduling.yaml").read_text()))
+    assert [(d["kind"], d["metadata"]["name"]) for d in scheduling] == [
+        ("PriorityClass", "noto-node-critical")
+    ]
     gateway = next(d for d in docs if d["metadata"]["name"] == "noto-gateway")
     assert set(gateway["spec"]["config"]["service"]["pipelines"]) == {
         "metrics",
@@ -589,8 +594,10 @@ def test_cli_platform_tells_the_ruler_where_alertmanager_is(tmp_path: Path, monk
 
 
 def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeypatch) -> None:
-    """collectors apply -> wait_collectors -> validate, in that order: the collector
-    apply has no --wait, so validate must not race the operator standing up pods."""
+    """scheduling before the first helm step (node-exporter's --wait needs the
+    PriorityClass to exist, #108); then collectors apply -> wait_collectors -> validate:
+    the collector apply has no --wait, so validate must not race the operator standing
+    up pods."""
     from noto.engine.engine import ProvisionEngine as RealEngine
 
     captured: list[list[str]] = []
@@ -609,6 +616,7 @@ def test_cli_platform_step_order_waits_before_validating(tmp_path: Path, monkeyp
     assert code == 0
     assert captured
     names = captured[0]
+    assert names.index("apply_scheduling") < names.index("helm_cert-manager")
     assert (
         names.index("apply_collectors")
         < names.index("apply_identity")

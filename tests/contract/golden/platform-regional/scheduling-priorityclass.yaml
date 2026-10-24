@@ -1,0 +1,8 @@
+apiVersion: scheduling.k8s.io/v1
+description: Noto per-node collector - preempts app pods on pod-capped nodes so no
+  node goes unobserved; evicted pods reschedule, unobserved nodes cannot.
+globalDefault: false
+kind: PriorityClass
+metadata:
+  name: noto-node-critical
+value: 1000000

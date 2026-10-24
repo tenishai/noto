@@ -135,6 +135,7 @@ def render_platform(topology: str) -> dict[str, object]:
     # The platform's own record and its own alert rules, both applied by `noto platform`
     # and belonging to no app. A real run uses the birth instant it finds (or records now);
     # a golden needs a fixed one, or the file would differ on every run.
+    (artifacts["scheduling-priorityclass"],) = families["scheduling"]
     (artifacts["platform-info"],) = families["platform-info"]
     (artifacts["platform-rules"],) = families["platform-rules"]
     return artifacts
