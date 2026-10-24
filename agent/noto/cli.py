@@ -175,6 +175,10 @@ def _render_platform_families(ctx: Context, born: str) -> dict[str, list[dict]]:
 
     The families and why each is its own:
 
+      scheduling      the `noto-node-critical` PriorityClass. Applied BEFORE the helm
+                      steps: node-exporter's chart values name it, and `helm --wait` on
+                      a fresh cluster can never see a DaemonSet whose pods the API
+                      refuses for a PriorityClass that does not exist yet (#108).
       collectors      the shared agent/gateway/allocator tier. Applied AFTER the helm
                       steps: these are OpenTelemetryCollector custom resources and the
                       CRDs and webhook that accept them arrive with the operator's chart.
@@ -193,8 +197,8 @@ def _render_platform_families(ctx: Context, born: str) -> dict[str, list[dict]]:
     """
     p = _platform_profile()
     return {
+        "scheduling": [render_priorityclass()],
         "collectors": [
-            render_priorityclass(),
             *render_targetallocator_rbac(ctx),
             render_agent(p, ctx, catalog=load_catalog(REPO_ROOT / "integrations")),
             render_gateway(p, ctx),
@@ -607,6 +611,11 @@ def cmd_platform(args: argparse.Namespace) -> int:
         # and before anything else has a chance to fail: the record is what `observe` reads
         # to learn which tenant this platform writes as.
         EnsurePlatformInfo(tenant=args.cluster, environment=args.env, born=born),
+        # The PriorityClass both DaemonSets (node-exporter's chart and the collector
+        # agent) schedule with. Core API, no CRD, so it can go first; it MUST precede
+        # the helm steps, or node-exporter's `--wait` times out on pods the API
+        # refuses to create (issue #108).
+        ApplyRendered(family="scheduling"),
         *[
             HelmInstall(
                 component=c,

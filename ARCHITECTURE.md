@@ -1,7 +1,7 @@
 ---
 card: repo-card:noto
-updated: 2026-10-15
-anchor: agent/noto/cli.py sha=220a6bb4b31a901c91d9711bf9bf0c419a27cc5f
+updated: 2026-10-24
+anchor: agent/noto/cli.py sha=46d8d0d8118fadeca08aa3e5cbc7ba99121d0dc9
 ---
 <!-- pyproject.toml is deliberately not anchored: Dependabot moves its pins weekly and the
      CI card check would fail every one of those PRs. The version named under STATE is kept
