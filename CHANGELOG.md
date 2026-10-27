@@ -6,6 +6,8 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-27
+
 ### Fixed
 
 - `noto platform` on a fresh cluster failed at `helm_node-exporter` with the DaemonSet
