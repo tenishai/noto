@@ -3,7 +3,15 @@
 # pip-installing the package into site-packages, because REPO_ROOT (agent/noto/cli.py)
 # is derived from that file's own location and reads profiles/, integrations/ and
 # helm/pins.yaml relative to it at runtime - see tests/unit/test_layout.py.
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS deps
+ARG UV_VERSION=0.11.21
+WORKDIR /lock
+COPY pyproject.toml uv.lock ./
+RUN pip install --no-cache-dir "uv==${UV_VERSION}" \
+ && uv export --frozen --no-dev --no-emit-project -o requirements.txt
+
+FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8
+ARG TARGETARCH=amd64
 
 # The upgrade pass pulls base packages to current security revisions even when
 # the builder's cached base layer is stale; CI also builds with --pull.
@@ -13,9 +21,9 @@ RUN apt-get update && apt-get -y upgrade \
 
 ARG KUBECTL_VERSION=v1.33.4
 RUN curl -fsSL -o /usr/local/bin/kubectl \
-      "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/$(dpkg --print-architecture)/kubectl" \
+      "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
     && curl -fsSL -o /tmp/kubectl.sha256 \
-      "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/$(dpkg --print-architecture)/kubectl.sha256" \
+      "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl.sha256" \
     && echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c - \
     && chmod +x /usr/local/bin/kubectl && rm /tmp/kubectl.sha256
 
@@ -31,10 +39,12 @@ RUN curl -fsSL -o /usr/local/bin/kubectl \
 # one binary is the sole exception.
 ARG SLOTH_VERSION=0.16.0
 ARG SLOTH_SHA256_AMD64=1cecaa50853abbb3669a928612b523df8174d258ea6f2a3c8f048e5fc5af90b2
+ARG SLOTH_SHA256_ARM64=7b570c465df3cc997e744dfcfcea83c3559bba6b12f4d6165994925419cbb41c
 RUN mkdir -p /app/.noto/tools \
     && curl -fsSL -o "/app/.noto/tools/sloth-${SLOTH_VERSION}" \
-      "https://github.com/slok/sloth/releases/download/v${SLOTH_VERSION}/sloth-linux-amd64" \
-    && echo "${SLOTH_SHA256_AMD64}  /app/.noto/tools/sloth-${SLOTH_VERSION}" | sha256sum -c - \
+      "https://github.com/slok/sloth/releases/download/v${SLOTH_VERSION}/sloth-linux-${TARGETARCH}" \
+    && sum="$([ "$TARGETARCH" = arm64 ] && echo "$SLOTH_SHA256_ARM64" || echo "$SLOTH_SHA256_AMD64")" \
+    && echo "${sum}  /app/.noto/tools/sloth-${SLOTH_VERSION}" | sha256sum -c - \
     && chmod +x "/app/.noto/tools/sloth-${SLOTH_VERSION}" \
     && "/app/.noto/tools/sloth-${SLOTH_VERSION}" version
 
@@ -43,8 +53,9 @@ WORKDIR /app
 # Runtime dependencies only, pinned to exactly what pyproject.toml specifies at the
 # repo root (never the dev group) - tests/unit/test_dockerfile_pins.py keeps this pip
 # install line from drifting away from pyproject.toml's pins.
-COPY pyproject.toml uv.lock ./
-RUN pip install --no-cache-dir "pydantic==2.14.1" "pyyaml==6.0.3"
+COPY --from=deps /lock/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements.txt && rm /tmp/requirements.txt
+COPY pyproject.toml ./
 
 # The repo layout, preserved verbatim - see the file header and test_layout.py.
 COPY agent ./agent

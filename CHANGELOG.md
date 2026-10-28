@@ -6,6 +6,15 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Added
+
+- A release workflow: a `vX.Y.Z` tag builds the multi-arch image (linux/amd64, linux/arm64), publishes it to ghcr under the tag and the short sha, and records the digest on the GitHub release. No image is built on a push to main.
+
+### Changed
+
+- The image is pinned end to end: base image by digest, Python packages from `uv.lock` with hashes verified by pip, kubectl and sloth by version and per-arch checksum.
+
+
 ## [0.2.1] - 2026-10-27
 
 ### Fixed
