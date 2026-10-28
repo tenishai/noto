@@ -44,7 +44,9 @@ def test_dockerfile_installs_exactly_the_lock() -> None:
     in, not installed from an index), and pip verifies every hash."""
     flags = _dockerfile_export_line()
     assert "--frozen" in flags and "--no-emit-project" in flags
-    assert re.search(r"pip install [^\n]*--require-hashes [^\n]*requirements\.txt", _dockerfile_text())
+    assert re.search(
+        r"pip install [^\n]*--require-hashes [^\n]*requirements\.txt", _dockerfile_text()
+    )
     # The one hand pin allowed is uv itself, the tool that reads the lock.
     assert not re.search(r'RUN pip install --no-cache-dir "(?!uv==)[\w-]+==', _dockerfile_text()), (
         "a hand-pinned pip install crept back in; the lock is the pin"
