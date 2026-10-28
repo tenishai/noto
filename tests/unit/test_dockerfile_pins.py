@@ -1,8 +1,9 @@
-"""The Dockerfile hand-pins two things that must never drift from their sources of
-truth: the runtime dependency versions it `pip install`s, and the sloth version it
-downloads. Both are asserted here by parsing the real files, not by trusting a
+"""The Dockerfile's pins must never drift from their sources of truth: the runtime
+dependencies come from uv.lock (exported with --frozen, installed with hashes
+verified), and the sloth version it downloads matches the CLI and the validate
+script. All of it is asserted here by parsing the real files, not by trusting a
 comment - a bump to pyproject.toml or scripts/validate-rendered.sh that forgets the
-Dockerfile fails this test instead of silently shipping a stale image.
+Dockerfile or the lock fails this test instead of silently shipping a stale image.
 """
 
 import re
@@ -26,33 +27,41 @@ def _pyproject_dependencies() -> dict[str, str]:
     return pins
 
 
-def _dockerfile_pip_install_pins() -> dict[str, str]:
-    text = _dockerfile_text()
-    match = re.search(r"RUN pip install --no-cache-dir (.+)", text)
-    assert match, "Dockerfile has no `RUN pip install --no-cache-dir ...` line"
-    pins = {}
-    for name, version in re.findall(r'"([\w-]+)==([^"]+)"', match.group(1)):
-        pins[name] = version
-    assert pins, f"could not parse any pins from: {match.group(1)!r}"
-    return pins
+def _lock_versions() -> dict[str, str]:
+    data = tomllib.loads((REPO_ROOT / "uv.lock").read_text())
+    return {pkg["name"]: pkg["version"] for pkg in data["package"] if "version" in pkg}
 
 
-def test_dockerfile_pip_install_has_no_dev_dependencies() -> None:
-    dev_names = {
-        dep.partition("==")[0]
-        for dep in tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())["dependency-groups"][
-            "dev"
-        ]
-    }
-    installed = set(_dockerfile_pip_install_pins())
-    leaked = installed & dev_names
-    assert not leaked, f"dev dependencies leaked into the image: {leaked}"
+def _dockerfile_export_line() -> str:
+    match = re.search(r"uv export (.+?) -o requirements\.txt", _dockerfile_text())
+    assert match, "Dockerfile has no `uv export ... -o requirements.txt` line"
+    return match.group(1)
 
 
-def test_dockerfile_pip_install_pins_match_pyproject() -> None:
-    """Every version the Dockerfile installs must equal pyproject.toml's pin exactly,
-    so the image can never silently run a dependency version nothing else tests."""
-    assert _dockerfile_pip_install_pins() == _pyproject_dependencies()
+def test_dockerfile_installs_exactly_the_lock() -> None:
+    """The image reads its Python pins from uv.lock and nowhere else: the export
+    refuses to re-resolve (--frozen), leaves the project itself out (it is copied
+    in, not installed from an index), and pip verifies every hash."""
+    flags = _dockerfile_export_line()
+    assert "--frozen" in flags and "--no-emit-project" in flags
+    assert re.search(r"pip install [^\n]*--require-hashes [^\n]*requirements\.txt", _dockerfile_text())
+    # The one hand pin allowed is uv itself, the tool that reads the lock.
+    assert not re.search(r'RUN pip install --no-cache-dir "(?!uv==)[\w-]+==', _dockerfile_text()), (
+        "a hand-pinned pip install crept back in; the lock is the pin"
+    )
+
+
+def test_dockerfile_export_has_no_dev_dependencies() -> None:
+    assert "--no-dev" in _dockerfile_export_line()
+
+
+def test_lock_pins_match_pyproject() -> None:
+    """Every runtime dependency pyproject pins must be in uv.lock at that exact
+    version, so the image can never silently run a dependency version nothing
+    else tests."""
+    lock = _lock_versions()
+    for name, version in _pyproject_dependencies().items():
+        assert lock.get(name) == version, f"{name}: pyproject {version}, lock {lock.get(name)}"
 
 
 def _dockerfile_sloth_version() -> str:
