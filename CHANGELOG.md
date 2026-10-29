@@ -6,6 +6,10 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Changed
+
+- **Faster release builds.** The lockfile export runs once on the build host instead of once per target architecture, and unchanged layers come from a registry cache (`ghcr.io/tenishai/noto:buildcache`). The image's contents do not change.
+
 ### Added
 
 - A release workflow: a `vX.Y.Z` tag builds the multi-arch image (linux/amd64, linux/arm64), publishes it to ghcr under the tag and the short sha, and records the digest on the GitHub release. No image is built on a push to main.
