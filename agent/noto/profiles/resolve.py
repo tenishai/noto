@@ -44,4 +44,5 @@ def resolve(baseline: BaselineProfile, cls: ClassProfile, override: Override) ->
         dashboards=_merge_named(baseline.dashboards, cls.dashboards),
         drop=_merge_named(baseline.drop, cls.drop, override.drop),
         log_collection=baseline.log_collection,
+        links=dict(override.links or {}),
     )

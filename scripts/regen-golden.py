@@ -36,7 +36,7 @@ PROFILES = REPO / "profiles"
 CLASSES = ["web", "worker", "cron", "heavy", "gpu", "agent", "gateway"]
 # Goldens are the HUMAN-review artifact: one representative class, both topologies.
 # All-class coverage lives in the contract invariants (cheap, no churn).
-GOLDEN_CLASSES = ["web"]
+GOLDEN_CLASSES = ["web", "agent"]
 # The shared collector tier is platform-owned, not per-app: it gets its own case, rendered
 # from the platform profile (baseline, all signals) and a Context with no app.
 PLATFORM_CASE = "platform"

@@ -1,9 +1,26 @@
 # agent -> runtime health: long-running autonomous workers with no /metrics contract, so
 # kubeletstats + kube-state-metrics and logs carry the signal. Alert-based like cron - an
 # objective over metrics the app does not emit is an SLO that can never fire.
+#
+# The dashboard says three honest things from what the cluster already collects: is it
+# alive, what it uses, what it logged. What the agent is DOING (turns, tool calls,
+# tokens) needs the runtime to say so; until it does, that row does not exist here
+# rather than exist empty.
 class: agent
 signals: [metrics, logs]
 app_scrape: false
 dashboards:
   - name: agent-health
-    panels: ["metric:memory-working-set", "metric:pod-restarts", "logs:errors", "logs:recent"]
+    duration: 24h
+    refresh: 1m
+    rows:
+      - title: Is it alive
+        panels: ["metric:ready-replicas", "metric:restarts-24h", "metric:up-for",
+                 "metric:memory-of-limit", "metric:image", "metric:readiness-history"]
+      - title: Resources
+        panels: ["metric:cpu", "metric:memory", "metric:network", "metric:pod-filesystem",
+                 "metric:oom-kills"]
+      - title: Logs
+        panels: ["logs:errors", "logs:recent"]
+      - title: About
+        panels: ["markdown:about"]

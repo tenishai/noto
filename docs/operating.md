@@ -268,6 +268,26 @@ verbs the Job still runs and the verdict is still the exit condition, but the le
 loses noto's one-line explanation. It does not need the `noto-observe` ServiceAccount's own
 RBAC - that identity belongs to the Job it launches, not to the thing launching the Job.
 
+## Re-provisioning dashboards for apps already observed
+
+A dashboard change in a class profile reaches an app the next time `observe` runs for it;
+nothing re-renders existing apps on its own. `ProvisionPerses` compares each rendered
+document's `spec` with what Perses holds and PUTs the ones that differ, so a re-run is an
+in-place update: the dashboard keeps its name and URL, and the app itself is not touched
+(no restart, no redeploy, no Kubernetes object changes unless its monitors or rules changed
+too).
+
+The contracts live with the provisioner, not with noto, so there is no `--all`: re-run
+`observe` per app. From the provisioner, that is its "provision again" for the app, which
+launches the same one-shot Job. By hand, with the app's `gojira.yaml` at hand:
+
+```sh
+uv run noto observe --gojira <path-to-gojira.yaml> --env <env>
+```
+
+After the roll of a new noto image, re-run it for every app whose class dashboard changed;
+the job's summary line reports `perses: N unchanged` when there was nothing to do.
+
 ## The image
 
 The `Dockerfile` at the repo root builds the image the Job above runs: `python:3.14-slim`,

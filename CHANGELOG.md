@@ -6,6 +6,17 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Added
+
+- **The agent dashboard says whether the agent is alive, what it uses and what it logged.** Four titled, collapsible rows instead of four charts: *Is it alive* (ready replicas, restarts in 24h, up for, memory of limit, the running image, per-pod readiness history), *Resources* (CPU and memory against request and limit, network, the pod's filesystem, OOM kills), *Logs*, and *About* (class, namespace, cluster, environment, the app's links, and what the page cannot show). It opens on 24 hours, refreshes every minute, and narrows by a `pod` variable. Everything comes from kubelet and kube-state-metrics, which every pod already has; there is no "what it is doing" row until the runtime emits that signal.
+- Profiles: a dashboard may declare `rows` (titled groups with an `open` state) instead of `panels`, plus `duration` and `refresh`. The gojira.yaml `observability:` block may carry `links: {name: url}`, rendered as the dashboard's links and in the About panel. New panel kinds: StatChart, GaugeChart, Table, StatusHistoryChart, Markdown, each with the Perses 0.53 plugin options that make it honest (units, thresholds, dashed request and limit lines, per-panel descriptions).
+- The agent class joins the golden files (`tests/contract/golden/agent-*`), so its dashboard is reviewed as a diff like the web class.
+
+### Changed
+
+- `logs:errors` and the cluster `logs:cluster-errors` match lines that carry an error level, a traceback or a panic, not any line containing the word "error": an agent's own prose about an error no longer fills the panel. The panel's description says what still slips through.
+
+
 ### Changed
 
 - **Faster release builds.** The lockfile export runs once on the build host instead of once per target architecture, and unchanged layers come from a registry cache (`ghcr.io/tenishai/noto:buildcache`). The image's contents do not change.
