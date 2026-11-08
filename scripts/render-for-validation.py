@@ -33,7 +33,14 @@ _spec.loader.exec_module(regen_golden)
 
 # The representative per-app pair, plus the shared collector tier (platform-owned): the
 # collector configs the real otelcol validator judges live in the platform case now.
-CASES = [("web", "solo"), ("web", "regional"), ("platform", "solo"), ("platform", "regional")]
+CASES = [
+    ("web", "solo"),
+    ("web", "regional"),
+    ("agent", "solo"),
+    ("agent", "regional"),
+    ("platform", "solo"),
+    ("platform", "regional"),
+]
 
 
 def main(out: Path) -> None:

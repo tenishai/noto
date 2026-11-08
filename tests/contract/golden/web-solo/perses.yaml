@@ -100,7 +100,8 @@
               plugin:
                 kind: LokiLogQuery
                 spec:
-                  query: '{k8s_namespace_name=~".+"} |~ "(?i)(error|exception|traceback|fatal|panic)"'
+                  query: '{k8s_namespace_name=~".+"} |~ "level=(error|fatal)|\"level\":\\s*\"(error|fatal)\"|\\bERROR\\b|\\bFATAL\\b|Traceback
+                    \\(most recent call last\\)|panic:"'
       metric-node-cpu:
         kind: Panel
         spec:
@@ -207,6 +208,9 @@
         kind: Panel
         spec:
           display:
+            description: Lines that carry an error level, a traceback or a panic.
+              Prose that merely mentions an error can still match; there is no level
+              field to filter on until the log line carries one.
             name: Errors (Logs)
           plugin:
             kind: LogsTable
@@ -217,11 +221,13 @@
               plugin:
                 kind: LokiLogQuery
                 spec:
-                  query: '{k8s_namespace_name="sample"} |~ "(?i)(error|exception|traceback|fatal|panic)"'
+                  query: '{k8s_namespace_name="sample"} |~ "level=(error|fatal)|\"level\":\\s*\"(error|fatal)\"|\\bERROR\\b|\\bFATAL\\b|Traceback
+                    \\(most recent call last\\)|panic:"'
       logs-recent:
         kind: Panel
         spec:
           display:
+            description: 'Every line, unfiltered: the log pipeline''s heartbeat.'
             name: Recent (Logs)
           plugin:
             kind: LogsTable

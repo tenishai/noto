@@ -35,3 +35,15 @@ def test_unknown_field_on_override_warns_and_is_retained() -> None:
     with pytest.warns(UserWarning, match="surprise"):
         override = Override.model_validate({"traces": True, "surprise": 1})
     assert override.model_extra == {"surprise": 1}
+
+
+def test_dashboard_declares_panels_or_rows_never_both_never_neither() -> None:
+    from noto.profiles.models import Dashboard, Row
+
+    row = Row(title="Is it alive", panels=["metric:ready-replicas"])
+    assert Dashboard(name="a", rows=[row]).all_panels == ["metric:ready-replicas"]
+    assert Dashboard(name="b", panels=["metric:cpu"]).all_panels == ["metric:cpu"]
+    with pytest.raises(ValidationError, match="either panels or rows"):
+        Dashboard(name="c", panels=["metric:cpu"], rows=[row])
+    with pytest.raises(ValidationError, match="either panels or rows"):
+        Dashboard(name="d")

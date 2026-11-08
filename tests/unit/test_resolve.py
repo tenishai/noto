@@ -83,3 +83,12 @@ def test_inputs_not_mutated() -> None:
     before = baseline.model_dump()
     resolve(baseline, cls, load_override({"retention": {"metrics": "90d"}}))
     assert baseline.model_dump() == before
+
+
+def test_override_links_reach_the_resolved_profile() -> None:
+    from noto.profiles.models import Override
+
+    baseline, cls = _parts()
+    p = resolve(baseline, cls, Override(links={"room": "https://room.example/x"}))
+    assert p.links == {"room": "https://room.example/x"}
+    assert resolve(baseline, cls, Override()).links == {}

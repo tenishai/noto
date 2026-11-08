@@ -1,0 +1,679 @@
+- kind: Project
+  metadata:
+    name: golden-cluster
+  spec:
+    display:
+      name: "Noto \xB7 golden-cluster"
+- kind: Datasource
+  metadata:
+    name: mimir
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: PrometheusDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://mimir.us-east4.noto.internal:9009/prometheus
+- kind: Datasource
+  metadata:
+    name: loki
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: LokiDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://loki.us-east4.noto.internal:3100
+- kind: Datasource
+  metadata:
+    name: tempo
+    project: golden-cluster
+  spec:
+    default: true
+    plugin:
+      kind: TempoDatasource
+      spec:
+        proxy:
+          kind: HTTPProxy
+          spec:
+            headers:
+              X-Scope-OrgID: golden-cluster
+            url: http://tempo.us-east4.noto.internal:3200
+- kind: Dashboard
+  metadata:
+    name: cluster-baseline
+    project: golden-cluster
+  spec:
+    display:
+      name: "Cluster \xB7 Baseline"
+    duration: 1h
+    layouts:
+    - kind: Grid
+      spec:
+        items:
+        - content:
+            $ref: '#/spec/panels/metric-node-cpu'
+          height: 8
+          width: 12
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-node-memory'
+          height: 8
+          width: 12
+          x: 12
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-pod-restarts'
+          height: 8
+          width: 12
+          x: 0
+          y: 8
+        - content:
+            $ref: '#/spec/panels/logs-cluster-errors'
+          height: 8
+          width: 12
+          x: 12
+          y: 8
+    panels:
+      logs-cluster-errors:
+        kind: Panel
+        spec:
+          display:
+            name: Cluster Errors (Logs)
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{k8s_namespace_name=~".+"} |~ "level=(error|fatal)|\"level\":\\s*\"(error|fatal)\"|\\bERROR\\b|\\bFATAL\\b|Traceback
+                    \\(most recent call last\\)|panic:"'
+      metric-node-cpu:
+        kind: Panel
+        spec:
+          display:
+            name: Node CPU
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
+      metric-node-memory:
+        kind: Panel
+        spec:
+          display:
+            name: Node Memory
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 100 * (1 - sum by (instance) (node_memory_MemAvailable_bytes)
+                    / sum by (instance) (node_memory_MemTotal_bytes))
+      metric-pod-restarts:
+        kind: Panel
+        spec:
+          display:
+            name: Pod Restarts
+          plugin:
+            kind: TimeSeriesChart
+            spec: {}
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (namespace) (increase(kube_pod_container_status_restarts_total[1h]))
+                    > 0
+- kind: Dashboard
+  metadata:
+    name: sample-agent-agent-health
+    project: golden-cluster
+  spec:
+    display:
+      name: "Agent \xB7 Sample-agent"
+    duration: 24h
+    layouts:
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Is it alive
+        items:
+        - content:
+            $ref: '#/spec/panels/metric-ready-replicas'
+          height: 4
+          width: 6
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-restarts-24h'
+          height: 4
+          width: 6
+          x: 6
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-up-for'
+          height: 4
+          width: 6
+          x: 12
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-memory-of-limit'
+          height: 4
+          width: 6
+          x: 18
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-image'
+          height: 6
+          width: 12
+          x: 0
+          y: 4
+        - content:
+            $ref: '#/spec/panels/metric-readiness-history'
+          height: 6
+          width: 12
+          x: 12
+          y: 4
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Resources
+        items:
+        - content:
+            $ref: '#/spec/panels/metric-cpu'
+          height: 8
+          width: 12
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-memory'
+          height: 8
+          width: 12
+          x: 12
+          y: 0
+        - content:
+            $ref: '#/spec/panels/metric-network'
+          height: 7
+          width: 8
+          x: 0
+          y: 8
+        - content:
+            $ref: '#/spec/panels/metric-pod-filesystem'
+          height: 7
+          width: 8
+          x: 8
+          y: 8
+        - content:
+            $ref: '#/spec/panels/metric-oom-kills'
+          height: 7
+          width: 8
+          x: 16
+          y: 8
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: Logs
+        items:
+        - content:
+            $ref: '#/spec/panels/logs-errors'
+          height: 10
+          width: 12
+          x: 0
+          y: 0
+        - content:
+            $ref: '#/spec/panels/logs-recent'
+          height: 10
+          width: 12
+          x: 12
+          y: 0
+    - kind: Grid
+      spec:
+        display:
+          collapse:
+            open: true
+          title: About
+        items:
+        - content:
+            $ref: '#/spec/panels/markdown-about'
+          height: 6
+          width: 24
+          x: 0
+          y: 0
+    panels:
+      logs-errors:
+        kind: Panel
+        spec:
+          display:
+            description: Lines that carry an error level, a traceback or a panic.
+              Prose that merely mentions an error can still match; there is no level
+              field to filter on until the log line carries one.
+            name: Errors (Logs)
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{k8s_namespace_name="sample"} |~ "level=(error|fatal)|\"level\":\\s*\"(error|fatal)\"|\\bERROR\\b|\\bFATAL\\b|Traceback
+                    \\(most recent call last\\)|panic:"'
+      logs-recent:
+        kind: Panel
+        spec:
+          display:
+            description: 'Every line, unfiltered: the log pipeline''s heartbeat.'
+            name: Recent (Logs)
+          plugin:
+            kind: LogsTable
+            spec: {}
+          queries:
+          - kind: LogQuery
+            spec:
+              plugin:
+                kind: LokiLogQuery
+                spec:
+                  query: '{k8s_namespace_name="sample"}'
+      markdown-about:
+        kind: Panel
+        spec:
+          display:
+            name: About
+          plugin:
+            kind: Markdown
+            spec:
+              text: '### sample-agent
+
+
+                | | |
+
+                |---|---|
+
+                | Class | agent |
+
+                | Namespace | sample |
+
+                | Cluster | golden-cluster |
+
+                | Environment | prod |
+
+
+                Signals on this page: kubelet and kube-state-metrics for the pod,
+                and the pod''s logs. The workload emits no application metrics yet,
+                so what it is doing (turns, tool calls, tokens) is not here; its logs
+                are.'
+      metric-cpu:
+        kind: Panel
+        spec:
+          display:
+            description: CPU used (solid) against the pod's request and limit (dashed),
+              in cores.
+            name: CPU
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+              querySettings:
+              - colorMode: fixed
+                colorValue: '#f9a825'
+                lineStyle: dashed
+                queryIndex: 1
+              - colorMode: fixed
+                colorValue: '#c62828'
+                lineStyle: dashed
+                queryIndex: 2
+              yAxis:
+                format:
+                  decimalPlaces: 2
+                  unit: decimal
+                label: cores
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (k8s_pod_name) (rate(k8s_pod_cpu_time{k8s_namespace_name="sample",
+                    k8s_pod_name=~"$pod"}[5m]))
+                  seriesNameFormat: '{{k8s_pod_name}}'
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(kube_pod_container_resource_requests{namespace="sample",
+                    pod=~"$pod", resource="cpu"})
+                  seriesNameFormat: request
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(kube_pod_container_resource_limits{namespace="sample",
+                    pod=~"$pod", resource="cpu"})
+                  seriesNameFormat: limit
+      metric-image:
+        kind: Panel
+        spec:
+          display:
+            description: 'The image each container runs, from kube-state-metrics:
+              which build is live.'
+            name: Image
+          plugin:
+            kind: Table
+            spec:
+              columnSettings:
+              - header: Pod
+                hide: false
+                name: pod
+              - header: Container
+                hide: false
+                name: container
+              - header: Image
+                hide: false
+                name: image
+              defaultColumnHidden: true
+              density: compact
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: kube_pod_container_info{namespace="sample", pod=~"$pod"}
+      metric-memory:
+        kind: Panel
+        spec:
+          display:
+            description: Working set (solid) against the pod's memory limit (dashed).
+            name: Memory
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+              querySettings:
+              - colorMode: fixed
+                colorValue: '#c62828'
+                lineStyle: dashed
+                queryIndex: 1
+              yAxis:
+                format:
+                  unit: bytes
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (k8s_pod_name) (k8s_pod_memory_working_set{k8s_namespace_name="sample",
+                    k8s_pod_name=~"$pod"})
+                  seriesNameFormat: '{{k8s_pod_name}}'
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(kube_pod_container_resource_limits{namespace="sample",
+                    pod=~"$pod", resource="memory"})
+                  seriesNameFormat: limit
+      metric-memory-of-limit:
+        kind: Panel
+        spec:
+          display:
+            description: Working set as a share of the memory limit. Above 90% the
+              next spike is an OOMKill.
+            name: Memory of limit
+          plugin:
+            kind: GaugeChart
+            spec:
+              calculation: last-number
+              format:
+                decimalPlaces: 0
+                unit: percent
+              max: 100
+              thresholds:
+                steps:
+                - color: '#f9a825'
+                  value: 70
+                - color: '#c62828'
+                  value: 90
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: 100 * sum(k8s_pod_memory_working_set{k8s_namespace_name="sample",
+                    k8s_pod_name=~"$pod"}) / sum(kube_pod_container_resource_limits{namespace="sample",
+                    pod=~"$pod", resource="memory"})
+      metric-network:
+        kind: Panel
+        spec:
+          display:
+            description: Bytes per second in and out of the pod, all interfaces.
+            name: Network
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              legend:
+                mode: list
+                position: bottom
+              yAxis:
+                format:
+                  unit: bytes/sec
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (direction) (rate(k8s_pod_network_io{k8s_namespace_name="sample",
+                    k8s_pod_name=~"$pod"}[5m]))
+      metric-oom-kills:
+        kind: Panel
+        spec:
+          display:
+            description: Containers whose last termination was OOMKilled.
+            name: OOM kills
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last-number
+              format:
+                decimalPlaces: 0
+                unit: decimal
+              thresholds:
+                defaultColor: '#2e7d32'
+                steps:
+                - color: '#c62828'
+                  value: 1
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(kube_pod_container_status_last_terminated_reason{namespace="sample",
+                    pod=~"$pod", reason="OOMKilled"})
+      metric-pod-filesystem:
+        kind: Panel
+        spec:
+          display:
+            description: The pod's own writable filesystem. Mounted volumes are not
+              collected yet, so a persistent volume filling up does not show here.
+            name: Pod Filesystem
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: bytes
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum by (k8s_pod_name) (k8s_pod_filesystem_usage{k8s_namespace_name="sample",
+                    k8s_pod_name=~"$pod"})
+      metric-readiness-history:
+        kind: Panel
+        spec:
+          display:
+            description: 'Per pod: ready when every container is ready. Built from
+              the per-container series; the pod-level one is dropped at the gateway
+              to save cardinality.'
+            name: Readiness History
+          plugin:
+            kind: StatusHistoryChart
+            spec:
+              mappings:
+              - kind: Value
+                spec:
+                  result:
+                    color: '#2e7d32'
+                    value: Ready
+                  value: '1'
+              - kind: Value
+                spec:
+                  result:
+                    color: '#c62828'
+                    value: Not ready
+                  value: '0'
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: min by (pod) (kube_pod_container_status_ready{namespace="sample",
+                    pod=~"$pod"})
+      metric-ready-replicas:
+        kind: Panel
+        spec:
+          display:
+            description: Replicas the deployment reports available right now. 0 is
+              down.
+            name: Ready
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last-number
+              format:
+                decimalPlaces: 0
+                unit: decimal
+              thresholds:
+                defaultColor: '#c62828'
+                steps:
+                - color: '#2e7d32'
+                  value: 1
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(kube_deployment_status_replicas_available{namespace="sample"})
+      metric-restarts-24h:
+        kind: Panel
+        spec:
+          display:
+            description: Container restarts across the namespace in the last 24 hours.
+            name: Restarts (24h)
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last-number
+              format:
+                decimalPlaces: 0
+                unit: decimal
+              thresholds:
+                defaultColor: '#2e7d32'
+                steps:
+                - color: '#f9a825'
+                  value: 1
+                - color: '#c62828'
+                  value: 3
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: sum(increase(kube_pod_container_status_restarts_total{namespace="sample"}[24h]))
+      metric-up-for:
+        kind: Panel
+        spec:
+          display:
+            description: Time since the newest pod started. A reset here is a roll
+              or a crash.
+            name: Up for
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last-number
+              format:
+                decimalPlaces: 1
+                unit: seconds
+          queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: time() - max(kube_pod_start_time{namespace="sample", pod=~"$pod"})
+    refreshInterval: 1m
+    variables:
+    - kind: ListVariable
+      spec:
+        allowAllValue: true
+        allowMultiple: true
+        customAllValue: .*
+        defaultValue: $__all
+        display:
+          hidden: false
+          name: Pod
+        name: pod
+        plugin:
+          kind: PrometheusLabelValuesVariable
+          spec:
+            labelName: k8s_pod_name
+            matchers:
+            - k8s_pod_memory_working_set{k8s_namespace_name="sample"}
+        sort: alphabetical-asc

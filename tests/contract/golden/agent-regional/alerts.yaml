@@ -1,0 +1,58 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    noto.dev/class: agent
+    noto.dev/managed: 'true'
+  name: noto-alerts-sample-agent
+  namespace: sample
+spec:
+  groups:
+  - name: noto-collector-health
+    rules:
+    - alert: NotoCollectorMemoryHigh
+      annotations:
+        summary: Collector {{ $labels.job }} memory near the limiter threshold
+      expr: otelcol_process_memory_rss / otelcol_process_memory_limit > 0.85
+      for: 10m
+      labels:
+        app: noto-platform
+        severity: ticket
+    - alert: NotoCollectorRefusing
+      annotations:
+        summary: Collector {{ $labels.job }} is refusing telemetry at the door
+      expr: sum by (job) (rate(otelcol_receiver_refused_spans[5m]) + rate(otelcol_receiver_refused_metric_points[5m])
+        + rate(otelcol_receiver_refused_log_records[5m])) > 0
+      for: 5m
+      labels:
+        app: noto-platform
+        severity: page
+    - alert: NotoExporterFailing
+      annotations:
+        summary: Collector exporter {{ $labels.exporter }} failing sends
+      expr: sum by (job, exporter) (rate(otelcol_exporter_send_failed_spans[5m]) +
+        rate(otelcol_exporter_send_failed_metric_points[5m]) + rate(otelcol_exporter_send_failed_log_records[5m]))
+        > 0
+      for: 5m
+      labels:
+        app: noto-platform
+        severity: page
+  - name: noto-cardinality
+    rules:
+    - alert: NotoCardinalityBudget80
+      annotations:
+        summary: Tenant series count past 80% of the 1000000 budget (profile budgets.cardinality)
+      expr: sum(cortex_ingester_active_series) > 800000
+      for: 15m
+      labels:
+        app: noto-platform
+        severity: ticket
+    - alert: NotoCardinalityBudgetExceeded
+      annotations:
+        summary: Tenant series count EXCEEDS the 1000000 budget - find offenders with
+          `noto cardinality`
+      expr: sum(cortex_ingester_active_series) > 1000000
+      for: 5m
+      labels:
+        app: noto-platform
+        severity: page

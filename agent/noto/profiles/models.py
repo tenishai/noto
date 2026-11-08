@@ -50,13 +50,42 @@ class SLO(_Frozen):
         return self
 
 
+class Row(_Frozen):
+    """A titled, collapsible group of panels on one dashboard (a Perses grid with a
+    display title). `open` is the group's state when the dashboard loads."""
+
+    title: str
+    panels: list[str]
+    open: bool = True
+
+
 class Dashboard(_Frozen):
     name: str
-    panels: list[str]
+    # Either a flat list of panels (one untitled grid, two columns) or titled rows;
+    # a dashboard declares one or the other, never both, never neither.
+    panels: list[str] = []
+    rows: list[Row] = []
     # "app" dashboards render per app (name-prefixed, queries app-scoped); "cluster"
     # dashboards render once, app-less, with cluster-wide queries.
     scope: Literal["app", "cluster"] = "app"
     enabled: bool = True
+    # The time range the dashboard opens on, and how often it refreshes itself (Perses
+    # duration strings; None leaves auto-refresh off).
+    duration: str = "1h"
+    refresh: str | None = None
+
+    @model_validator(mode="after")
+    def _panels_or_rows(self) -> Dashboard:
+        if bool(self.panels) == bool(self.rows):
+            raise ValueError("a dashboard declares either panels or rows, and at least one")
+        return self
+
+    @property
+    def all_panels(self) -> list[str]:
+        """Every panel name in layout order, whichever form declared them."""
+        if self.rows:
+            return [name for row in self.rows for name in row.panels]
+        return list(self.panels)
 
 
 class Budgets(_Frozen):
@@ -96,6 +125,10 @@ class Override(BaseModel):
     drop: list[DropRule] | None = None
     cardinality_budget: int | None = None
     justification: str | None = None
+    # Named links the app's dashboards carry (name -> URL): where the app is managed,
+    # its repository, its chat surface. The provisioner that writes gojira.yaml knows
+    # these; noto only shows them, so none is ever hardcoded here.
+    links: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _warn_unknown_and_check_justification(self) -> Override:
@@ -119,3 +152,4 @@ class ResolvedProfile(_Frozen):
     dashboards: list[Dashboard]
     drop: list[DropRule]
     log_collection: str
+    links: dict[str, str] = {}
