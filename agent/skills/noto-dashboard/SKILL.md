@@ -1,7 +1,7 @@
 ---
 name: noto-dashboard
 description: Create or extend Perses dashboards-as-code from the profile dashboards: blocks - panels declared as metric:*/logs:*/traces:*, rendered with tenant-header datasources and validated by percli. Use when asked for "a dashboard", "add a panel", "graph this metric", "where do I see latency/errors/logs", or any request to visualize a service's telemetry.
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-dashboard

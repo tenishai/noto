@@ -1,7 +1,7 @@
 ---
 name: noto-pipeline
 description: Author or modify Noto collector pipeline behavior - drop rules, filters, label stripping, raw OTTL - within the contract-tested bounds. Use when asked to "drop noisy logs", "add a redaction/filter", "stop collecting metric X", or "why is this data being dropped".
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-pipeline

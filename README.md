@@ -6,7 +6,7 @@
 Take a deployment from zero to a full, end-to-end open-source observability platform - automatically.
 
 [![CI](https://github.com/tenishai/noto/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tenishai/noto/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-alpha-orange.svg)](docs/design.md)
 [![Built on OpenTelemetry](https://img.shields.io/badge/built%20on-OpenTelemetry-f5a800.svg)](https://opentelemetry.io)
 [![Stack: Mimir · Loki · Tempo · Perses](https://img.shields.io/badge/stack-Mimir%20%C2%B7%20Loki%20%C2%B7%20Tempo%20%C2%B7%20Perses-1f6feb.svg)](docs/design.md)
@@ -153,6 +153,6 @@ have had AI help.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).
+[MIT](LICENSE), matching the tenishai family (gojira, techne, liminal, cabal, daedalus).
 
 Copyright (C) 2026 tenish and the noto contributors

@@ -1,7 +1,7 @@
 ---
 name: noto-cardinality
 description: Diagnose and curb metric cardinality against the profile budget - read the per-tenant series report, identify offenders, propose drop/strip rules as profile diffs. Use when asked "what's blowing up our series count", "why is Mimir rejecting samples", "we have too many metrics", when an NotoCardinalityBudget80/Exceeded alert fires, or any cost/limit conversation about metrics volume.
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-cardinality
