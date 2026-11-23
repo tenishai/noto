@@ -3,19 +3,22 @@
 # pip-installing the package into site-packages, because REPO_ROOT (agent/noto/cli.py)
 # is derived from that file's own location and reads profiles/, integrations/ and
 # helm/pins.yaml relative to it at runtime - see tests/unit/test_layout.py.
-FROM --platform=$BUILDPLATFORM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS deps
+FROM --platform=$BUILDPLATFORM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS deps
 ARG UV_VERSION=0.11.21
 WORKDIR /lock
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir "uv==${UV_VERSION}" \
  && uv export --frozen --no-dev --no-emit-project -o requirements.txt
 
-FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
 ARG TARGETARCH=amd64
 
 # The upgrade pass pulls base packages to current security revisions even when
-# the builder's cached base layer is stale; CI also builds with --pull.
-RUN apt-get update && apt-get -y upgrade \
+# the builder's cached base layer is stale; CI also builds with --pull. The release
+# passes the day as APT_REFRESH, so this layer runs again on every release instead of
+# coming out of the build cache with last month's packages.
+ARG APT_REFRESH=
+RUN echo "apt refresh: ${APT_REFRESH}" && apt-get update && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

@@ -88,6 +88,10 @@ Finish, test, and review one thing before starting the next.
 - [ ] Versions pinned (no floating `latest`); docs updated if behavior or interfaces changed.
 - [ ] No em dashes in prose.
 
+## Releases
+
+Maintainers cut releases; [RELEASING.md](RELEASING.md) says how, and what stops one.
+
 ## Developer Certificate of Origin
 
 Noto uses the [Developer Certificate of Origin](https://developercertificate.org/)
