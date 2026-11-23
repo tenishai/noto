@@ -1,7 +1,7 @@
 ---
 name: noto-slo
 description: Define, tune, or disable SLOs for a gojira app - edit the profile slos: blocks, Sloth generates the multiwindow burn-rate rules, the Mimir ruler evaluates them. Use when asked to "add an SLO", "set an availability/latency target", "tighten or relax an objective", "alert on error budget", or any request that names a reliability promise, even if the word SLO never appears.
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-slo

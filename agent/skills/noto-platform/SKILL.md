@@ -1,7 +1,7 @@
 ---
 name: noto-platform
 description: Stand up the Noto observability platform (Mimir/Loki/Tempo + Perses + the OTel collector tier) on a cluster. Use when asked to "make this cluster observable", "stand up the observability stack", or "install the noto platform" on a gojira-managed or kind cluster.
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-platform

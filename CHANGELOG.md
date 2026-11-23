@@ -6,6 +6,10 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Changed
+
+- **Licence: MIT.** The project moves from AGPL-3.0-or-later to MIT, with the agreement of every contributor (tenishai/agora discussion 69). Releases already published keep the licence they shipped under.
+
 ### Added
 
 - **The agent dashboard says whether the agent is alive, what it uses and what it logged.** Four titled, collapsible rows instead of four charts: *Is it alive* (ready replicas, restarts in 24h, up for, memory of limit, the running image, per-pod readiness history), *Resources* (CPU and memory against request and limit, network, the pod's filesystem, OOM kills), *Logs*, and *About* (class, namespace, cluster, environment, the app's links, and what the page cannot show). It opens on 24 hours, refreshes every minute, and narrows by a `pod` variable. Everything comes from kubelet and kube-state-metrics, which every pod already has; there is no "what it is doing" row until the runtime emits that signal.

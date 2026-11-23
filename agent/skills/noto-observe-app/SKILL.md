@@ -1,7 +1,7 @@
 ---
 name: noto-observe-app
 description: Wire a gojira app into the Noto platform by its workload class - scrape wiring, dashboards, SLOs, alerts, all rendered from its profile. Use when asked to "observe this app", "add dashboards/SLOs for this service", or after gojira deploys a new app.
-license: AGPL-3.0-or-later
+license: MIT
 ---
 
 # noto-observe-app

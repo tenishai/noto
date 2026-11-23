@@ -22,7 +22,7 @@ skill below, use it before hand-rolling the work.
 
 Noto's own skills live in [agent/skills/](agent/skills/) and follow the Anthropic format
 (lowercase-hyphenated dir = `name`; `SKILL.md` under 500 lines with `name` + `description` frontmatter;
-progressive disclosure to `references/`/`scripts/`/`assets/`; imperative voice; `license: AGPL-3.0-or-later`).
+progressive disclosure to `references/`/`scripts/`/`assets/`; imperative voice; `license: MIT`).
 
 ## Setup: making the skills available
 

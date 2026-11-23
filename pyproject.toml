@@ -3,7 +3,7 @@ name = "tenish-noto"
 version = "0.2.1"
 description = "Noto - the observability arm of gojira. Takes a deployment from zero to a full open-source observability platform, automatically."
 readme = "README.md"
-license = "AGPL-3.0-or-later"
+license = "MIT"
 requires-python = ">=3.14,<3.15"
 authors = [{ name = "tenish" }]
 # Runtime dependencies land with the code that needs them (Jinja2 with the renderers,

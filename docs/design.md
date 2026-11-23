@@ -4,7 +4,7 @@
 > **Date:** 2026-06-16 (revised 2026-07-08: family alignment - license, real gojira contract,
 > transport/routing, daedalus, rightsizing feedback)
 > **Authors:** Kyle Greiner (kmgreiner3@users.noreply.github.com)
-> **License:** AGPL-3.0-or-later (the tenishai family license)
+> **License:** MIT (the tenishai family license; relicensed from AGPL-3.0-or-later on 2026-11-23)
 > **Relationship:** the **observability arm of [gojira](https://github.com/tenishai/gojira)**.
 > **Home:** [tenishai/noto](https://github.com/tenishai/noto) (transferred into the org
 > 2026-07-11), alongside gojira / techne / liminal / cabal / daedalus / sero.
@@ -92,7 +92,7 @@ gojira's contract and state rather than inventing its own parallel source of tru
 | Log shipper | **A seam: OTel `filelog` default; Fluent Bit supported alternative** (FB tails -> OTLP -> same local gateway; downstream identical). Both rendered from the profile schema's log-collection section, both contract-tested. Chosen per deployment by benchmark on real node profiles, not by opinion. FB implementation is post-Phase-1 | Scale-flexible without giving up the one-config-guarantee: at very high per-node log rates FB's footprint/throughput wins; at typical rates one substrate wins. The bypassed GKE logging agent is itself Fluent Bit, so the pattern is native to the platform |
 | Scale posture | **Design for arbitrary scale; size each deployment from its measurements.** Every component is horizontally scalable (Mimir/Loki/Tempo shard on object storage, the queue partitions, collectors HPA, the ingest tier is a stateless consumer group); scale numbers are *inputs* (profile budgets, Helm sizing tiers, topic retention), never constants baked into rendered config | Noto targets many teams and many companies, small and massive. One deployment's measured volume is an instance parameter, not the design envelope. Decisions justified "because our volume is small" are reasoning bugs - flexibility across scales is the requirement |
 | Tenancy | **Tenant per cluster**, stamped as `X-Scope-OrgID` by the ingest tier (`solo`: by the gateway) | Mimir/Loki/Tempo are natively multi-tenant; cluster is the finest useful isolation and cost-attribution unit and aggregates upward in Perses; per-team usage attribution falls out of tenant + namespace labels |
-| License | **AGPL-3.0-or-later** | Moves with the family (gojira/techne/liminal/cabal/daedalus relicensed 2026-07-08); permits library-level embedding of siblings |
+| License | **MIT** | Moves with the family (AGPL-3.0-or-later from 2026-07-08, MIT from 2026-11-23); permits library-level embedding of siblings |
 | Agent shell | **daedalus bundle** (persona + agent card + wiring), with a thin Noto CLI fallback | daedalus owns "an agent is a directory" plus transports, cabal peering, and liminal wiring; Noto keeps only what it owns (step engine, renderers, profiles, skills) as the tools the bundle wires in |
 | Ledger / state | **SQLite now**, techne-backed later | Proven in gojira; migrate the agent's deploy history into techne when ready |
 | Agent home | **Self-contained in the `noto` repo** | Ships its own minimal runtime; portable, can register into cabal later |
@@ -439,7 +439,7 @@ Sibling integration specifics (verified against the repos, 2026-07-08):
 
 Competence is packaged as **Agent Skills** in the Anthropic format (lowercase-hyphenated dir = `name`;
 `SKILL.md` < 500 lines with `name` + `description` frontmatter; progressive disclosure to
-`references/`, `scripts/`, `assets/`; imperative voice, explain the *why*; `license: AGPL-3.0-or-later`).
+`references/`, `scripts/`, `assets/`; imperative voice, explain the *why*; `license: MIT`).
 
 | Skill | Does | Trigger phrasing | Phase |
 |---|---|---|---|
@@ -520,7 +520,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
 
 ## Open-source hygiene
 
-- **AGPL-3.0-or-later** (the family license), all components OSS, no phone-home, no vendor backend
+- **MIT** (the family license), all components OSS, no phone-home, no vendor backend
   required to run.
 - Pin everything: `ocb` manifest pins each component gomod + version; Helm charts pinned; OpenTofu
   providers pinned. No floating `latest`.

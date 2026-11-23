@@ -31,7 +31,7 @@ duplicate what a sibling owns; integrate with it.
 - **No em dashes** in prose, docs, README, UI copy, or commit messages. Use a spaced hyphen ` - `,
   a comma, or parentheses. (Code and generated config are exempt.)
 - **100% open source.** No vendor backend, no proprietary dependency, no phone-home. Licensed
-  **AGPL-3.0-or-later**, matching the tenishai family (gojira, techne, liminal, cabal, daedalus); this
+  **MIT**, matching the tenishai family (gojira, techne, liminal, cabal, daedalus); this
   permits library-level embedding of the siblings without a license boundary.
 - **Agent-first, no web UI** as a core surface. The agent is the interface.
 - **gojira-native.** gojira's contract and state are the source of truth; do not duplicate them.
