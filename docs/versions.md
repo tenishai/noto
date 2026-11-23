@@ -90,8 +90,8 @@ pins.
 | `opentofu/setup-opentofu` | v2.0.2 (SHA-pinned) | `ci.yml` |
 | `helm/kind-action` | v1.15.1 (SHA-pinned) | `smoke.yml` |
 
-Runner image is `ubuntu-latest` (the conventional GitHub-hosted label), overridable per repository
-with the `CI_RUNS_ON` variable; `dco.yml` uses `ubuntu-latest` directly. If we need bit-for-bit
+Runner image is `ubuntu-latest` (the conventional GitHub-hosted label) in every workflow; the
+release build names `ubuntu-24.04`. No job runs on a self-hosted runner. If we need bit-for-bit
 reproducible runs we pin to a dated image (e.g. `ubuntu-24.04`); not required today.
 
 ## Verify-before-pinning checklist

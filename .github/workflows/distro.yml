@@ -23,10 +23,7 @@ permissions:
 jobs:
   build-and-validate:
     name: ocb build + validate against own binary
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0

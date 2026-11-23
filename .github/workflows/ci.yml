@@ -22,10 +22,7 @@ jobs:
   # Layer 1: static / lint. No code execution, runs in seconds.
   conventions:
     name: conventions lint
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Lint prose and version pins
@@ -34,10 +31,7 @@ jobs:
   # Layers 1-3: static (ruff), unit, contract - `make test` runs them all.
   unit-and-contract:
     name: unit + contract
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -67,10 +61,7 @@ jobs:
   # The one layer where something outside our own expectations judges the output.
   rendered-validation:
     name: rendered vs real validators
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -82,10 +73,7 @@ jobs:
   # Layer 1 (static) for the OpenTofu seams: fmt + validate with the pinned CLI.
   opentofu:
     name: opentofu fmt + validate
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
@@ -105,10 +93,7 @@ jobs:
   # cleanly with our values. Runs on every PR (chart fetches are ~seconds).
   helm-values:
     name: pinned charts template with our values
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
-    # A self-hosted runner must never run a fork's code: this repository's own pull
-    # requests and pushes only. Harmless on GitHub-hosted runners.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -120,3 +105,19 @@ jobs:
           version: "v3.19.0"
       - name: Validate helm pins + values
         run: bash scripts/validate-helm.sh
+
+  # The one check the branch rules require: it passes only when every job above passed.
+  # A skipped or cancelled job fails it, so nothing merges on a job that did not run.
+  ci:
+    name: ci
+    if: ${{ always() }}
+    needs: [conventions, unit-and-contract, rendered-validation, opentofu, helm-values]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            [ "$r" = "success" ] || { echo "a job did not pass: $RESULTS"; exit 1; }
+          done
