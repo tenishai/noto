@@ -54,7 +54,7 @@ touches nothing else.
 
 To see the whole thing run, `make smoke` creates a [kind](https://kind.sigs.k8s.io/)
 cluster, installs the platform, deploys the sample app, observes it and checks the result;
-the picture above is its dashboard. It needs Docker, kind, kubectl and helm, and about
+the picture above is its dashboard. It needs Docker with at least four CPUs, kind, kubectl and helm, and about
 fifteen minutes. `KEEP=1 make smoke` leaves the cluster up to look around.
 
 ## How it works
