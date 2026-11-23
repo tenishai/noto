@@ -22,17 +22,19 @@
 #
 # Pins (docs/versions.md): MinIO RELEASE.2024-12-18T13-15-44Z, mc
 # RELEASE.2024-11-21T17-21-54Z, the versions the mimir-distributed 6.1.0 chart
-# pins through its minio 5.4.0 subchart. linux/amd64 only, like the platform.
+# pins through its minio 5.4.0 subchart. Builds for linux/amd64 (the platform's
+# architecture) and linux/arm64 (so the smoke test runs on an arm64 laptop).
 ARG MINIO_RELEASE=RELEASE.2024-12-18T13-15-44Z
-ARG MINIO_RPM=minio-20241218131544.0.0-1.x86_64.rpm
+ARG MINIO_RPM_VERSION=20241218131544.0.0-1
 ARG MC_RELEASE=RELEASE.2024-11-21T17-21-54Z
-ARG MC_RPM=mcli-20241121172154.0.0-1.x86_64.rpm
+ARG MC_RPM_VERSION=20241121172154.0.0-1
 
 FROM debian:bookworm-slim AS extract
 ARG MINIO_RELEASE
-ARG MINIO_RPM
+ARG MINIO_RPM_VERSION
 ARG MC_RELEASE
-ARG MC_RPM
+ARG MC_RPM_VERSION
+ARG TARGETARCH
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl libarchive-tools \
  && rm -rf /var/lib/apt/lists/*
@@ -40,13 +42,17 @@ WORKDIR /x
 # The .sha256sum assets name the file as MinIO published it; checked as such.
 # bsdtar reads an RPM directly (any payload compression), where rpm2cpio on
 # Debian extracted nothing from these and the first build installed ''.
-RUN curl -fsSL -o "$MINIO_RPM" "https://github.com/minio/minio/releases/download/${MINIO_RELEASE}/${MINIO_RPM}" \
+RUN case "$TARGETARCH" in amd64) a=x86_64 ;; arm64) a=aarch64 ;; *) echo "unsupported: $TARGETARCH"; exit 1 ;; esac \
+ && MINIO_RPM="minio-${MINIO_RPM_VERSION}.${a}.rpm" \
+ && curl -fsSL -o "$MINIO_RPM" "https://github.com/minio/minio/releases/download/${MINIO_RELEASE}/${MINIO_RPM}" \
  && curl -fsSL -o "$MINIO_RPM.sha256sum" "https://github.com/minio/minio/releases/download/${MINIO_RELEASE}/${MINIO_RPM}.sha256sum" \
  && sha256sum -c "$MINIO_RPM.sha256sum" \
  && mkdir minio && bsdtar -xf "$MINIO_RPM" -C minio \
  && find minio -type f | head -20 \
  && install -m 0755 "$(find minio -type f -name minio | head -1)" /minio
-RUN curl -fsSL -o "$MC_RPM" "https://github.com/minio/mc/releases/download/${MC_RELEASE}/${MC_RPM}" \
+RUN case "$TARGETARCH" in amd64) a=x86_64 ;; arm64) a=aarch64 ;; *) echo "unsupported: $TARGETARCH"; exit 1 ;; esac \
+ && MC_RPM="mcli-${MC_RPM_VERSION}.${a}.rpm" \
+ && curl -fsSL -o "$MC_RPM" "https://github.com/minio/mc/releases/download/${MC_RELEASE}/${MC_RPM}" \
  && curl -fsSL -o "$MC_RPM.sha256sum" "https://github.com/minio/mc/releases/download/${MC_RELEASE}/${MC_RPM}.sha256sum" \
  && sha256sum -c "$MC_RPM.sha256sum" \
  && mkdir mc && bsdtar -xf "$MC_RPM" -C mc \

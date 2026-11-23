@@ -6,6 +6,14 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Fixed
+
+- **`make smoke` runs on a clean machine again.** The Mimir chart's bundled MinIO names an image MinIO no longer publishes, so the object store never started and the run timed out. The smoke test now builds `images/minio/` (the same pinned release, from MinIO's checksum-verified GitHub packages), loads it into the kind cluster and names it through `noto platform --set`. That image now also builds for `linux/arm64`, so the smoke test runs on an arm64 laptop.
+
+### Changed
+
+- **A shorter README, on the outline the sibling repos share**, with a picture of the dashboard the smoke test produces.
+
 ## [0.3.0] - 2026-11-23
 
 ### Changed
