@@ -15,12 +15,29 @@ START=$(date +%s)
 
 step() { echo; echo "=== [$((($(date +%s)-START)/60))m] $*"; }
 
+# On a failure, say what the cluster looked like: a timed-out install names the
+# workloads that were not ready, never why.
+diagnose() {
+  echo; echo "=== smoke failed; pods not ready:"
+  kubectl --context "$CTX" get pods -A --no-headers 2>/dev/null | grep -v -e Running -e Completed || true
+  kubectl --context "$CTX" get events -A --field-selector type=Warning --sort-by=.lastTimestamp 2>/dev/null | tail -25 || true
+  kubectl --context "$CTX" top nodes 2>/dev/null || kubectl --context "$CTX" describe nodes 2>/dev/null | grep -A8 "Allocated resources" || true
+}
+trap diagnose ERR
+
 step "kind cluster"
 kind get clusters 2>/dev/null | grep -qx "$CLUSTER" || kind create cluster --name "$CLUSTER" --wait 120s
 
+step "object store image (MinIO publishes no image any more; images/minio rebuilds the pinned release)"
+MINIO_TAG=RELEASE.2024-12-18T13-15-44Z
+docker build -q -t "noto-smoke/minio:$MINIO_TAG" "$REPO/images/minio"
+kind load docker-image "noto-smoke/minio:$MINIO_TAG" --name "$CLUSTER"
+
 step "noto platform (step engine; resumable)"
 rm -f "$LEDGER"
-uv run noto platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER"
+uv run noto platform --cluster "$CLUSTER" --env dev --kube-context "$CTX" --ledger "$LEDGER" \
+  --set mimir:minio.image.repository=noto-smoke/minio --set "mimir:minio.image.tag=$MINIO_TAG" \
+  --set mimir:minio.mcImage.repository=noto-smoke/minio --set "mimir:minio.mcImage.tag=$MINIO_TAG"
 
 step "sample apps (podinfo + traffic; exemplar-demo for the #47 exemplar assertion)"
 kubectl --context "$CTX" apply -f "$REPO/tests/smoke/sample-app.yaml"

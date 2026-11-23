@@ -1,5 +1,9 @@
 # Layer 4: the Phase 1 DoD gate (testing.md). Gated: on demand and on release,
 # never per-PR (it stands up the full solo platform on kind, ~15 minutes).
+# The platform requests more than two CPUs (Mimir's Kafka alone asks for one), so
+# this needs a four-CPU runner: the hosted image a public repository gets. On the
+# two-CPU image a private repository gets, Kafka stays Pending and the install
+# times out.
 name: smoke
 
 on:

@@ -29,5 +29,6 @@ validate-helm:
 regen-golden:
 	uv run python scripts/regen-golden.py
 
-smoke:
+# validate first: it fetches the pinned tools (sloth among them) that observe shells out to.
+smoke: validate
 	bash tests/smoke/run-smoke.sh

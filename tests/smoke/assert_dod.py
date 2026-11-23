@@ -57,7 +57,7 @@ def logs_flowing() -> bool:
 
 def dashboard_present() -> bool:
     data = get("http://localhost:8080/api/v1/projects/noto-smoke/dashboards")
-    return any(d["metadata"]["name"] == "web-red" for d in data)
+    return any(d["metadata"]["name"] == "podinfo-web-red" for d in data)
 
 
 def ruler_evaluating() -> bool:
@@ -108,7 +108,7 @@ def slo_rules_present() -> bool:
 
 def main() -> None:
     print("asserting the Phase 1 DoD (polling, 15m deadline):")
-    poll("dashboard-as-code present (web-red)", dashboard_present)
+    poll("dashboard-as-code present (podinfo-web-red)", dashboard_present)
     poll("SLO rules generated + applied", slo_rules_present)
     poll("real metric from the app via Perses->Mimir", metric_from_app)
     poll("real logs via Perses->Loki", logs_flowing)
