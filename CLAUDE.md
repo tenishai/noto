@@ -17,7 +17,7 @@ skill below, use it before hand-rolling the work.
 | **webapp-testing** | Verifying any local web behavior with Playwright (e.g. Perses provisioning, a future status page, dashboard round-trip checks). | When a web surface or Perses check exists. |
 | **frontend-design** | Designing any web UI surface so it is distinctive and intentional, not templated (e.g. a status page, docs site, dashboard theming). | When/if we build a web surface. |
 | **web-artifacts-builder** | Prototyping elaborate multi-component web artifacts (React/Tailwind/shadcn) - e.g. dashboard mockups or an internal console prototype. | Prototyping only; not a core surface. |
-| **web-design-guidelines** (Vercel) | Reviewing/auditing any UI code we build against 100+ rules across 11 categories (a11y, focus states, forms, animation, typography, images, i18n, performance). Triggers: "review my UI", "check accessibility", "audit design". | Apply to any web surface we ship. Installed project-local (see below). |
+| **web-design-guidelines** (Vercel) | Reviewing/auditing any UI code we build against 100+ rules across 11 categories (a11y, focus states, forms, animation, typography, images, i18n, performance). Triggers: "review my UI", "check accessibility", "audit design". | Apply to any web surface we ship. Installed per machine (see below). |
 | **skill-creator** | Authoring or evaluating Noto's own Agent Skills (`agent/skills/`): write SKILL.md, draft eval prompts, run with/without, optimize the description, package. | Core - we author skills here. |
 
 Noto's own skills live in [agent/skills/](agent/skills/) and follow the Anthropic format
@@ -38,13 +38,10 @@ The Anthropic skills are distributed through the Claude Code plugin marketplace:
 `skill-creator`, `frontend-design`, `mcp-builder`, `webapp-testing`, `web-artifacts-builder`,
 `doc-coauthoring`, and `claude-api` ship in those bundles.)
 
-The Vercel **web-design-guidelines** skill is installed **project-local** (it travels with the repo),
-from [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) (MIT):
+The Vercel **web-design-guidelines** skill comes from
+[vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills). It is not committed here
+(this repository ships only its own work); install it for yourself:
 
 ```
-npx skills add https://github.com/vercel-labs/agent-skills --skill web-design-guidelines
+npx skills add https://github.com/vercel-labs/agent-skills --skill web-design-guidelines --global
 ```
-
-It lives at `.agents/skills/web-design-guidelines/` with a Claude Code symlink at
-`.claude/skills/web-design-guidelines`. Both are committed so the skill is available to anyone working
-in this repo, in Claude Code and other agents.
