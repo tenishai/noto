@@ -617,13 +617,13 @@ def test_in_cluster_kubeconfig_names_the_server_and_the_token_by_path(tmp_path: 
     import yaml
 
     sa = _sa_dir(tmp_path)
-    env = {"KUBERNETES_SERVICE_HOST": "10.140.4.1", "KUBERNETES_SERVICE_PORT": "443"}
+    env = {"KUBERNETES_SERVICE_HOST": "192.0.2.1", "KUBERNETES_SERVICE_PORT": "443"}
     out = in_cluster_kubeconfig(tmp_path / "kubeconfig", env, sa_dir=sa)
     assert out == tmp_path / "kubeconfig"
     doc = yaml.safe_load(out.read_text())
     assert doc["current-context"] == "in-cluster"
     assert doc["clusters"][0]["cluster"] == {
-        "server": "https://10.140.4.1:443",
+        "server": "https://192.0.2.1:443",
         "certificate-authority": str(sa / "ca.crt"),
     }
     assert doc["users"][0]["user"] == {"tokenFile": str(sa / "token")}
@@ -689,7 +689,7 @@ def test_job_mode_every_kubectl_call_carries_the_in_cluster_kubeconfig(
 
     sa = _sa_dir(tmp_path)
     monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", sa)
-    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.140.4.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "192.0.2.1")
     monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "443")
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
@@ -709,7 +709,7 @@ def test_job_mode_every_kubectl_call_carries_the_in_cluster_kubeconfig(
         paths.add(c[c.index("--kubeconfig") + 1])
     (path,) = paths  # one file, written once, for the whole run
     assert path.endswith("/kubeconfig") and "noto-job-" in path
-    assert "https://10.140.4.1:443" in Path(path).read_text()
+    assert "https://192.0.2.1:443" in Path(path).read_text()
 
 
 def test_operator_mode_never_writes_or_passes_a_kubeconfig(monkeypatch, tmp_path: Path):
@@ -720,7 +720,7 @@ def test_operator_mode_never_writes_or_passes_a_kubeconfig(monkeypatch, tmp_path
 
     monkeypatch.delenv("GOJIRA_CONTRACT_YAML", raising=False)
     monkeypatch.setattr(job, "SERVICE_ACCOUNT_DIR", _sa_dir(tmp_path))
-    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.140.4.1")
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "192.0.2.1")
     monkeypatch.setenv("KUBERNETES_SERVICE_PORT", "443")
     runner = FakeRunner()
     monkeypatch.setattr(cli, "real_runner", runner)
