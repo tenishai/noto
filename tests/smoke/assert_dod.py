@@ -77,7 +77,7 @@ def redis_autodiscovered() -> bool:
 def exemplars_stored() -> bool:
     """#47: the OTLP path carries exemplars end to end (SDK -> agent -> gateway -> Mimir),
     queryable through the Perses proxy - everything a UI click-through needs, server-side.
-    (Perses 0.53.1 cannot render them; docs/spikes/perses/RESULTS.md addendum.)"""
+    (Perses 0.53.1 cannot render them; docs/design.md, item 15.)"""
     end = int(time.time())
     data = get(
         f"{PROXY}/mimir/api/v1/query_exemplars"

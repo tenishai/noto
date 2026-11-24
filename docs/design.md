@@ -593,7 +593,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     headers on datasources, span-metrics/service-graph via Tempo's metrics-generator, UI render
     confirmed by screenshot. One item carried forward (exemplar click-through at the UI level,
     verify during Phase 1 content work). Full results, reproduction manifests, and operational
-    gotchas: [spikes/perses/RESULTS.md](spikes/perses/RESULTS.md).
+    gotchas: [the spike's results at v0.3.0](https://github.com/tenishai/noto/blob/v0.3.0/docs/spikes/perses/RESULTS.md).
 
 ## Resolved questions (2026-07-12)
 
@@ -604,7 +604,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     measurements converged with `noto feedback`'s (cpu p95 4m/4m, mem p95 40Mi/38Mi). Noto
     retired its POST path the same day (`noto feedback` is diagnostic-only, `--dry-run` required)
     and proposed the two missing pieces upstream as a verified patch
-    ([docs/proposals/](proposals/gojira-sizing-agent-prometheus-headers.md)): a
+    ([the proposal at v0.3.0](https://github.com/tenishai/noto/blob/v0.3.0/docs/proposals/gojira-sizing-agent-prometheus-headers.md)): a
     `PROMETHEUS_HEADERS` option (replaces the bridge) and the kubeletstats query recipe. The
     shared `usage_profile.json` fixture remains the three-repo contract. This also dissolves the
     deploy-race concern: only gojira's agent-deploy step touches the producer now.
@@ -619,7 +619,7 @@ from runtime reality, and snapshots can persist into techne as durable knowledge
     smoke DoD now asserts this (8th assertion). Perses 0.53.1's UI has no exemplar rendering:
     zero "exemplar" occurrences across all 83 frontend JS assets and no upstream changelog
     mention through 0.54.0-beta.2. Full record + screenshot:
-    [spikes/perses/RESULTS.md](spikes/perses/RESULTS.md) addendum. Revisit trigger: Perses
+    [the spike's results at v0.3.0](https://github.com/tenishai/noto/blob/v0.3.0/docs/spikes/perses/RESULTS.md) addendum. Revisit trigger: Perses
     ships exemplar support; the backend is already exemplar-ready, so adoption is a UI-version
     bump.
 

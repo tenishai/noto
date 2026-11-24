@@ -1,4 +1,4 @@
-# Loki (solo baseline). Spike gotchas encoded (docs/spikes/perses/RESULTS.md):
+# Loki (solo baseline). Perses spike gotchas encoded (docs/design.md, item 13):
 # structured metadata + OTLP index labels, or OTLP-ingested labels are unqueryable.
 deploymentMode: SingleBinary
 loki:

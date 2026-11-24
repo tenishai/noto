@@ -9,6 +9,7 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 ### Removed
 
 - **The dated plans and specs under `docs/superpowers/` are no longer in the tree.** They were working notes, kept as a historical record; they are in the history, last at [v0.3.0](https://github.com/tenishai/noto/tree/v0.3.0/docs/superpowers).
+- **`docs/proposals/` and `docs/spikes/` are no longer in the tree.** The one proposal (a patch offered to another project) and the Perses capability spike were records of work that is done. `docs/design.md` keeps what each decided and links the files in the history, last at [v0.3.0](https://github.com/tenishai/noto/tree/v0.3.0/docs).
 
 ### Fixed
 
@@ -468,7 +469,7 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
   the `--dry-run` diagnostic, and the cross-repo `usage_profile.json` fixture stays asserted
   byte-identical (the three-repo contract). The missing pieces on the agent's side (an
   `X-Scope-OrgID` header option + the kubeletstats query preset) are proposed upstream as a
-  verified git-am patch: [docs/proposals/](docs/proposals/gojira-sizing-agent-prometheus-headers.md).
+  verified git-am patch: [docs/proposals/](https://github.com/tenishai/noto/blob/v0.3.0/docs/proposals/gojira-sizing-agent-prometheus-headers.md).
 - **Feedback-loop queries corrected to live-verified names** (against a running smoke cluster):
   Mimir's OTLP path stores kubeletstats metrics WITHOUT unit/_total suffixes - the real names are
   `k8s_pod_cpu_time` / `k8s_pod_memory_working_set` (pod-level, containers pre-summed). Mimir's
@@ -676,7 +677,7 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ### Added
 
-- **Perses capability spike: PASS** ([docs/spikes/perses/RESULTS.md](docs/spikes/perses/RESULTS.md),
+- **Perses capability spike: PASS** ([docs/spikes/perses/RESULTS.md](https://github.com/tenishai/noto/blob/v0.3.0/docs/spikes/perses/RESULTS.md),
   closes issue #11). Perses 0.53.1 verified hands-on against pinned Mimir/Loki/Tempo on kind: full
   Loki/Tempo/Prometheus plugin coverage, dashboards-as-code via API, all three query languages
   through the Perses proxy, tenancy headers, Tempo metrics-generator span-metrics into Mimir, UI
