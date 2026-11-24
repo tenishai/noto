@@ -1,6 +1,6 @@
 """Render Perses resources: project, tenant-header datasources, dashboards-as-code.
 
-Shapes verified hands-on in the capability spike (docs/spikes/perses/RESULTS.md) and
+Shapes verified hands-on in the Perses capability spike (docs/design.md, item 13) and
 against the Perses 0.53 plugin schemas (StatChart, GaugeChart, Table,
 StatusHistoryChart, Markdown beside TimeSeriesChart, LogsTable and TraceTable).
 Panel names are prefixed by signal: metric:* / logs:* / traces:* / markdown:* -
@@ -356,7 +356,7 @@ def _datasource(name: str, kind: str, url: str, project: str, tenant: str) -> di
 def _slow_requests_query(service: str, p: ResolvedProfile) -> str:
     """TraceQL for traces:slow-requests - traces slower than the class's own latency SLO.
 
-    Falls back to the spike-verified generic per-service query (docs/spikes/perses/RESULTS.md)
+    Falls back to the spike-verified generic per-service query (docs/design.md, item 13)
     when the class defines no latency SLO to borrow a threshold from, so the panel never
     goes empty for want of a number; it just stops being duration-filtered.
     """
