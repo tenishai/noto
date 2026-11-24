@@ -6,11 +6,17 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 
 ## [Unreleased]
 
+### Removed
+
+- **The dated plans and specs under `docs/superpowers/` are no longer in the tree.** They were working notes, kept as a historical record; they are in the history, last at [v0.3.0](https://github.com/tenishai/noto/tree/v0.3.0/docs/superpowers).
+
 ### Fixed
 
 - **`make smoke` runs on a clean machine again.** The Mimir chart's bundled MinIO names an image MinIO no longer publishes, so the object store never started and the run timed out. The smoke test now builds `images/minio/` (the same pinned release, from MinIO's checksum-verified GitHub packages), loads it into the kind cluster and names it through `noto platform --set`. That image now also builds for `linux/arm64`, so the smoke test runs on an arm64 laptop. A failed run now prints the pods that were not ready, the warning events and the node's allocation. The `smoke` workflow still needs a four-CPU runner, which this repository gets once it is public.
 
 ### Changed
+
+- **`.gitignore` opens with a block shared by every tenish repo** (keys, env files, local databases, Terraform state, editor folders), with this repo's own lines under it.
 
 - **A shorter README, on the outline the sibling repos share**, with a picture of the dashboard the smoke test produces.
 
@@ -631,7 +637,7 @@ All notable changes to Noto (named Argus until 2026-10-12) are documented here. 
 ### Added
 
 - **Design spec for profiles + renderers + contract tests** (issue #17), approved and committed at
-  [docs/superpowers/specs/2026-07-11-profiles-renderers-design.md](docs/superpowers/specs/2026-07-11-profiles-renderers-design.md):
+  [docs/superpowers/specs/2026-07-11-profiles-renderers-design.md](https://github.com/tenishai/noto/blob/v0.3.0/docs/superpowers/specs/2026-07-11-profiles-renderers-design.md):
   layered composition (baseline + class + override), structured filter rules with a justified
   `raw_ottl` escape hatch, ephemeral renders with golden files as the only persisted output, typed
   models -> `yaml.dump` renderers (no Jinja2 for these artifacts), and the invariant list the
