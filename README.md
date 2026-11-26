@@ -9,6 +9,16 @@ Noto stands up an open-source observability platform on a cluster and wires each
 
 ![The dashboard noto derives for a web app: request rate, errors, latency, memory, slow traces and error logs](docs/img/dashboard.png)
 
+## Two ways to run it
+
+- **Try it on a laptop.** The [Quickstart](#quickstart) renders what noto would install
+  for a sample app with no cluster, and `make smoke` runs the whole thing on a local kind
+  cluster.
+- **Run it on a cluster.** Noto installs on its own: `noto platform` once per cluster,
+  then [gojira](https://github.com/tenishai/gojira) observes each app it deploys
+  ([docs/operating.md](docs/operating.md)). It sits beside the tenish suite, which
+  [stack](https://github.com/tenishai/stack) brings up on gojira; stack does not install noto.
+
 ## Overview
 
 Noto makes what [gojira](https://github.com/tenishai/gojira) deploys observable. Where
@@ -26,17 +36,6 @@ gojira already assigned. No hand-rolled collector YAML and no vendor backend.
   of noto's own.
 - **Reads gojira's contract.** The deploy contract is the source of truth; noto does not
   keep a second copy.
-
-Noto is the observability member of the tenish family of open-source platform and agent
-projects: [gojira](https://github.com/tenishai/gojira) deploys,
-[kobo](https://github.com/tenishai/kobo) is where people build agents,
-[sero](https://github.com/tenishai/sero) keeps secrets, [bab](https://github.com/tenishai/bab)
-decides what an agent may do, and [liminal](https://github.com/tenishai/liminal) is the
-gateway agents reach tools through. gojira is the one integration noto ships today: it
-reads gojira's deploy contract, and gojira runs `noto observe` as a Job after each deploy.
-
-To run the whole suite on a cluster, start at [stack](https://github.com/tenishai/stack), which brings the other parts up from
-one file in dependency order. Noto is installed on its own, as the Quickstart below shows.
 
 ## Quickstart
 
@@ -59,6 +58,20 @@ To see the whole thing run, `make smoke` creates a [kind](https://kind.sigs.k8s.
 cluster, installs the platform, deploys the sample app, observes it and checks the result;
 the picture above is its dashboard. It needs Docker with at least four CPUs, kind, kubectl and helm, and about
 fifteen minutes. `KEEP=1 make smoke` leaves the cluster up to look around.
+
+## Where it fits
+
+Noto is the observability member of the tenish family of open-source platform and agent
+projects. gojira is the one integration noto ships today: it reads gojira's deploy
+contract, and gojira runs `noto observe` as a Job after each deploy.
+
+| Part | What it does |
+|---|---|
+| [gojira](https://github.com/tenishai/gojira) | deploys the apps noto observes |
+| [kobo](https://github.com/tenishai/kobo) | where people build agents |
+| [sero](https://github.com/tenishai/sero) | keeps secrets |
+| [bab](https://github.com/tenishai/bab) | decides what an agent may do |
+| [liminal](https://github.com/tenishai/liminal) | the gateway agents reach tools through |
 
 ## How it works
 
