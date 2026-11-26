@@ -35,6 +35,9 @@ decides what an agent may do, and [liminal](https://github.com/tenishai/liminal)
 gateway agents reach tools through. gojira is the one integration noto ships today: it
 reads gojira's deploy contract, and gojira runs `noto observe` as a Job after each deploy.
 
+To run the whole suite on a cluster, start at [stack](https://github.com/tenishai/stack), which brings the other parts up from
+one file in dependency order. Noto is installed on its own, as the Quickstart below shows.
+
 ## Quickstart
 
 Render what noto would install for a sample app, with no cluster. The only prerequisite is
