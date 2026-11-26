@@ -75,11 +75,17 @@ contract, and gojira runs `noto observe` as a Job after each deploy.
 
 ## How it works
 
-```
-gojira:  repo ──▶ identity ──▶ CI/CD ──▶ manifests ──▶ app running, /metrics exposed
-                                                              │
-                                                              ▼  (noto continues)
-noto:   per-cluster platform (collectors + backends + Perses) ──▶ wire each app by class ──▶ dashboards · SLOs · alerts
+```mermaid
+flowchart LR
+  subgraph g["gojira"]
+    direction TB
+    repo --> identity --> cicd["CI/CD"] --> manifests --> running["app running,<br/>/metrics exposed"]
+  end
+  subgraph n["noto continues"]
+    direction TB
+    platform["per-cluster platform<br/>(collectors + backends + Perses)"] --> wire["wire each app by class"] --> out["dashboards, SLOs, alerts"]
+  end
+  g --> n
 ```
 
 `noto platform --cluster <name> --env <dev|qa|prod>` stands the platform up once per
