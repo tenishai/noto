@@ -77,15 +77,7 @@ contract, and gojira runs `noto observe` as a Job after each deploy.
 
 ```mermaid
 flowchart LR
-  subgraph g["gojira"]
-    direction TB
-    repo --> identity --> cicd["CI/CD"] --> manifests --> running["app running,<br/>/metrics exposed"]
-  end
-  subgraph n["noto continues"]
-    direction TB
-    platform["per-cluster platform<br/>(collectors + backends + Perses)"] --> wire["wire each app by class"] --> out["dashboards, SLOs, alerts"]
-  end
-  g --> n
+  a["Platform<br/>noto installs collection<br/>and backends, once per cluster"] --> b["Deploy<br/>gojira gets an<br/>app running"] --> c["Observe<br/>noto wires the app<br/>in by its class"] --> d["Result<br/>a dashboard, alerts<br/>and an SLO"]
 ```
 
 `noto platform --cluster <name> --env <dev|qa|prod>` stands the platform up once per
